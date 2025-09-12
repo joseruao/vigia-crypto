@@ -1,0 +1,298 @@
+# exchange_tokens_collector_no_bs4.py
+import requests
+import json
+import os
+import time
+import re
+
+# -----------------------------
+# Configuração
+# -----------------------------
+LIST_FILE = "listed_tokens.json"
+
+# -----------------------------
+# Funções para cada Exchange
+# -----------------------------
+def fetch_binance_tokens():
+    """Busca tokens da Binance"""
+    try:
+        response = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            tokens = [s['baseAsset'] for s in data.get('symbols', []) if s.get('status') == 'TRADING']
+            return list(set(tokens))
+    except:
+        pass
+    return []
+
+def fetch_kucoin_tokens():
+    """Busca tokens da KuCoin"""
+    try:
+        response = requests.get("https://api.kucoin.com/api/v1/symbols", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            tokens = [s['baseCurrency'] for s in data.get('data', []) if s.get('enableTrading')]
+            return list(set(tokens))
+    except:
+        pass
+    return []
+
+def fetch_okx_tokens():
+    """Busca tokens da OKX"""
+    try:
+        response = requests.get("https://www.okx.com/api/v5/public/instruments?instType=SPOT", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            tokens = [s['baseCcy'] for s in data.get('data', []) if s.get('state') == 'live']
+            return list(set(tokens))
+    except:
+        pass
+    return []
+
+def fetch_mexc_tokens():
+    """Busca tokens da MEXC usando regex no HTML"""
+    try:
+        # Tentativa 1: API alternativa
+        try:
+            response = requests.get("https://www.mexc.com/open/api/v2/market/symbols", timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                tokens = [item['base_currency'] for item in data.get('data', [])]
+                if tokens:
+                    return list(set(tokens))
+        except:
+            pass
+        
+        # Tentativa 2: Regex no HTML
+        try:
+            response = requests.get("https://www.mexc.com/support/listings", timeout=15)
+            if response.status_code == 200:
+                # Usar regex para encontrar tokens (3-5 letras maiúsculas)
+                token_pattern = r'\b[A-Z]{3,5}\b'
+                tokens = re.findall(token_pattern, response.text)
+                # Filtrar tokens comuns que não são criptomoedas
+                common_words = {'HTML', 'CSS', 'API', 'USD', 'BTC', 'ETH', 'THE', 'AND', 'FOR'}
+                filtered_tokens = [token for token in tokens if token not in common_words]
+                return list(set(filtered_tokens))
+        except:
+            pass
+        
+    except Exception as e:
+        print(f"   ❌ Erro MEXC: {e}")
+    
+    # Fallback
+    return ["BTC", "ETH", "SOL", "USDC", "USDT", "ADA", "MATIC", "DOGE", "DOT", 
+            "AVAX", "LTC", "LINK", "ATOM", "XLM", "ETC", "FIL", "ALGO", "BCH",
+            "XRP", "BNB", "EOS", "XTZ", "AAVE", "UNI", "SUSHI", "CRV", "1INCH"]
+
+def fetch_gateio_tokens():
+    """Busca tokens da Gate.io"""
+    try:
+        response = requests.get("https://api.gateio.ws/api/v4/spot/currency_pairs", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            tokens = [item['base'] for item in data if item.get('trade_status') == 'tradable']
+            return list(set(tokens))
+    except Exception as e:
+        print(f"   ❌ Erro Gate.io: {e}")
+    return []
+
+def fetch_coinbase_tokens():
+    """Busca tokens da Coinbase"""
+    try:
+        response = requests.get("https://api.exchange.coinbase.com/products", timeout=15)
+        if response.status_code == 200:
+            products = response.json()
+            tokens = [p['base_currency'] for p in products if p.get('status') == 'online']
+            return list(set(tokens))
+    except:
+        pass
+    return []
+
+def fetch_bitget_tokens():
+    """Busca tokens da Bitget"""
+    try:
+        response = requests.get("https://api.bitget.com/api/v2/spot/public/symbols", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            tokens = [p['baseCoin'] for p in data.get('data', []) if p.get('status') == 'online']
+            return list(set(tokens))
+    except:
+        pass
+    return []
+
+def fetch_bybit_tokens():
+    """Busca tokens da Bybit"""
+    try:
+        response = requests.get("https://api.bybit.com/v5/market/instruments-info?category=spot", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            result = data.get('result', {})
+            instruments = result.get('list', [])
+            tokens = [inst['baseCoin'] for inst in instruments if inst.get('status') == 'Trading']
+            return list(set(tokens))
+    except Exception as e:
+        print(f"   ❌ Erro Bybit: {e}")
+    return []
+
+def fetch_kraken_tokens():
+    """Busca tokens da Kraken"""
+    try:
+        response = requests.get("https://api.kraken.com/0/public/AssetPairs", timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            pairs = data.get('result', {})
+            tokens = []
+            for pair_name, pair_info in pairs.items():
+                base = pair_info.get('base')
+                if base and len(base) <= 10 and not base.startswith('Z') and not base.startswith('X'):
+                    tokens.append(base)
+            return list(set(tokens))
+    except Exception as e:
+        print(f"   ❌ Erro Kraken: {e}")
+    return []
+
+def fetch_crypto_com_tokens():
+    """Busca tokens da Crypto.com usando regex"""
+    try:
+        # Tentativa 1: API pública alternativa
+        try:
+            response = requests.get("https://api.crypto.com/v2/public/get-ticker", timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get('result', {})
+                instruments = result.get('data', [])
+                tokens = []
+                for inst in instruments:
+                    symbol = inst.get('i', '')
+                    if '_' in symbol:
+                        token = symbol.split('_')[0]
+                        tokens.append(token)
+                if tokens:
+                    return list(set(tokens))
+        except:
+            pass
+        
+        # Tentativa 2: Regex no HTML
+        try:
+            response = requests.get("https://crypto.com/exchange/tokens", timeout=15)
+            if response.status_code == 200:
+                # Regex para encontrar símbolos de tokens
+                token_pattern = r'[A-Z]{3,6}'
+                tokens = re.findall(token_pattern, response.text)
+                # Filtrar palavras comuns
+                common_words = {'HTML', 'CSS', 'API', 'USD', 'BTC', 'ETH', 'THE', 'AND', 'FOR', 'DIV'}
+                filtered_tokens = [token for token in tokens if token not in common_words and len(token) >= 3]
+                return list(set(filtered_tokens))
+        except:
+            pass
+        
+    except Exception as e:
+        print(f"   ❌ Erro Crypto.com: {e}")
+    
+    # Fallback
+    return ["BTC", "ETH", "SOL", "USDC", "USDT", "CRO", "ADA", "MATIC", 
+            "DOGE", "DOT", "AVAX", "LTC", "LINK", "ATOM", "XLM", "BNB",
+            "BCH", "EOS", "XTZ", "AAVE", "UNI", "SUSHI", "CRV", "1INCH",
+            "XRP", "ETC", "FIL", "ALGO"]
+
+def fetch_all_exchange_tokens():
+    """Busca tokens de todas as exchanges"""
+    all_tokens = {}
+    
+    print("🔄 Coletando tokens das exchanges...")
+    print("=" * 50)
+    
+    exchanges = [
+        ("Binance", fetch_binance_tokens),
+        ("KuCoin", fetch_kucoin_tokens),
+        ("OKX", fetch_okx_tokens),
+        ("MEXC", fetch_mexc_tokens),
+        ("Gate.io", fetch_gateio_tokens),
+        ("Coinbase", fetch_coinbase_tokens),
+        ("Bitget", fetch_bitget_tokens),
+        ("Bybit", fetch_bybit_tokens),
+        ("Kraken", fetch_kraken_tokens),
+        ("Crypto.com", fetch_crypto_com_tokens),
+    ]
+    
+    for name, fetch_function in exchanges:
+        print(f"📊 Buscando {name}...")
+        start_time = time.time()
+        tokens = fetch_function()
+        all_tokens[name] = tokens
+        elapsed = time.time() - start_time
+        print(f"   ✅ {len(tokens)} tokens ({elapsed:.1f}s)")
+        time.sleep(1)  # Rate limiting
+    
+    return all_tokens
+
+def save_tokens(tokens_data):
+    """Salva os tokens no arquivo JSON"""
+    filtered_tokens = {}
+    for exchange, tokens in tokens_data.items():
+        filtered = []
+        for token in tokens:
+            if isinstance(token, str) and 1 <= len(token) <= 15:
+                filtered.append(token.upper())
+        filtered_tokens[exchange] = list(set(filtered))
+    
+    with open(LIST_FILE, 'w', encoding='utf-8') as f:
+        json.dump(filtered_tokens, f, indent=2, ensure_ascii=False)
+    print(f"💾 Dados salvos em {LIST_FILE}")
+    
+    return filtered_tokens
+
+def load_tokens():
+    """Carrega os tokens do arquivo JSON"""
+    if os.path.exists(LIST_FILE):
+        try:
+            with open(LIST_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"❌ Erro ao carregar arquivo: {e}")
+            return {}
+    return {}
+
+# -----------------------------
+# Execução Principal
+# -----------------------------
+if __name__ == "__main__":
+    print("🚀 COLETOR DE TOKENS DE EXCHANGES - SEM DEPENDÊNCIAS")
+    print("=" * 60)
+    
+    # Carregar tokens existentes
+    existing_tokens = load_tokens()
+    
+    # Buscar novos tokens
+    new_tokens = fetch_all_exchange_tokens()
+    
+    # Combinar com existentes (priorizar novos dados)
+    combined_tokens = {**existing_tokens, **new_tokens}
+    
+    # Salvar dados
+    final_tokens = save_tokens(combined_tokens)
+    
+    # Estatísticas
+    total_tokens = sum(len(tokens) for tokens in final_tokens.values())
+    print(f"\n📊 ESTATÍSTICAS FINAIS:")
+    print("=" * 30)
+    for exchange, tokens in sorted(final_tokens.items()):
+        print(f"   {exchange:12}: {len(tokens):4} tokens")
+    
+    print(f"\n🎯 Total de tokens únicos: {total_tokens}")
+    
+    # Verificar se as exchanges estão usando fallback
+    fallback_exchanges = {
+        "MEXC": ["BTC", "ETH", "SOL", "USDC", "USDT", "ADA", "MATIC"],
+        "Crypto.com": ["BTC", "ETH", "SOL", "USDC", "USDT", "CRO"]
+    }
+    
+    for exchange, fallback_tokens in fallback_exchanges.items():
+        tokens = final_tokens.get(exchange, [])
+        # Se mais de 50% dos tokens fallback estão presentes, provavelmente está usando fallback
+        fallback_count = sum(1 for token in tokens if token in fallback_tokens)
+        if fallback_count >= len(fallback_tokens) * 0.5:
+            print(f"   ⚠️  {exchange} está usando fallback")
+        else:
+            print(f"   ✅ {exchange} está usando dados reais")
