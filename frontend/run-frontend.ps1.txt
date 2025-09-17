@@ -1,0 +1,3 @@
+# run-frontend.ps1
+cd C:\Users\joser\vigia_crypto\frontend
+npm run dev

@@ -1,0 +1,2 @@
+cd C:\Users\joser\vigia_crypto
+python backend/api/main.py

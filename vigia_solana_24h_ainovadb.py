@@ -1,21 +1,37 @@
+import os
 import requests
 import time
 from datetime import datetime, timedelta
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
 # ============================
-# CONFIGURAÇÃO
+# CARREGAR VARIÁVEIS DE AMBIENTE
 # ============================
-TELEGRAM_BOT_TOKEN_SOL = "8350004696:AAGVXDH0hRr9S4EPsuQdwDbrG0Pa1m3i_-U"
-TELEGRAM_CHAT_ID_SOL = "5239378332"
-HELIUS_API_KEY = "0fd1b496-c250-459e-ba21-fa5a33caf055"
-HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
+dotenv_path_backend = os.path.join(os.path.dirname(__file__), ".env")
+dotenv_path_root = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+if os.path.exists(dotenv_path_backend):
+    load_dotenv(dotenv_path_backend)
+elif os.path.exists(dotenv_path_root):
+    load_dotenv(dotenv_path_root)
+else:
+    print("⚠️ Nenhum ficheiro .env encontrado")
+
+# ============================
+# CONFIGURAÇÃO (via .env)
+# ============================
+TELEGRAM_BOT_TOKEN_SOL = os.getenv("TELEGRAM_BOT_TOKEN_SOL")
+TELEGRAM_CHAT_ID_SOL = os.getenv("TELEGRAM_CHAT_ID_SOL")
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/"
-THRESHOLD_USD = 5000
+THRESHOLD_USD = float(os.getenv("THRESHOLD_USD", "5000"))
 
-SUPABASE_URL = "https://qynnajpvxnqcmkzrhpde.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bm5hanB2eG5xY21renJocGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzQzODg2MywiZXhwIjoyMDczMDE0ODYzfQ.P6jxgFLmQZnVSalWB3UykT9QO3EAW-tljTdoGZ6pY7A"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 
 # ============================
 # WALLETS / SPECIAL WALLETS
@@ -41,9 +57,9 @@ SPECIAL_WALLETS = {
 }
 
 # ============================
-# LISTED TOKENS CACHE (pode vir de Supabase)
+# LISTED TOKENS CACHE (Supabase)
 # ============================
-LISTED_TOKENS = {}  # {'Binance': ['SOL','USDC'], ...}
+LISTED_TOKENS = {}
 
 def load_listed_tokens_from_supabase():
     global LISTED_TOKENS
@@ -65,11 +81,9 @@ def load_listed_tokens_from_supabase():
 # ============================
 
 def is_token_listed_on_exchange(token_symbol, exchange_name):
-    """Verifica se token já existe na exchange específica"""
     return token_symbol.upper() in [t.upper() for t in LISTED_TOKENS.get(exchange_name, [])]
 
 def get_listed_exchanges(token_symbol, exclude_exchange=None):
-    """Retorna lista de exchanges onde o token está listado, exceto a exchange atual"""
     token_upper = token_symbol.upper()
     exchanges = []
     for ex, tokens in LISTED_TOKENS.items():
@@ -80,20 +94,18 @@ def get_listed_exchanges(token_symbol, exclude_exchange=None):
     return exchanges
 
 def get_dexscreener_data_solana(token_address):
-    """Obtém dados do DexScreener"""
     try:
         url = f"{DEXSCREENER_API}{token_address}"
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            if data.get('pairs') and len(data['pairs']) > 0:
+            if data.get('pairs'):
                 return data['pairs'][0]
         return None
-    except Exception as e:
+    except:
         return None
 
 def get_transaction_details(signature):
-    """Obtém detalhes de transação via Helius"""
     try:
         payload = {
             "jsonrpc": "2.0",
@@ -109,7 +121,6 @@ def get_transaction_details(signature):
         return None
 
 def get_recent_transactions(wallet_address, hours=24):
-    """Obtém transações recentes via Helius"""
     try:
         start_timestamp = int((datetime.now() - timedelta(hours=hours)).timestamp())
         payload = {
@@ -124,17 +135,12 @@ def get_recent_transactions(wallet_address, hours=24):
         data = response.json()
         if "error" in data or not data.get('result'):
             return []
-        recent_transactions = []
-        for tx in data['result']:
-            if tx.get('blockTime', 0) >= start_timestamp:
-                recent_transactions.append(tx)
-        return recent_transactions
+        return [tx for tx in data['result'] if tx.get('blockTime', 0) >= start_timestamp]
     except Exception as e:
         print(f"❌ Erro ao buscar transações: {e}")
         return []
 
 def analyze_transaction(tx_data, wallet_address, exchange_name):
-    """Analisa a transação e retorna alerta se relevante"""
     try:
         if not tx_data or 'result' not in tx_data:
             return None
@@ -151,7 +157,7 @@ def analyze_transaction(tx_data, wallet_address, exchange_name):
                 continue
             mint_address = balance.get('mint')
             dex_data = get_dexscreener_data_solana(mint_address)
-            if not dex_data or not isinstance(dex_data, dict):
+            if not dex_data:
                 continue
             price_str = dex_data.get('priceUsd')
             if not price_str:
@@ -160,15 +166,10 @@ def analyze_transaction(tx_data, wallet_address, exchange_name):
             value_usd = amount * price
             token_symbol = dex_data.get('baseToken', {}).get('symbol', 'UNKNOWN')
 
-            # Ignorar stablecoins e tokens principais
             if token_symbol in ["USDC", "USDT", "SOL", "BTC", "ETH"]:
                 continue
-
-            # Verifica se já listado na exchange
             if is_token_listed_on_exchange(token_symbol, exchange_name):
-                print(f"   ⚠️  {token_symbol} já listado em {exchange_name} - Ignorando")
                 continue
-
             if value_usd < THRESHOLD_USD:
                 continue
 
@@ -195,7 +196,6 @@ def analyze_transaction(tx_data, wallet_address, exchange_name):
         return None
 
 def save_transaction_supabase(alert_info):
-    """Insere ou ignora transacao na tabela transacted_tokens"""
     try:
         payload = {
             "exchange": alert_info.get("exchange"),
@@ -212,12 +212,7 @@ def save_transaction_supabase(alert_info):
             "ts": datetime.fromtimestamp(alert_info.get("timestamp", int(time.time()))).isoformat()
         }
         res = supabase.table("transacted_tokens").upsert(payload, on_conflict="token_address,signature").execute()
-        err = getattr(res, "error", None)
-        if err:
-            serr = str(err).lower()
-            if "duplicate" in serr or "23505" in serr:
-                return True
-            print(f"❌ Exceção ao salvar transação: {err}")
+        if getattr(res, "error", None):
             return False
         return True
     except Exception as e:
@@ -225,7 +220,6 @@ def save_transaction_supabase(alert_info):
         return False
 
 def format_alert(alert_info):
-    """Formata alerta para Telegram"""
     message = ""
     if alert_info['special']:
         message += "🐋💥🚨 <b>WHALE / INSIDER ALERT!</b> 🐋💥🚨\n\n"
@@ -250,7 +244,6 @@ def format_alert(alert_info):
     return message
 
 def send_telegram_alert_sol(message):
-    """Envia alerta para Telegram"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_SOL}/sendMessage"
         payload = {
@@ -260,14 +253,7 @@ def send_telegram_alert_sol(message):
             "disable_web_page_preview": False
         }
         response = requests.post(url, json=payload, timeout=15)
-        if response.status_code != 200:
-            print(f"❌ Erro Telegram ({response.status_code}): {response.text}")
-            return False
-        result = response.json()
-        if not result.get("ok"):
-            print(f"❌ Telegram rejeitou: {result}")
-            return False
-        return True
+        return response.status_code == 200 and response.json().get("ok")
     except Exception as e:
         print(f"❌ Erro ao enviar para Telegram: {e}")
         return False
@@ -275,11 +261,8 @@ def send_telegram_alert_sol(message):
 # ============================
 # LOOP PRINCIPAL
 # ============================
-
 def main():
     print("🤖 VIGILANTE SOLANA - VERSÃO SUPABASE INTEGRADA")
-    print("============================================================")
-
     load_listed_tokens_from_supabase()
 
     for exchange, wallet in EXCHANGE_WALLETS_SOL.items():
