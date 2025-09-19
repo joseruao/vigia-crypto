@@ -2,14 +2,15 @@
 
 type Props = { visible: boolean; onSelect: (text: string) => void };
 
+// Apenas 2 sugestões por idioma
 const SUGGESTIONS: Record<'pt' | 'en', string[]> = {
   pt: [
     'Que tokens achas que vão ser listados?',
-    'Quais são os sinais de listing na Binance esta semana?',
+    'Analisa esta wallet e diz-me os riscos.',
   ],
   en: [
     'Which tokens look close to a major exchange listing?',
-    'What are the listing signals for Binance this week?',
+    'Analyze this wallet and highlight risks.',
   ],
 };
 
@@ -28,7 +29,7 @@ export function Suggestions({ visible, onSelect }: Props) {
         <button
           key={i}
           onClick={() => onSelect(s)}
-          className="rounded-2xl border border-zinc-800 px-4 py-3 text-left hover:bg-zinc-900/50"
+          className="rounded-2xl border border-zinc-800 px-4 py-3 text-left hover:bg-zinc-100"
         >
           {s}
         </button>

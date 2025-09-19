@@ -1,5 +1,8 @@
 {
   "dependencies": {
-    "lucide-react": "^0.544.0"
+    "lucide-react": "^0.544.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "uuid": "^13.0.0"
   }
 }
