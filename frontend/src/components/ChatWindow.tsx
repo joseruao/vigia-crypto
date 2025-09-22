@@ -29,6 +29,18 @@ export function ChatWindow() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [active?.messages, loading]);
 
+  function shouldUseAlertsAPI(prompt: string) {
+    const q = prompt.toLowerCase();
+    return (
+      q.includes("token") ||
+      q.includes("listado") ||
+      q.includes("listing") ||
+      q.includes("exchange") ||
+      q.includes("prediction") ||
+      q.includes("vist")
+    );
+  }
+
   async function sendMessage(text?: string) {
     const content = (text ?? input).trim();
     if (!content || loading) return;
@@ -36,7 +48,6 @@ export function ChatWindow() {
     let id = activeId;
     if (!id) id = newConversation();
 
-    // mensagem do utilizador
     addMessage({ role: 'user', content });
     setInput('');
     setLoading(true);
@@ -47,31 +58,43 @@ export function ChatWindow() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const res = await fetch(`${API_URL}/chat/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: content }),
+      let url = `${API_URL}/chat/stream`;
+      let body: any = { prompt: content };
+
+      if (shouldUseAlertsAPI(content)) {
+        url = `${API_URL}/alerts/ask`;
+      }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('Sem stream');
+      if (url.includes("/chat/stream")) {
+        // streaming normal
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("Sem stream");
 
-      let buffer = '';
-      // cria placeholder do assistente
-      addMessage({ role: 'assistant', content: '' });
+        let buffer = '';
+        addMessage({ role: 'assistant', content: '' });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        // ✅ não usamos trim() → preserva espaços
-        const chunkStr = new TextDecoder().decode(value);
-        if (!chunkStr) continue;
+          const chunkStr = new TextDecoder().decode(value);
+          if (!chunkStr) continue;
 
-        buffer += chunkStr;
-        if (!gotFirstChunk && buffer.length > 0) setGotFirstChunk(true);
-        updateLastAssistantMessage(buffer);
+          buffer += chunkStr;
+          if (!gotFirstChunk && buffer.length > 0) setGotFirstChunk(true);
+          updateLastAssistantMessage(buffer);
+        }
+      } else {
+        // resposta direta do /alerts/ask
+        const data = await res.json();
+        addMessage({ role: 'assistant', content: data.answer ?? "⚠️ Sem resposta" });
       }
     } catch (e: any) {
       if (!abortedRef.current) {
@@ -104,7 +127,6 @@ export function ChatWindow() {
 
   return (
     <div className="flex flex-col w-full items-center">
-      {/* Logo + sugestões antes da 1ª mensagem */}
       {!hasMessages && !loading && (
         <div className="flex flex-col items-center justify-center mb-10">
           <img src="/logo_full.png" alt="José Ruão.io" className="h-96 mb-12" />
@@ -118,7 +140,6 @@ export function ChatWindow() {
         </div>
       )}
 
-      {/* Área de mensagens */}
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto p-4 space-y-4 mb-4 w-full"
@@ -136,17 +157,15 @@ export function ChatWindow() {
           </div>
         ))}
 
-        {/* indicador enquanto não veio o 1º chunk */}
         {loading && !gotFirstChunk && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-zinc-100 text-black">
-              AI está a escrever…
+              <span className="animate-pulse">● ● ●</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Input + Stop/Send */}
       <div className="flex items-center gap-2 border-t border-zinc-200 bg-white p-3 w-full">
         {loading ? (
           <button

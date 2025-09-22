@@ -223,6 +223,90 @@ class CryptoAIAnalyzer:
             pass
 
     def create_and_train_model(self):
+        """
+        Cria e treina o modelo com features expandidas.
+        """
+        try:
+            # Features: [valor, liquidez, volume, variação, market_cap_rank,
+            #            is_new_token, buys/sells_ratio, holders_concentration]
+
+            X_train = np.array([
+                [50000, 1_000_000, 500_000, 25, 100, 1, 2.0, 0.1],   # Novo token bom (muitas vendas possíveis, holders dispersos)
+                [30000, 800_000, 400_000, 15, 150, 1, 1.5, 0.15],   # Novo token médio
+                [10000, 200_000, 80_000, 5, 200, 1, 1.2, 0.25],     # Novo token arriscado (holder grande)
+                [5000, 50_000, 20_000, -5, 300, 1, 0.5, 0.4],       # Honeypot provável (só buys, concentração alta)
+                [20000, 2_000_000, 1_000_000, -2, 50, 0, 1.0, 0.05],# Token estabelecido em queda
+                [15000, 1_500_000, 600_000, 8, 80, 0, 1.3, 0.08],   # Token estável
+                [70000, 5_000_000, 2_500_000, 30, 20, 0, 1.4, 0.07],# Blue chip
+                [2000, 30_000, 10_000, -15, 400, 1, 0.3, 0.6],      # Scam (liquidez baixa, 1 holder dominante)
+                [12000, 100_000, 50_000, 12, 250, 1, 2.5, 0.1],     # Novo token com hype de compra e vendas balanceadas
+                [25000, 700_000, 300_000, 20, 120, 1, 2.0, 0.12],   # Novo promissor
+            ])
+
+            # Labels (1 = potencial listing, 0 = scam/irrelevante)
+            y_train = np.array([1, 1, 0, 0, 0, 0, 1, 0, 1, 1])
+
+            model = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=10,
+                random_state=42,
+                class_weight="balanced"
+            )
+            model.fit(X_train, y_train)
+
+            scaler = StandardScaler()
+            scaler.fit(X_train)
+
+            logger.info("✅ Modelo ML treinado com features expandidas.")
+            return model, scaler
+
+        except Exception as e:
+            logger.error(f"Erro treino ML: {e}")
+            # fallback
+            class Dummy:
+                def predict_proba(self, X): return np.array([[0.3, 0.7]])
+            class DS:
+                def transform(self, X): return X
+            return Dummy(), DS()
+
+    def extract_features(self, token_data, is_new_token=True):
+        """
+        Extrai features expandidas para o modelo.
+        """
+        liquidity = token_data.get('liquidity', 0) or 0
+        volume_24h = token_data.get('volume_24h', 0) or 0
+        price_change = token_data.get('price_change_24h', 0) or 0
+        value_usd = token_data.get('value_usd', 0) or 0
+
+        # market_cap_rank aproximado pela liquidez
+        if liquidity > 5_000_000: market_cap_rank = 50
+        elif liquidity > 1_000_000: market_cap_rank = 100
+        elif liquidity > 500_000: market_cap_rank = 200
+        else: market_cap_rank = 500
+
+        # Buys/sells ratio (fallback para 1.0 se não houver dados)
+        buys = token_data.get('txns_buys', 1)
+        sells = token_data.get('txns_sells', 1)
+        buys_sells_ratio = (buys / max(sells, 1))
+
+        # Concentração de holders (se já calculado no analyze_transaction)
+        holders_concentration = token_data.get('holders_concentration', 0.1)
+
+        features = np.array([
+            value_usd / 100000.0,
+            liquidity / 1_000_000.0,
+            volume_24h / 500_000.0,
+            price_change / 100.0,
+            market_cap_rank / 1000.0,
+            1 if is_new_token else 0,
+            buys_sells_ratio,
+            holders_concentration
+        ]).reshape(1, -1)
+
+        return features
+
+
+    def create_and_train_model(self):
         try:
             X_train = np.array([
                 [50000,1000000,500000,25,100,1],
@@ -279,39 +363,70 @@ class CryptoAIAnalyzer:
 # Análise de transações (mantendo tua lógica)
 # ---------------------------
 def analyze_transaction(tx_data, wallet_address, exchange_name):
+    """Analisa uma transação e aplica filtros anti-scam antes de gerar alerta."""
     try:
         if not tx_data or 'result' not in tx_data:
             return None
         result = tx_data['result']
         meta = result.get('meta', {})
-        if meta.get('err'): return None
+        if meta.get('err'):
+            return None
 
         for balance in meta.get('postTokenBalances', []):
-            if balance.get('owner') != wallet_address: continue
+            if balance.get('owner') != wallet_address:
+                continue
+
             amount = balance.get('uiTokenAmount', {}).get('uiAmount', 0)
-            if not amount or amount <= 0: continue
+            if not amount or amount <= 0:
+                continue
+
             mint_address = balance.get('mint')
             dex = get_dexscreener_data(mint_address)
-            if not dex or not isinstance(dex, dict): continue
-            price_usd = dex.get('priceUsd') or dex.get('priceUsd')
-            if not price_usd: continue
+            if not dex or not isinstance(dex, dict):
+                continue
+
+            # Preço
             try:
-                price = float(price_usd)
+                price = float(dex.get('priceUsd', 0) or 0)
             except:
-                continue
+                price = 0
+            if price <= 0:
+                return None
+
             value_usd = amount * price
+            if value_usd <= 0:
+                return None
+
             token_symbol = (dex.get('baseToken') or {}).get('symbol', 'UNKNOWN')
-            if token_symbol in ["USDC","USDT","SOL","BTC","ETH"]: continue
-            if value_usd < ALERT_MIN_VALUE: 
+            if token_symbol in ["USDC", "USDT", "SOL", "BTC", "ETH"]:
                 continue
+
+            # Dados extra
+            liquidity = (dex.get('liquidity') or {}).get('usd', 0) or 0
+            volume_24h = (dex.get('volume') or {}).get('h24', 0) or 0
+
+            # --- Filtros anti-scam ---
+            if liquidity < 50_000:   # liquidez mínima $50k
+                return None
+            if volume_24h < 10_000:  # volume mínimo $10k
+                return None
+
+            # holders concentration (se o campo vier do backend)
+            holders_concentration = dex.get("topHolders", {}).get("concentration", 0)
+            if holders_concentration and holders_concentration > 0.20:  # máx 20%
+                return None
 
             # verificar se já listado na própria exchange
             if is_token_listed_on_exchange(token_symbol, exchange_name):
                 logger.info(f"⚠️ {token_symbol} já listado em {exchange_name} - ignorando")
-                continue
+                return None
 
-            listed = get_listed_exchanges(token_symbol, exclude_exchange=EXCHANGE_NORMALIZE.get(exchange_name, exchange_name))
+            listed = get_listed_exchanges(
+                token_symbol,
+                exclude_exchange=EXCHANGE_NORMALIZE.get(exchange_name, exchange_name)
+            )
             sig = result.get('transaction', {}).get('signatures', [None])[0]
+
             return {
                 "exchange": exchange_name,
                 "token": token_symbol,
@@ -319,19 +434,28 @@ def analyze_transaction(tx_data, wallet_address, exchange_name):
                 "amount": amount,
                 "value_usd": value_usd,
                 "price": price,
-                "price_change_24h": dex.get('priceChange', {}).get('h24') if isinstance(dex.get('priceChange'), dict) else dex.get('priceChange'),
-                "liquidity": (dex.get('liquidity') or {}).get('usd', 0),
-                "volume_24h": (dex.get('volume') or {}).get('h24', 0),
-                "pair_url": dex.get('url', ''),
+                "price_change_24h": dex.get("priceChange", {}).get("h24")
+                if isinstance(dex.get("priceChange"), dict)
+                else dex.get("priceChange"),
+                "liquidity": liquidity,
+                "volume_24h": volume_24h,
+                "pair_url": dex.get("url", ""),
                 "signature": sig,
-                "timestamp": result.get('blockTime', int(time.time())),
+                "timestamp": result.get("blockTime", int(time.time())),
                 "listed_exchanges": listed,
-                "special": wallet_address in SPECIAL_WALLETS.values()
+                "special": wallet_address in SPECIAL_WALLETS.values(),
+                "txns_buys": dex.get("txns", {}).get("h24", {}).get("buys", 0),
+                "txns_sells": dex.get("txns", {}).get("h24", {}).get("sells", 0),
+                "holders_concentration": holders_concentration,
             }
+
         return None
+
     except Exception as e:
         logger.error(f"Erro na análise de transação: {e}")
         return None
+
+
 
 def format_listing_alert(alert_info, ml_prediction):
     score = ml_prediction.get('score',0)
@@ -383,10 +507,14 @@ def save_transaction_supabase(alert_info):
         "pair_url": alert_info.get("pair_url"),
         "listed_exchanges": alert_info.get("listed_exchanges", []),
         "special": alert_info.get("special", False),
-        "ts": datetime.fromtimestamp(alert_info.get("timestamp", int(time.time()))).isoformat()
+        "ts": datetime.fromtimestamp(alert_info.get("timestamp", int(time.time()))).isoformat(),
+        # novos campos
+        "txns_buys": alert_info.get("txns_buys", 0),
+        "txns_sells": alert_info.get("txns_sells", 0),
+        "holders_concentration": alert_info.get("holders_concentration", 0.0),
     }
     try:
-        # Tentar insert (upsert requer índice único - se não criado pode falhar)
+       # Tentar insert (upsert requer índice único - se não criado pode falhar)
         res = supabase.table("transacted_tokens").insert(payload).execute()
         data = getattr(res, "data", None)
         err = getattr(res, "error", None)

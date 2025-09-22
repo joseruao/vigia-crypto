@@ -1,11 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Save } from 'lucide-react';
 
-function formatTime(ts: number) {
+function formatDate(ts: number) {
   try {
-    return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return new Date(ts).toLocaleString(undefined, {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   } catch {
     return '';
   }
@@ -19,7 +26,33 @@ export function Sidebar() {
     selectConversation,
     deleteConversation,
     clearAll,
+    updateTitle,
   } = useChatHistoryContext();
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [tempTitle, setTempTitle] = useState('');
+
+  function startEdit(id: string, title: string) {
+    setEditingId(id);
+    setTempTitle(title);
+  }
+
+  function confirmEdit(id: string) {
+    updateTitle(id, tempTitle.trim() || 'Sem título');
+    setEditingId(null);
+  }
+
+  function exportConversations() {
+    const blob = new Blob([JSON.stringify(conversations, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'conversas.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-zinc-300 bg-white text-black">
@@ -53,11 +86,31 @@ export function Sidebar() {
               c.id === activeId ? 'bg-zinc-200 font-semibold' : 'hover:bg-zinc-100'
             }`}
             onClick={() => selectConversation(c.id)}
-            title={c.messages[0]?.content ?? 'Conversa'}
           >
             <div className="min-w-0 flex-1">
-              <div className="truncate">{c.title || 'Sem título'}</div>
-              <div className="text-[11px] text-zinc-500">{formatTime(c.createdAt)}</div>
+              {editingId === c.id ? (
+                <input
+                  value={tempTitle}
+                  onChange={(e) => setTempTitle(e.target.value)}
+                  onBlur={() => confirmEdit(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmEdit(c.id);
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
+                  autoFocus
+                  className="w-full text-sm border rounded px-1"
+                />
+              ) : (
+                <>
+                  <div
+                    className="truncate cursor-text"
+                    onDoubleClick={() => startEdit(c.id, c.title)}
+                  >
+                    {c.title || 'Sem título'}
+                  </div>
+                  <div className="text-[11px] text-zinc-500">{formatDate(c.createdAt)}</div>
+                </>
+              )}
             </div>
             <button
               onClick={(e) => {
@@ -73,12 +126,17 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* limpar tudo */}
-      <div className="p-3 mt-2 border-t border-zinc-200">
+      {/* exportar + limpar tudo */}
+      <div className="p-3 mt-2 border-t border-zinc-200 flex gap-2">
+        <button
+          onClick={exportConversations}
+          className="flex-1 text-xs text-blue-600 hover:underline flex items-center justify-center gap-1"
+        >
+          <Save size={12} /> Exportar
+        </button>
         <button
           onClick={clearAll}
-          className="w-full text-xs text-red-600 hover:underline"
-          title="Remove todas as conversas do dispositivo"
+          className="flex-1 text-xs text-red-600 hover:underline"
         >
           Limpar tudo
         </button>

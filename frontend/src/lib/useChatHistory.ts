@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 export type Message = { role: 'user' | 'assistant'; content: string };
-export type Conversation = { id: string; title: string; createdAt: number; messages: Message[] };
+export type Conversation = { 
+  id: string; 
+  title: string; 
+  createdAt: number; 
+  messages: Message[]; 
+};
 
 const STORAGE_KEY = 'chat_history';
 
@@ -12,11 +17,10 @@ export function useChatHistory() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  // carregar do localStorage (com migração p/ createdAt se faltar)
+  // carregar do localStorage
   useEffect(() => {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return;
-
     try {
       const parsed = JSON.parse(raw) as any[];
       const migrated: Conversation[] = parsed.map((c) => ({
@@ -32,7 +36,7 @@ export function useChatHistory() {
     }
   }, []);
 
-  // guardar sempre que mudar
+  // guardar no localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
@@ -56,15 +60,14 @@ export function useChatHistory() {
           ? {
               ...c,
               messages: [...c.messages, msg],
-              // 1ª mensagem do user define o título
-              title: msg.role === 'user' && c.messages.length === 0
-                ? msg.content.slice(0, 40)
-                : c.title,
+              title:
+                msg.role === 'user' && c.messages.length === 0
+                  ? msg.content.slice(0, 40)
+                  : c.title,
             }
           : c
       )
     );
-
     setActiveId(id);
   }
 
@@ -93,7 +96,6 @@ export function useChatHistory() {
   function deleteConversation(id: string) {
     setConversations((prev) => {
       const next = prev.filter((c) => c.id !== id);
-      // se apagaste a ativa, seleciona a próxima (se existir)
       if (activeId === id) setActiveId(next[0]?.id ?? null);
       return next;
     });
@@ -102,9 +104,13 @@ export function useChatHistory() {
   function clearAll() {
     setConversations([]);
     setActiveId(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    if (typeof window !== 'undefined') localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function updateTitle(id: string, newTitle: string) {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+    );
   }
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -119,5 +125,6 @@ export function useChatHistory() {
     selectConversation,
     deleteConversation,
     clearAll,
+    updateTitle,
   };
 }
