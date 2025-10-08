@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { Trash2, Plus, Save } from 'lucide-react';
+import { Trash2, Plus, Save, LogOut } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 function formatDate(ts: number) {
   try {
@@ -31,6 +32,19 @@ export function Sidebar() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState('');
+  const [email, setEmail] = useState<string | null>(null);
+
+  // carregar utilizador logado
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  }
 
   function startEdit(id: string, title: string) {
     setEditingId(id);
@@ -57,15 +71,15 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-zinc-300 bg-white text-black">
       {/* logo topo */}
-      <div className="p-4">
+      <div className="p-4 border-b border-zinc-200">
         <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
       </div>
 
       {/* botão novo chat */}
-      <div className="px-3 mb-2">
+      <div className="px-3 mt-3 mb-2">
         <button
           onClick={newConversation}
-          className="w-full flex items-center justify-center gap-2 rounded-lg border border-black px-3 py-2 text-sm hover:bg-black hover:text-white"
+          className="w-full flex items-center justify-center gap-2 rounded-lg border border-black px-3 py-2 text-sm hover:bg-black hover:text-white transition"
         >
           <Plus size={16} />
           <span>Novo chat</span>
@@ -140,6 +154,22 @@ export function Sidebar() {
         >
           Limpar tudo
         </button>
+      </div>
+
+      {/* perfil e logout */}
+      <div className="border-t border-zinc-200 p-4 flex items-center gap-3 bg-zinc-50">
+        <div className="h-9 w-9 rounded-full bg-black text-white grid place-items-center font-semibold">
+          {email ? email[0].toUpperCase() : '?'}
+        </div>
+        <div className="flex flex-col flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{email ?? 'Utilizador'}</div>
+          <button
+            onClick={logout}
+            className="text-xs text-zinc-500 hover:text-zinc-800 flex items-center gap-1"
+          >
+            <LogOut size={12} /> Sair
+          </button>
+        </div>
       </div>
     </aside>
   );

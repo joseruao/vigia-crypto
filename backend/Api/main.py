@@ -77,27 +77,63 @@ def chat_stream(req: ChatRequest):
 # ============================
 # ENDPOINTS ALERTS
 # ============================
+# ============================
+# ENDPOINTS ALERTS (NOVOS)
+# ============================
+
 @app.get("/alerts/predictions")
 def predictions():
     """
-    Endpoint mock (pode depois ligar à base real).
+    Devolve uma lista pequena para o painel de 'Listings' (canto superior direito).
+    Ordena por score desc e ts desc. Filtra mínimos para evitar lixo.
     """
-    return [
-        {"exchange": "Bitget", "token": "ai16z", "certeza": 95},
-        {"exchange": "Binance", "token": "XYZ", "certeza": 92},
-    ]
+    try:
+        q = (
+            supabase.table("transacted_tokens")
+            .select(
+                "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
+                "score, pair_url, ts"
+            )
+            .gte("value_usd", 10000)       # >= 10k USD
+            .gte("liquidity", 100000)      # >= 100k USD
+            .order("score", desc=True)
+            .order("ts", desc=True)
+            .limit(8)
+        )
+        resp = q.execute()
+        data = getattr(resp, "data", []) or []
+
+        # fallback: se vier vazio, relaxa filtros
+        if not data:
+            resp = (
+                supabase.table("transacted_tokens")
+                .select(
+                    "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
+                    "score, pair_url, ts"
+                )
+                .order("ts", desc=True)
+                .limit(8)
+            ).execute()
+            data = getattr(resp, "data", []) or []
+
+        return data
+    except Exception as e:
+        return []
+
 
 @app.post("/alerts/ask")
 def ask_alerts(req: ChatRequest, exchange: Optional[str] = Query(None)):
     """
-    Responde a perguntas sobre tokens detectados no Supabase.
-    - Se o prompt mencionar uma exchange, filtra só dessa.
-    - Caso contrário, devolve os 10 tokens mais recentes por score.
+    Responde com base nos registos reais (Supabase) e já devolve markdown com links.
+    - Se o prompt mencionar uma exchange, filtra por essa exchange.
+    - Caso contrário: top 10 por score e ts.
     """
     try:
-        q = req.prompt.lower()
-        detected_exchange = None
+        q = (req.prompt or "").lower()
 
+        # detetar exchange
+        EXCHANGES = ["Binance", "Coinbase", "Kraken", "Bybit", "Gate.io", "Bitget", "OKX", "MEXC"]
+        detected_exchange = None
         for ex in EXCHANGES:
             if ex.lower() in q:
                 detected_exchange = ex
@@ -105,32 +141,54 @@ def ask_alerts(req: ChatRequest, exchange: Optional[str] = Query(None)):
         if exchange:
             detected_exchange = exchange
 
-        base_query = supabase.table("transacted_tokens").select("*")
-        if detected_exchange:
-            base_query = base_query.eq("exchange", detected_exchange)
-
-        resp = (
-            base_query.order("score", desc=True)
-            .order("ts", desc=True)
-            .limit(10)
-            .execute()
+        base = supabase.table("transacted_tokens").select(
+            "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
+            "score, pair_url, ts"
         )
 
-        data = getattr(resp, "data", [])
-        if not data:
-            return {
-                "answer": f"Nenhum token encontrado {f'na {detected_exchange}' if detected_exchange else ''}."
-            }
+        if detected_exchange:
+            base = base.eq("exchange", detected_exchange)
 
-        tokens = [
-            f"{row['token']} ({row['exchange']}, score {row.get('score', 0)})"
-            for row in data
-        ]
+        # ordenar e limitar
+        resp = (
+            base.order("score", desc=True)
+                .order("ts", desc=True)
+                .limit(10)
+        ).execute()
 
-        return {
-            "answer": f"Os últimos potenciais listings detetados {f'na {detected_exchange}' if detected_exchange else ''}:\n- "
-            + "\n- ".join(tokens)
-        }
+        rows = getattr(resp, "data", []) or []
+        if not rows:
+            where = f"na {detected_exchange}" if detected_exchange else ""
+            return {"answer": f"Nenhum token encontrado {where}."}
+
+        # construir markdown com links
+        lines = []
+        for r in rows:
+            token = r.get("token") or "—"
+            ex = r.get("exchange") or "—"
+            score = r.get("score")
+            score_txt = f"{score:.1f}" if isinstance(score, (int, float)) else "—"
+
+            # links
+            pair_url = r.get("pair_url")
+            if not pair_url:
+                # fallback DexScreener por token (página de search)
+                token_addr = r.get("token_address") or ""
+                if token_addr:
+                    pair_url = f"https://dexscreener.com/solana/{token_addr}"
+                else:
+                    pair_url = f"https://dexscreener.com/search?q={token}"
+
+            # CoinGecko — usar pesquisa (slug pode não existir)
+            coingecko_url = f"https://www.coingecko.com/en/search?query={token}"
+
+            line = f"- **{token}** _( {ex} )_ — **Score:** {score_txt}  \n" \
+                   f"  ↳ [DexScreener]({pair_url}) · [CoinGecko]({coingecko_url})"
+            lines.append(line)
+
+        where = f"na **{detected_exchange}**" if detected_exchange else ""
+        answer = f"**Últimos potenciais listings detetados {where}:**\n\n" + "\n".join(lines)
+        return {"answer": answer}
 
     except Exception as e:
         return {"answer": f"⚠️ Erro a consultar tokens: {e}"}
