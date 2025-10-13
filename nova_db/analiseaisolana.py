@@ -1,45 +1,71 @@
 # vigia_solana_pro_supabase.py
+# -*- coding: utf-8 -*-
+
 import os
 import time
-import requests
+import math
+import json
 import logging
+import requests
+from requests.adapters import HTTPAdapter, Retry
 import numpy as np
 from supabase import create_client, Client
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 import joblib
 from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List, Optional, Tuple
 
-# ---------------------------
-# CONFIGURAÇÃO (edita conforme necessário)
-# ---------------------------
-TELEGRAM_BOT_TOKEN_SOL = os.environ.get("TELEGRAM_BOT_TOKEN_SOL", "7999197151:AAELAI64aNx2nVk-Uhp-20YAxrXlXbVFzjw")
-TELEGRAM_CHAT_ID = "5239378332"
-TELEGRAM_CHAT_ID_SOL = os.environ.get("TELEGRAM_CHAT_ID_SOL", "5239378332")
-
-HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY", "0fd1b496-c250-459e-ba21-fa5a33caf055")
-HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
-
-# Supabase: usa service_role para escrita (coloca a tua)
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://qynnajpvxnqcmkzrhpde.supabase.co")
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bm5hanB2eG5xY21renJocGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzQzODg2MywiZXhwIjoyMDczMDE0ODYzfQ.P6jxgFLmQZnVSalWB3UykT9QO3EAW-tljTdoGZ6pY7A"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Parâmetros
-DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/"
-ALERT_MIN_VALUE = 10000  # valor mínimo em USD para considerar (não usado diretamente; podes ativar se quiseres)
-ML_SCORE_THRESHOLD = 50  # só envia alertas ML com score >= este
-CACHE_TTL = 60 * 60      # 1h para cache dos tokens listados / supported
-REQUEST_TIMEOUT = 12
-
-# Logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# ===========================
+# LOGGING
+# ===========================
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO),
+                    format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("VigiaSolanaPro")
 
-# ---------------------------
-# WALLETS / SPECIAL WALLETS
-# ---------------------------
-EXCHANGE_WALLETS = {
+# ===========================
+# CONFIG / ENV
+# ===========================
+def req_env(name: str) -> str:
+    v = os.environ.get(name)
+    if not v:
+        raise RuntimeError(f"Missing required env var: {name}")
+    return v
+
+HELIUS_API_KEY = req_env("HELIUS_API_KEY")
+HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
+
+SUPABASE_URL = req_env("SUPABASE_URL")
+SUPABASE_KEY = req_env("SUPABASE_SERVICE_ROLE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/"
+ML_SCORE_THRESHOLD = float(os.environ.get("ML_SCORE_THRESHOLD", "50"))
+CACHE_TTL = 60 * 60        # 1h cache de tokens listados / supported
+REQUEST_TIMEOUT = 12       # seg
+
+# HTTP session com retries (idempotentes GET/POST ao Helius/DexScreener)
+def build_session() -> requests.Session:
+    sess = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=0.6,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET","POST"])
+    )
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=32, pool_maxsize=32)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    sess.headers.update({"User-Agent": "VigiaSolanaPro/1.1"})
+    return sess
+
+HTTP = build_session()
+
+# ===========================
+# WALLETS
+# ===========================
+EXCHANGE_WALLETS: Dict[str, str] = {
     "Binance 1": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
     "Binance 2": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
     "Binance 3": "8kPLJg9eKSwCoDJjK3CixgB3Mf7i5p2hWQqRgt7F5XkR",
@@ -54,51 +80,11 @@ EXCHANGE_WALLETS = {
     "MEXC": "H7gyjxzXm7fQ6pfx9WkQqJk4DfjRk7Vc1nG5VcJqJ5qj",
 }
 
-SPECIAL_WALLETS = {
+SPECIAL_WALLETS: Dict[str, str] = {
     "Alameda Research": "MJKqp326RZCHnAAbew9MDdui3iCKWco7fsK9sVuZTX2",
     "Suspicious Early Mover": "GkPtg9Lt38syNpdBGsNJu4YMkLi5wFXq3PM8PQhxT8ry"
 }
 
-# ---------------------------
-# Cache local para listed tokens carregados do Supabase
-# ---------------------------
-LISTED_TOKENS = {}  # {'Binance': ['SOL','USDC'], ...}
-_LISTED_CACHE_TS = 0
-
-def load_listed_tokens_from_supabase(force: bool = False):
-    """Carrega exchange_tokens do Supabase (com cache)."""
-    global LISTED_TOKENS, _LISTED_CACHE_TS
-    now = time.time()
-    if not force and (now - _LISTED_CACHE_TS) < CACHE_TTL and LISTED_TOKENS:
-        return LISTED_TOKENS
-    try:
-        resp = supabase.table("exchange_tokens").select("exchange,token").execute()
-        data = getattr(resp, "data", None)
-        if not data:
-            logger.info("✅ Tokens carregados do Supabase: 0 tokens (fallback ou vazio)")
-            LISTED_TOKENS = {}
-            _LISTED_CACHE_TS = now
-            return LISTED_TOKENS
-        temp = {}
-        count = 0
-        for row in data:
-            ex = (row.get("exchange") or "").strip()
-            tok = (row.get("token") or "").strip()
-            if not ex or not tok:
-                continue
-            temp.setdefault(ex, []).append(tok)
-            count += 1
-        LISTED_TOKENS = temp
-        _LISTED_CACHE_TS = now
-        logger.info(f"✅ Tokens carregados do Supabase: {count} tokens em {len(temp)} exchanges")
-        return LISTED_TOKENS
-    except Exception as e:
-        logger.warning(f"❌ Erro ao carregar tokens do Supabase: {e} — fallback para vazio")
-        LISTED_TOKENS = {}
-        _LISTED_CACHE_TS = now
-        return LISTED_TOKENS
-
-# mapa de normalização de nomes de exchanges (ex.: "Binance 1" -> "Binance")
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
@@ -107,16 +93,45 @@ EXCHANGE_NORMALIZE = {
     "OKX": "OKX", "MEXC": "MEXC"
 }
 
+# ===========================
+# CACHE: exchange_tokens
+# ===========================
+LISTED_TOKENS: Dict[str, List[str]] = {}
+_LISTED_CACHE_TS = 0.0
+
+def load_listed_tokens_from_supabase(force: bool = False) -> Dict[str, List[str]]:
+    global LISTED_TOKENS, _LISTED_CACHE_TS
+    now = time.time()
+    if not force and (now - _LISTED_CACHE_TS) < CACHE_TTL and LISTED_TOKENS:
+        return LISTED_TOKENS
+    try:
+        resp = supabase.table("exchange_tokens").select("exchange,token").execute()
+        data = getattr(resp, "data", None) or []
+        temp: Dict[str, List[str]] = {}
+        for row in data:
+            ex = (row.get("exchange") or "").strip()
+            tok = (row.get("token") or "").strip()
+            if not ex or not tok:
+                continue
+            temp.setdefault(ex, []).append(tok)
+        LISTED_TOKENS = temp
+        _LISTED_CACHE_TS = now
+        logger.info(f"✅ Tokens carregados do Supabase: {sum(len(v) for v in temp.values())} tokens em {len(temp)} exchanges")
+        return LISTED_TOKENS
+    except Exception as e:
+        logger.warning(f"❌ Erro ao carregar tokens do Supabase: {e} — fallback vazio")
+        LISTED_TOKENS = {}
+        _LISTED_CACHE_TS = now
+        return LISTED_TOKENS
+
 def is_token_listed_on_exchange(token_symbol: str, exchange_name: str) -> bool:
-    """Verifica se token já existe na exchange específica (usando cache LISTED_TOKENS)."""
     ex = EXCHANGE_NORMALIZE.get(exchange_name, exchange_name)
     tokens = LISTED_TOKENS.get(ex, [])
-    return token_symbol.upper() in [t.upper() for t in tokens]
+    return token_symbol.upper() in {t.upper() for t in tokens}
 
-def get_listed_exchanges(token_symbol: str, exclude_exchange: str | None = None):
-    """Devolve lista de exchanges onde o token aparece (exceto exclude)."""
+def get_listed_exchanges(token_symbol: str, exclude_exchange: Optional[str] = None) -> List[str]:
     token_upper = token_symbol.upper()
-    exchanges = []
+    exchanges: List[str] = []
     for ex, tokens in LISTED_TOKENS.items():
         if exclude_exchange and ex.lower() == exclude_exchange.lower():
             continue
@@ -126,45 +141,68 @@ def get_listed_exchanges(token_symbol: str, exclude_exchange: str | None = None)
                 break
     return exchanges
 
-# ---------------------------
-# Funções utilitárias (Helius, Dexscreener, Telegram)
-# ---------------------------
-def get_recent_transactions(wallet_address: str, hours: int = 24):
-    try:
-        # timezone-aware UTC
-        start_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
+# ===========================
+# HELIUS HELPERS (com paginação)
+# ===========================
+def get_recent_signatures(wallet_address: str, hours: int = 24, limit_per_page: int = 100) -> List[Dict[str, Any]]:
+    """Página por página até sair da janela temporal ou acabar."""
+    signatures: List[Dict[str, Any]] = []
+    after_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
+    before_sig: Optional[str] = None
+
+    while True:
+        params = {"limit": limit_per_page}
+        if before_sig:
+            params["before"] = before_sig
         payload = {
             "jsonrpc": "2.0",
             "id": "vigia-signatures",
             "method": "getSignaturesForAddress",
-            "params": [wallet_address, {"limit": 50}]
+            "params": [wallet_address, params]
         }
-        r = requests.post(HELIUS_URL, json=payload, timeout=REQUEST_TIMEOUT)
-        if r.status_code != 200:
-            logger.warning(f"Helius returned {r.status_code} for {wallet_address}")
-            return []
-        j = r.json()
-        if not j.get("result"):
-            return []
-        txs = []
-        for tx in j["result"]:
-            bt = tx.get("blockTime")
-            if bt and bt >= start_ts:
-                txs.append(tx)
-        return txs
-    except Exception as e:
-        logger.error(f"Erro get_recent_transactions: {e}")
-        return []
+        try:
+            r = HTTP.post(HELIUS_URL, json=payload, timeout=REQUEST_TIMEOUT)
+            if r.status_code != 200:
+                logger.warning(f"Helius {r.status_code} para {wallet_address}")
+                break
+            result = r.json().get("result") or []
+            if not result:
+                break
 
-def get_transaction_details(signature: str):
+            # filtra por tempo e acumula
+            for tx in result:
+                bt = tx.get("blockTime")
+                if not bt:
+                    continue
+                if bt >= after_ts:
+                    signatures.append(tx)
+            # preparar próxima página
+            last = result[-1].get("signature")
+            if not last:
+                break
+            # se o último já está antes da janela temporal, parar
+            last_bt = result[-1].get("blockTime") or 0
+            if last_bt < after_ts:
+                break
+            before_sig = last
+            # safety: não correr infinito
+            if len(signatures) > 2000:
+                break
+        except Exception as e:
+            logger.error(f"Erro get_recent_signatures: {e}")
+            break
+
+    return signatures
+
+def get_transaction_details(signature: str) -> Optional[Dict[str, Any]]:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "vigia-details",
+        "method": "getTransaction",
+        "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
+    }
     try:
-        payload = {
-            "jsonrpc": "2.0",
-            "id": "vigia-details",
-            "method": "getTransaction",
-            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
-        }
-        r = requests.post(HELIUS_URL, json=payload, timeout=REQUEST_TIMEOUT)
+        r = HTTP.post(HELIUS_URL, json=payload, timeout=REQUEST_TIMEOUT)
         if r.status_code != 200:
             return None
         return r.json()
@@ -172,206 +210,244 @@ def get_transaction_details(signature: str):
         logger.error(f"Erro get_transaction_details {signature}: {e}")
         return None
 
-def get_dexscreener_data(token_address: str):
+# ===========================
+# DEXSCREENER HELPERS (robustos + cache)
+# ===========================
+_DEX_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}  # mint -> (ts, data)
+_DEX_CACHE_TTL = 5 * 60
+
+def _from_path(o: Any, path: List[str], default=None):
+    cur = o
     try:
-        r = requests.get(f"{DEXSCREENER_API}{token_address}", timeout=REQUEST_TIMEOUT)
+        for p in path:
+            if cur is None:
+                return default
+            cur = cur.get(p) if isinstance(cur, dict) else default
+        return cur if cur is not None else default
+    except Exception:
+        return default
+
+def get_dexscreener_data(token_address: str) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    cached = _DEX_CACHE.get(token_address)
+    if cached and (now - cached[0]) < _DEX_CACHE_TTL:
+        return cached[1]
+    try:
+        r = HTTP.get(f"{DEXSCREENER_API}{token_address}", timeout=REQUEST_TIMEOUT)
         if r.status_code != 200:
             return None
-        j = r.json()
-        if j.get("pairs") and len(j["pairs"]) > 0:
-            return j["pairs"][0]
-        return None
+        j = r.json() or {}
+        pairs = j.get("pairs") or []
+        # escolher par com maior liquidez USD
+        def liq_usd(p):
+            return float(_from_path(p, ["liquidity","usd"], 0.0) or 0.0)
+        best = max(pairs, key=liq_usd) if pairs else None
+        if not best:
+            return None
+        _DEX_CACHE[token_address] = (now, best)
+        return best
     except Exception as e:
         logger.debug(f"Dexscreener error for {token_address}: {e}")
         return None
 
-def send_telegram_alert(message: str) -> bool:
+def parse_pair(dex: Dict[str, Any]) -> Dict[str, Any]:
+    """Normaliza campos críticos, tolerante a esquemas diferentes."""
+    base = dex.get("baseToken") or {}
+    token_symbol = (base.get("symbol") or "UNKNOWN").strip()[:20]
+    price_usd = float(dex.get("priceUsd") or dex.get("price") or 0) or 0.0
+    price_change_24h = (
+        _from_path(dex, ["priceChange","h24"], None)
+        if isinstance(dex.get("priceChange"), dict)
+        else dex.get("priceChange")
+    )
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN_SOL}/sendMessage"
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID_SOL,
-            "text": message,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": False
-        }
-        r = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-        if r.status_code != 200:
-            logger.error(f"Erro Telegram {r.status_code}: {r.text}")
-            return False
-        j = r.json()
-        if not j.get("ok"):
-            logger.error(f"Telegram não ok: {j}")
-            return False
-        return True
-    except Exception as e:
-        logger.error(f"Exceção Telegram: {e}")
-        return False
+        price_change_24h = float(price_change_24h) if price_change_24h is not None else None
+    except Exception:
+        price_change_24h = None
 
-# ---------------------------
-# ML Analyzer (features expandidas)
-# ---------------------------
+    liquidity = float(_from_path(dex, ["liquidity","usd"], 0.0) or 0.0)
+    volume_24h = float(_from_path(dex, ["volume","h24"], 0.0) or 0.0)
+    tx_buys = int(_from_path(dex, ["txns","h24","buys"], 0) or 0)
+    tx_sells = int(_from_path(dex, ["txns","h24","sells"], 0) or 0)
+    pair_url = dex.get("url") or ""
+    pair_created_ms = dex.get("pairCreatedAt")  # nem sempre existe
+
+    # holders concentration (pouco comum, mas se existir...)
+    holders_concentration = 0.0
+    try:
+        holders_concentration = float(_from_path(dex, ["topHolders","concentration"], 0.0) or 0.0)
+    except Exception:
+        holders_concentration = 0.0
+
+    return {
+        "token_symbol": token_symbol,
+        "price_usd": price_usd,
+        "price_change_24h": price_change_24h,
+        "liquidity": liquidity,
+        "volume_24h": volume_24h,
+        "txns_buys": tx_buys,
+        "txns_sells": tx_sells,
+        "pair_url": pair_url,
+        "pair_created_ms": pair_created_ms,
+        "holders_concentration": holders_concentration,
+    }
+
+# ===========================
+# ML (8 features) com autocheck
+# ===========================
 MODEL_PATH = "vigia_ml_model.pkl"
 SCALER_PATH = "vigia_ml_scaler.pkl"
 
 class CryptoAIAnalyzer:
     def __init__(self):
+        self.model = None
+        self.scaler = None
+        self.n_features = 8
+        self._load_or_train()
+
+    def _load_or_train(self):
         if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH):
             try:
-                self.model = joblib.load(MODEL_PATH)
-                self.scaler = joblib.load(SCALER_PATH)
-                logger.info("✅ Modelo carregado do disco.")
+                m = joblib.load(MODEL_PATH)
+                s = joblib.load(SCALER_PATH)
+                # sanity-check: dimensões
+                test = np.zeros((1, self.n_features))
+                _ = s.transform(test)
+                self.model, self.scaler = m, s
+                logger.info("✅ Modelo ML carregado (8 features).")
                 return
             except Exception as e:
-                logger.warning(f"Falha a carregar modelo do disco: {e} — retrain")
+                logger.warning(f"⚠️ Falha a carregar modelo cacheado: {e} — será re-treinado")
         self.model, self.scaler = self._create_and_train_model()
         try:
             joblib.dump(self.model, MODEL_PATH)
             joblib.dump(self.scaler, SCALER_PATH)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Não consegui gravar cache do modelo: {e}")
 
     def _create_and_train_model(self):
-        """
-        Cria e treina o modelo com features expandidas.
-        Features: [valor, liquidez, volume, variação, market_cap_rank,
-                   is_new_token, buys/sells_ratio, holders_concentration]
-        """
+        """Treino sintético, mesmo racional que já tinhas, mas isolado."""
         try:
             X_train = np.array([
-                [50000, 1_000_000, 500_000, 25, 100, 1, 2.0, 0.10],  # Novo bom
-                [30000,   800_000, 400_000, 15, 150, 1, 1.5, 0.15],  # Novo médio
-                [10000,   200_000,  80_000,  5, 200, 1, 1.2, 0.25],  # Novo arriscado
-                [ 5000,    50_000,  20_000, -5, 300, 1, 0.5, 0.40],  # Honeypot provável
-                [20000, 2_000_000, 1_000_000, -2, 50, 0, 1.0, 0.05], # Estabelecido em queda
-                [15000, 1_500_000,   600_000,  8, 80, 0, 1.3, 0.08], # Estável
-                [70000, 5_000_000, 2_500_000, 30, 20, 0, 1.4, 0.07], # Blue chip
-                [ 2000,    30_000,   10_000,-15,400, 1, 0.3, 0.60],  # Scam (1 holder)
-                [12000,   100_000,   50_000, 12,250, 1, 2.5, 0.10],  # Novo hype
-                [25000,   700_000,  300_000, 20,120, 1, 2.0, 0.12],  # Novo promissor
+                [50000, 1_000_000, 500_000,  25, 100, 1, 2.0, 0.10],
+                [30000,   800_000, 400_000,  15, 150, 1, 1.5, 0.15],
+                [10000,   200_000,  80_000,   5, 200, 1, 1.2, 0.25],
+                [ 5000,    50_000,  20_000,  -5, 300, 1, 0.5, 0.40],
+                [20000, 2_000_000,1_000_000, -2,  50, 0, 1.0, 0.05],
+                [15000, 1_500_000, 600_000,   8,  80, 0, 1.3, 0.08],
+                [70000, 5_000_000,2_500_000,  30,  20, 0, 1.4, 0.07],
+                [ 2000,    30_000,  10_000, -15, 400, 1, 0.3, 0.60],
+                [12000,   100_000,  50_000,  12, 250, 1, 2.5, 0.10],
+                [25000,   700_000, 300_000,  20, 120, 1, 2.0, 0.12],
+            ], dtype=float)
+            y_train = np.array([1,1,0,0,0,0,1,0,1,1], dtype=int)
+
+            Xs = np.column_stack([
+                X_train[:,0] / 100_000.0,
+                X_train[:,1] / 1_000_000.0,
+                X_train[:,2] / 500_000.0,
+                X_train[:,3] / 100.0,
+                X_train[:,4] / 1000.0,
+                X_train[:,5],
+                X_train[:,6],
+                X_train[:,7],
             ])
-            y_train = np.array([1, 1, 0, 0, 0, 0, 1, 0, 1, 1])
 
+            scaler = StandardScaler().fit(Xs)
             model = RandomForestClassifier(
-                n_estimators=200,
-                max_depth=10,
-                random_state=42,
-                class_weight="balanced"
-            )
-            model.fit(X_train, y_train)
+                n_estimators=200, max_depth=10,
+                random_state=42, class_weight="balanced"
+            ).fit(Xs, y_train)
 
-            scaler = StandardScaler()
-            scaler.fit(X_train)
-
-            logger.info("✅ Modelo ML treinado com features expandidas.")
+            logger.info("✅ Modelo ML treinado (8 features).")
             return model, scaler
 
         except Exception as e:
             logger.error(f"Erro treino ML: {e}")
-
             class Dummy:
-                def predict_proba(self, X):  # fallback
-                    return np.array([[0.3, 0.7]])
-
+                def predict_proba(self, X): return np.array([[0.45, 0.55]])
             class DS:
-                def transform(self, X):
-                    return X
-
+                def transform(self, X): return X
             return Dummy(), DS()
 
-    def _extract_features(self, token_data: dict, is_new_token: bool = True):
-        """Extrai features expandidas para o modelo."""
-        liquidity = token_data.get('liquidity', 0) or 0
-        volume_24h = token_data.get('volume_24h', 0) or 0
-        price_change = token_data.get('price_change_24h', 0) or 0
-        value_usd = token_data.get('value_usd', 0) or 0
+    def _extract_features(self, token_data: Dict[str, Any], is_new_token: bool = True):
+        liquidity    = float(token_data.get('liquidity', 0) or 0)
+        volume_24h   = float(token_data.get('volume_24h', 0) or 0)
+        price_change = float(token_data.get('price_change_24h', 0) or 0)
+        value_usd    = float(token_data.get('value_usd', 0) or 0)
 
-        # rank aproximado pela liquidez
-        if liquidity > 5_000_000:
-            market_cap_rank = 50
-        elif liquidity > 1_000_000:
-            market_cap_rank = 100
-        elif liquidity > 500_000:
-            market_cap_rank = 200
-        else:
-            market_cap_rank = 500
+        if   liquidity > 5_000_000: market_cap_rank = 50
+        elif liquidity > 1_000_000: market_cap_rank = 100
+        elif liquidity >   500_000: market_cap_rank = 200
+        else:                       market_cap_rank = 500
 
-        # buys/sells ratio (fallback 1.0)
-        buys = token_data.get('txns_buys', 1)
-        sells = token_data.get('txns_sells', 1)
-        buys_sells_ratio = (buys / max(sells, 1))
+        buys  = float(token_data.get('txns_buys', 1)  or 1)
+        sells = float(token_data.get('txns_sells', 1) or 1)
+        buys_sells_ratio = buys / max(sells, 1)
+        holders_concentration = float(token_data.get('holders_concentration', 0.1) or 0.1)
 
-        # concentração de holders (se existir)
-        holders_concentration = token_data.get('holders_concentration', 0.1)
-
-        features = np.array([
-            value_usd / 100000.0,
+        feats = np.array([[
+            value_usd / 100_000.0,
             liquidity / 1_000_000.0,
             volume_24h / 500_000.0,
             price_change / 100.0,
             market_cap_rank / 1000.0,
-            1 if is_new_token else 0,
+            1.0 if is_new_token else 0.0,
             buys_sells_ratio,
             holders_concentration
-        ]).reshape(1, -1)
+        ]], dtype=float)
+        return feats
 
-        return features
-
-    def predict_listing_potential(self, token_data: dict, exchange_name: str, token_symbol: str):
-        """Devolve dict com score, probabilidade, confiança e se é novo token."""
+    def predict_listing_potential(self, token_data: Dict[str, Any], exchange_name: str, token_symbol: str):
         try:
             is_new = not is_token_listed_on_exchange(token_symbol, exchange_name)
-            X = self._extract_features(token_data, is_new)
+            X = self._extract_features(token_data, is_new_token=is_new)
             Xs = self.scaler.transform(X)
-            proba = self.model.predict_proba(Xs)[0]  # [p0, p1]
-            p1 = float(proba[1]) * 100.0
-            conf = float(max(proba)) * 100.0
+            proba = self.model.predict_proba(Xs)[0]
+            p1 = float(proba[1])*100.0
             return {
                 'listing_probability': p1,
                 'score': p1,
-                'confidence': conf,
+                'confidence': float(max(proba))*100.0,
                 'is_new_token': is_new
             }
         except Exception as e:
             logger.error(f"Erro ML predict: {e}")
-            return {
-                'listing_probability': 70.0,
-                'score': 70.0,
-                'confidence': 50.0,
-                'is_new_token': True
-            }
+            return {'listing_probability': 55.0, 'score': 55.0, 'confidence': 50.0, 'is_new_token': True}
 
-# ---------------------------
-# Análise de transações
-# ---------------------------
-def analyze_transaction(tx_data: dict, wallet_address: str, exchange_name: str):
-    """Analisa uma transação e aplica filtros anti-scam antes de gerar alerta."""
+# ===========================
+# ANÁLISE DE TRANSACÇÃO
+# ===========================
+BLUECHIPS = {"USDC","USDT","SOL","BTC","ETH","WIF","BONK"}  # podes ajustar
+
+def analyze_transaction(tx_data: Dict[str, Any], wallet_address: str, exchange_name: str) -> Optional[Dict[str, Any]]:
     try:
         if not tx_data or 'result' not in tx_data:
             return None
-
         result = tx_data['result']
-        meta = result.get('meta', {})
+        meta = result.get('meta', {}) or {}
         if meta.get('err'):
             return None
 
+        # varrer balances pós-transação pertencentes à wallet monitorizada
         for balance in meta.get('postTokenBalances', []):
             if balance.get('owner') != wallet_address:
                 continue
 
-            amount = balance.get('uiTokenAmount', {}).get('uiAmount', 0)
-            if not amount or amount <= 0:
+            amount = float(((balance.get('uiTokenAmount') or {}).get('uiAmount')) or 0.0)
+            if amount <= 0:
                 continue
 
             mint_address = balance.get('mint')
-            dex = get_dexscreener_data(mint_address)
-            if not dex or not isinstance(dex, dict):
+            if not mint_address:
                 continue
 
-            # Preço
-            try:
-                price = float(dex.get('priceUsd', 0) or 0)
-            except Exception:
-                price = 0
+            dex = get_dexscreener_data(mint_address)
+            if not dex:
+                continue
+
+            p = parse_pair(dex)
+            price = float(p["price_usd"] or 0.0)
             if price <= 0:
                 continue
 
@@ -379,40 +455,34 @@ def analyze_transaction(tx_data: dict, wallet_address: str, exchange_name: str):
             if value_usd <= 0:
                 continue
 
-            token_symbol = (dex.get('baseToken') or {}).get('symbol', 'UNKNOWN')
-            if token_symbol in ["USDC", "USDT", "SOL", "BTC", "ETH"]:
+            token_symbol = p["token_symbol"] or "UNKNOWN"
+            if token_symbol.upper() in BLUECHIPS:
                 continue
 
-            # Dados extra
-            liquidity = (dex.get('liquidity') or {}).get('usd', 0) or 0
-            volume_24h = (dex.get('volume') or {}).get('h24', 0) or 0
-
-            # --- Filtros anti-scam ---
-            if liquidity < 50_000:   # liquidez mínima $50k
+            # filtros mínimos
+            liquidity = float(p["liquidity"] or 0.0)
+            volume_24h = float(p["volume_24h"] or 0.0)
+            if liquidity < 50_000:
                 continue
-            if volume_24h < 10_000:  # volume mínimo $10k
+            if volume_24h < 10_000:
                 continue
 
-            # holders concentration (se vier)
-            holders_concentration = 0.0
-            try:
-                holders_concentration = (dex.get("topHolders", {}) or {}).get("concentration", 0.0) or 0.0
-            except Exception:
-                holders_concentration = 0.0
-
-            if holders_concentration and holders_concentration > 0.20:  # máx 20%
+            holders_concentration = float(p["holders_concentration"] or 0.0)
+            if holders_concentration and holders_concentration > 0.20:
                 continue
 
-            # verificar se já listado na própria exchange
+            # já listado na própria exchange?
             if is_token_listed_on_exchange(token_symbol, exchange_name):
                 logger.info(f"⚠️ {token_symbol} já listado em {exchange_name} - ignorando")
                 continue
 
-            listed = get_listed_exchanges(
+            listed_elsewhere = get_listed_exchanges(
                 token_symbol,
                 exclude_exchange=EXCHANGE_NORMALIZE.get(exchange_name, exchange_name)
             )
-            sig = result.get('transaction', {}).get('signatures', [None])[0]
+            sig = (result.get('transaction') or {}).get('signatures', [None])[0]
+            ts = result.get("blockTime", int(time.time()))
+            special = wallet_address in SPECIAL_WALLETS.values()
 
             return {
                 "exchange": exchange_name,
@@ -421,89 +491,127 @@ def analyze_transaction(tx_data: dict, wallet_address: str, exchange_name: str):
                 "amount": amount,
                 "value_usd": value_usd,
                 "price": price,
-                "price_change_24h": (dex.get("priceChange", {}) or {}).get("h24") if isinstance(dex.get("priceChange"), dict)
-                                    else dex.get("priceChange"),
+                "price_change_24h": p["price_change_24h"],
                 "liquidity": liquidity,
                 "volume_24h": volume_24h,
-                "pair_url": dex.get("url", ""),
+                "pair_url": p["pair_url"],
                 "signature": sig,
-                "timestamp": result.get("blockTime", int(time.time())),
-                "listed_exchanges": listed,
-                "special": wallet_address in SPECIAL_WALLETS.values(),
-                "txns_buys": (dex.get("txns", {}) or {}).get("h24", {}).get("buys", 0),
-                "txns_sells": (dex.get("txns", {}) or {}).get("h24", {}).get("sells", 0),
+                "timestamp": ts,
+                "listed_exchanges": listed_elsewhere,
+                "special": special,
+                "txns_buys": p["txns_buys"],
+                "txns_sells": p["txns_sells"],
                 "holders_concentration": holders_concentration,
+                "pair_created_ms": p["pair_created_ms"],
             }
-
         return None
-
     except Exception as e:
         logger.error(f"Erro na análise de transação: {e}")
         return None
 
-def format_listing_alert(alert_info: dict, ml_prediction: dict) -> str:
-    score = ml_prediction.get('score', 0)
-    if score >= 80:
-        emoji = "🚀💎"; urgency = "ALTA PRIORIDADE"
-    elif score >= 65:
-        emoji = "🔥✨"; urgency = "POTENCIAL"
-    elif score >= 50:
-        emoji = "⚠️📈"; urgency = "MONITORAR"
-    else:
-        emoji = "🔻👀"; urgency = "BAIXO POTENCIAL"
+# ===========================
+# “RESPOSTA HUMANA” (mais ação, menos pasta)
+# ===========================
+def _mk_reason_tags(alert: Dict[str, Any], ml: Dict[str, Any]) -> List[str]:
+    tags: List[str] = []
+    if alert.get("value_usd", 0) >= 10_000: tags.append("compra relevante")
+    if alert.get("liquidity", 0) >= 250_000: tags.append("liquidez saudável")
+    if alert.get("volume_24h", 0) >= 100_000: tags.append("volume consistente")
+    buys, sells = alert.get("txns_buys", 0), alert.get("txns_sells", 0)
+    if sells or buys:
+        ratio = buys / max(sells, 1)
+        if ratio >= 1.5: tags.append("pressão compradora")
+    conc = alert.get("holders_concentration", 0.0)
+    if conc and conc <= 0.12: tags.append("distribuição decente")
+    if alert.get("listed_exchanges"): tags.append("símbolo existe noutras CEX")
+    if ml.get("is_new_token"): tags.append("novo na CEX alvo")
+    return tags
 
-    message = f"{emoji} <b>POTENCIAL NOVO LISTING DETETADO!</b> {emoji}\n\n"
-    message += f"🏦 <b>Exchange:</b> {alert_info['exchange']}\n"
-    message += f"💎 <b>Token:</b> {alert_info['token']}\n"
-    message += f"💰 <b>Valor Recebido:</b> ${alert_info['value_usd']:,.2f}\n"
-    message += f"📊 <b>Preço Atual:</b> ${alert_info['price']:.8f}\n"
-    if alert_info.get('price_change_24h') is not None:
+def _mk_risk_flags(alert: Dict[str, Any]) -> List[str]:
+    flags: List[str] = []
+    if alert.get("liquidity", 0) < 100_000: flags.append("liq < 100k")
+    if alert.get("volume_24h", 0) < 50_000: flags.append("vol < 50k")
+    conc = alert.get("holders_concentration", 0.0)
+    if conc and conc > 0.15: flags.append(f"concentração {conc*100:.0f}%")
+    # idade do par (se disponível)
+    ms = alert.get("pair_created_ms")
+    if isinstance(ms, (int,float)) and ms > 0:
+        age_hours = (time.time()*1000 - ms)/3600000.0
+        if age_hours < 12: flags.append("par muito recente")
+    return flags
+
+def build_human_summary(alert: Dict[str, Any], ml: Dict[str, Any]) -> str:
+    ex = alert.get("exchange", "?")
+    tok = alert.get("token", "?")
+    liq = alert.get("liquidity", 0.0)
+    vol = alert.get("volume_24h", 0.0)
+    chg = alert.get("price_change_24h", None)
+    buys = alert.get("txns_buys", 0)
+    sells = alert.get("txns_sells", 0)
+    ratio = (buys / max(sells, 1)) if (sells or buys) else 1.0
+    conc = alert.get("holders_concentration", 0.0)
+    listed_elsewhere = alert.get("listed_exchanges", [])
+    pair_url = alert.get("pair_url") or ""
+    sig = alert.get("signature")
+
+    reasons = _mk_reason_tags(alert, ml)
+    risks = _mk_risk_flags(alert)
+
+    # links úteis
+    solscan = f"https://solscan.io/tx/{sig}" if sig else ""
+    pair_link = f"[DexScreener]({pair_url})" if pair_url else "DexScreener"
+    tx_link = f"[Solscan]({solscan})" if solscan else "Solscan"
+
+    parts = []
+    parts.append(f"**{tok}** visto numa wallet **{ex}** com ~${alert.get('value_usd',0):,.0f} em compras.")
+    parts.append(f"Liq ~${liq:,.0f} · Vol24h ~${vol:,.0f} · Buys/Sells ≈ {ratio:.2f}")
+    if chg is not None:
         try:
-            pc = float(alert_info['price_change_24h'])
-            change_emoji = "📈" if pc >= 0 else "📉"
-            message += f"{change_emoji} <b>24h Change:</b> {pc:.2f}%\n"
+            parts.append(f"Δ24h {float(chg):+.1f}%")
         except Exception:
             pass
-    message += f"💧 <b>Liquidez:</b> ${alert_info['liquidity']:,.2f}\n"
-    message += f"📈 <b>Volume 24h:</b> ${alert_info['volume_24h']:,.2f}\n\n"
-    message += "🤖 <b>ANÁLISE DE IA</b>\n"
-    message += f"⭐ Score: {ml_prediction['score']:.1f}/100\n"
-    message += f"🎯 Probabilidade: {ml_prediction['listing_probability']:.1f}%\n"
-    message += f"📈 Confiança: {ml_prediction['confidence']:.1f}%\n"
-    message += f"🚨 Urgência: {urgency}\n\n"
-    message += f"🔗 <a href='{alert_info['pair_url']}'>DexScreener</a>\n"
-    message += f"🔍 <a href='https://solscan.io/token/{alert_info['token_address']}'>Solscan</a>\n\n"
-    message += "<i>🤖 Sistema de deteção de novos listings</i>"
-    return message
+    if conc:
+        parts.append(f"Concentração holders ~{conc*100:.0f}%")
+    if listed_elsewhere:
+        parts.append(f"Já listado como símbolo em: {', '.join(listed_elsewhere)}")
+    parts.append(f"**Score ML {ml.get('score',0):.0f}/100** (conf. {ml.get('confidence',0):.0f}%).")
+    if reasons:
+        parts.append("Razões: " + ", ".join(reasons))
+    if risks:
+        parts.append("Riscos: " + ", ".join(risks))
+    parts.append(f"Links: {pair_link} · {tx_link}")
+    return " · ".join(parts)
 
-# ---------------------------
-# Salvar transação no Supabase (upsert + índice único recomendado)
-# ---------------------------
-def save_transaction_supabase(alert_info: dict) -> bool:
+# ===========================
+# SUPABASE UPSERT
+# ===========================
+def save_transaction_supabase(alert_info: Dict[str, Any]) -> bool:
     payload = {
         "exchange": alert_info.get("exchange"),
         "token": alert_info.get("token"),
         "token_address": alert_info.get("token_address"),
         "signature": alert_info.get("signature"),
-        "amount": alert_info.get("amount"),
-        "value_usd": alert_info.get("value_usd"),
-        "price": alert_info.get("price"),
-        "liquidity": alert_info.get("liquidity"),
+        "amount": float(alert_info.get("amount") or 0.0),
+        "value_usd": float(alert_info.get("value_usd") or 0.0),
+        "price": float(alert_info.get("price") or 0.0),
+        "liquidity": float(alert_info.get("liquidity") or 0.0),
+        "volume_24h": float(alert_info.get("volume_24h") or 0.0),
         "pair_url": alert_info.get("pair_url"),
         "listed_exchanges": alert_info.get("listed_exchanges", []),
-        "special": alert_info.get("special", False),
-        "ts": datetime.fromtimestamp(alert_info.get("timestamp", int(time.time()))).isoformat(),
-        # 👇 novos
+        "special": bool(alert_info.get("special", False)),
+        "ts": datetime.fromtimestamp(alert_info.get("timestamp", int(time.time())), tz=timezone.utc).isoformat(),
+        # ML
         "score": float(alert_info.get("score") or 0.0),
+        "listing_probability": float(alert_info.get("listing_probability") or 0.0),
+        "confidence": float(alert_info.get("confidence") or 0.0),
+        # métricas extra
         "txns_buys": int(alert_info.get("txns_buys") or 0),
         "txns_sells": int(alert_info.get("txns_sells") or 0),
         "holders_concentration": float(alert_info.get("holders_concentration") or 0.0),
+        # texto explicativo
+        "analysis_text": alert_info.get("analysis_text"),
     }
-
     try:
-        # Requer UNIQUE(token_address, signature) para funcionar como esperado:
-        #   ALTER TABLE public.transacted_tokens
-        #   ADD CONSTRAINT transacted_tokens_token_sig_uniq UNIQUE (token_address, signature);
         res = supabase.table("transacted_tokens").upsert(
             payload, on_conflict="token_address,signature"
         ).execute()
@@ -512,19 +620,19 @@ def save_transaction_supabase(alert_info: dict) -> bool:
         logger.error(f"Exceção ao salvar transação no Supabase: {e}")
         return False
 
-# ---------------------------
+# ===========================
 # MAIN
-# ---------------------------
+# ===========================
 def main():
-    logger.info("🚀 VIGIA SOLANA PRO - INICIANDO")
-    load_listed_tokens_from_supabase(force=True)  # catálogo de tokens já listados
+    logger.info("🚀 VIGIA SOLANA PRO 1.1 — INICIANDO")
+    load_listed_tokens_from_supabase(force=True)
     ai = CryptoAIAnalyzer()
     total_alerts = 0
 
     for exchange_name, wallet in EXCHANGE_WALLETS.items():
         logger.info(f"🔍 Analisando {exchange_name} ({wallet})...")
-        txs = get_recent_transactions(wallet, hours=24)
-        logger.info(f"   ✅ {len(txs)} transações encontradas")
+        txs = get_recent_signatures(wallet, hours=24, limit_per_page=100)
+        logger.info(f"   ✅ {len(txs)} transações dentro da janela")
 
         for tx in txs:
             sig = tx.get("signature")
@@ -542,42 +650,36 @@ def main():
             # 🤖 Predição ML
             ml = ai.predict_listing_potential(alert, exchange_name, alert["token"])
 
-            # 👉 anexar campos de ML ao registo ANTES de gravar
+            # Anexar campos ML e texto humano (otimizado)
             alert["score"] = float(ml.get("score") or 0.0)
             alert["listing_probability"] = float(ml.get("listing_probability") or 0.0)
             alert["confidence"] = float(ml.get("confidence") or 0.0)
+            alert["analysis_text"] = build_human_summary(alert, ml)
 
-            # ✅ filtro principal: só novos (segundo ML) e com score mínimo
-            if ml.get("is_new_token", True) and ml.get("score", 0) >= ML_SCORE_THRESHOLD:
+            # ✅ filtro principal
+            if ml.get("is_new_token", True) and alert["score"] >= ML_SCORE_THRESHOLD:
                 saved = save_transaction_supabase(alert)
-
                 if saved:
-                    # envia alerta (opcional)
-                    msg = format_listing_alert(alert, ml)
-                    if send_telegram_alert(msg):
-                        logger.info(f"   🚨 POTENCIAL LISTING: {alert['token']} - Score {alert['score']:.1f}")
-                        total_alerts += 1
+                    logger.info(f"   🚨 POTENCIAL LISTING: {alert['token']} — Score {alert['score']:.1f}")
+                    total_alerts += 1
                 else:
-                    # duplicado/erro ao inserir — não reenviar
-                    logger.debug(f"   ℹ️  Não inserido (duplicado/erro) {alert['token']} — {alert.get('signature')}")
-
+                    logger.debug(f"   ℹ️ Não inserido (duplicado/erro) {alert['token']} — {alert.get('signature')}")
             else:
                 logger.debug(
-                    f"   ℹ️  Não passa ML/novo: {alert['token']} "
-                    f"score={ml.get('score'):.1f} new={ml.get('is_new_token')}"
+                    f"   ℹ️ Não passa ML/novo: {alert['token']} "
+                    f"score={alert['score']:.1f} new={ml.get('is_new_token')}"
                 )
 
-            time.sleep(0.5)  # rate-limit entre transações
+            time.sleep(0.35)  # rate-limit por transação (ligeiro)
 
-        # refresh do catálogo (meia-vida do cache)
+        # refresh do catálogo de listados ~a cada ~30min
         if time.time() - _LISTED_CACHE_TS > (CACHE_TTL / 2):
             load_listed_tokens_from_supabase(force=True)
 
-        time.sleep(1)  # rate-limit entre exchanges
+        time.sleep(0.8)  # rate-limit entre wallets
 
-    logger.info(f"🎯 Total de alertas enviados: {total_alerts}")
+    logger.info(f"🎯 Total de alertas gravados: {total_alerts}")
 
-# Guardião de arranque
 if __name__ == "__main__":
     try:
         main()
