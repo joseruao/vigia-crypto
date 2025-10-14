@@ -19,25 +19,36 @@ export function ChatWindow() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [gotFirstChunk, setGotFirstChunk] = useState(false);
+
+  // área que faz scroll (apenas as mensagens)
   const listRef = useRef<HTMLDivElement>(null);
+
+  // controlo de stream/abort
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:8000';
+  // Base da API: usa env, senão cai para o teu Render
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    'https://vigia-crypto-1.onrender.com';
 
+  // scroll para o fundo quando chegam novas mensagens / termina loading
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+    const el = listRef.current;
+    if (!el) return;
+    // força para o fundo
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [active?.messages, loading]);
 
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
     return (
-      q.includes("token") ||
-      q.includes("listado") ||
-      q.includes("listing") ||
-      q.includes("exchange") ||
-      q.includes("prediction") ||
-      q.includes("vist")
+      q.includes('token') ||
+      q.includes('listado') ||
+      q.includes('listing') ||
+      q.includes('exchange') ||
+      q.includes('prediction') ||
+      q.includes('vist') // "visto", "viste", etc.
     );
   }
 
@@ -58,24 +69,25 @@ export function ChatWindow() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      let url = `${API_URL}/chat/stream`;
-      let body: any = { prompt: content };
+      // escolhe endpoint
+      const useAlerts = shouldUseAlertsAPI(content);
+      const url = useAlerts
+        ? `${API_URL}/alerts/ask`
+        : `${API_URL}/chat/stream`;
 
-      if (shouldUseAlertsAPI(content)) {
-        url = `${API_URL}/alerts/ask`;
-      }
+      const body = { prompt: content };
 
       const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
 
-      if (url.includes("/chat/stream")) {
-        // streaming normal
+      if (!useAlerts) {
+        // streaming normal do /chat/stream
         const reader = res.body?.getReader();
-        if (!reader) throw new Error("Sem stream");
+        if (!reader) throw new Error('Sem stream');
 
         let buffer = '';
         addMessage({ role: 'assistant', content: '' });
@@ -92,9 +104,12 @@ export function ChatWindow() {
           updateLastAssistantMessage(buffer);
         }
       } else {
-        // resposta direta do /alerts/ask
+        // resposta direta do /alerts/ask (markdown pronto)
         const data = await res.json();
-        addMessage({ role: 'assistant', content: data.answer ?? "⚠️ Sem resposta" });
+        addMessage({
+          role: 'assistant',
+          content: data.answer ?? '⚠️ Sem resposta',
+        });
       }
     } catch (e: any) {
       if (!abortedRef.current) {
@@ -126,33 +141,44 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
 
   return (
-    <div className="flex flex-col w-full items-center">
-      {!hasMessages && !loading && (
-        <div className="flex flex-col items-center justify-center mb-10">
-          <img src="/logo_full.png" alt="José Ruão.io" className="h-96 mb-12" />
-          <Suggestions
-            visible={!hasMessages}
-            onSelect={(t) => {
-              setInput(t);
-              sendMessage(t);
-            }}
-          />
-        </div>
-      )}
+    // container full-height; layout em coluna
+    <div className="h-[100dvh] min-h-[100dvh] w-full flex flex-col bg-white">
+      {/* zona de mensagens (cresce e faz scroll) */}
+      <main ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {!hasMessages && !loading && (
+          <div className="h-full w-full flex flex-col items-center justify-center">
+            <img
+              src="/logo_full.png"
+              alt="José Ruão.io"
+              className="h-96 mb-12"
+            />
+            <Suggestions
+              visible={!hasMessages}
+              onSelect={(t) => {
+                setInput(t);
+                sendMessage(t);
+              }}
+            />
+          </div>
+        )}
 
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 mb-4 w-full"
-        style={{ maxHeight: '70vh' }}
-      >
         {active?.messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div
+            key={i}
+            className={`flex ${
+              m.role === 'user' ? 'justify-end' : 'justify-start'
+            }`}
+          >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm prose prose-invert ${
-                m.role === 'user' ? 'bg-black text-white' : 'bg-zinc-100 text-black'
+              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm prose ${
+                m.role === 'user'
+                  ? 'bg-black text-white prose-invert'
+                  : 'bg-zinc-100 text-black'
               }`}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {m.content}
+              </ReactMarkdown>
             </div>
           </div>
         ))}
@@ -164,39 +190,53 @@ export function ChatWindow() {
             </div>
           </div>
         )}
-      </div>
+      </main>
 
-      <div className="flex items-center gap-2 border-t border-zinc-200 bg-white p-3 w-full">
-        {loading ? (
+      {/* composer colado em baixo */}
+      <footer className="sticky bottom-0 w-full bg-white/95 backdrop-blur border-t border-zinc-200">
+        <div className="mx-auto max-w-5xl flex items-center gap-2 p-3">
+          {loading ? (
+            <button
+              onClick={stopStreaming}
+              className="p-2 rounded hover:bg-zinc-100"
+              title="Parar geração"
+            >
+              <CircleStop className="h-5 w-5" />
+            </button>
+          ) : null}
+
+          <textarea
+            className="flex-1 resize-none bg-zinc-100 text-black rounded-lg px-3 py-2 outline-none"
+            rows={1}
+            placeholder="Escreve a tua mensagem..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+
           <button
-            onClick={stopStreaming}
-            className="p-2 rounded hover:bg-zinc-100"
-            title="Parar geração"
+            onClick={() => sendMessage()}
+            disabled={loading || !input.trim()}
+            className="p-2 text-black hover:text-emerald-500 disabled:opacity-50"
+            title="Enviar"
           >
-            <CircleStop className="h-5 w-5" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 12h14M12 5l7 7-7 7"
+              />
+            </svg>
           </button>
-        ) : null}
-
-        <textarea
-          className="flex-1 resize-none bg-zinc-100 text-black rounded-lg px-3 py-2 outline-none"
-          rows={1}
-          placeholder="Escreve a tua mensagem..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-
-        <button
-          onClick={() => sendMessage()}
-          disabled={loading || !input.trim()}
-          className="p-2 text-black hover:text-emerald-500 disabled:opacity-50"
-          title="Enviar"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
+        </div>
+      </footer>
     </div>
   );
 }

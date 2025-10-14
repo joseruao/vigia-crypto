@@ -37,7 +37,6 @@ def predictions():
         )
         resp = q.execute()
         data = getattr(resp, "data", []) or []
-
         if not data:
             resp = (
                 supabase.table("transacted_tokens")
@@ -49,7 +48,9 @@ def predictions():
                 .limit(8)
             ).execute()
             data = getattr(resp, "data", []) or []
-
+        for r in data:
+            token = (r.get("token") or "").strip()
+            r["coingecko_url"] = f"https://www.coingecko.com/en/search?query={token}"
         return data
     except Exception:
         return []
@@ -80,7 +81,6 @@ def ask_alerts(req: ChatRequest, exchange: Optional[str] = Query(None)):
             where = f"na {detected_exchange}" if detected_exchange else ""
             return {"answer": f"Nenhum token encontrado {where}."}
 
-        # usa analysis_text quando existir; senão gera linha com links
         lines = []
         for r in rows:
             if r.get("analysis_text"):
