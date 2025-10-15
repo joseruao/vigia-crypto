@@ -3,14 +3,17 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# importa routers (garante que existem __init__.py em backend/, Api/, routes/)
 from .routes.alerts import router as alerts_router
 from .routes.chat import router as chat_router
 
 app = FastAPI(title="Vigia Crypto API", version="1.0.0")
 
+# CORS (ajusta domains em produção)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # em produção: restringir
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,7 +27,7 @@ app.include_router(chat_router, prefix="")
 def ping():
     return {"status": "ok"}
 
-# Prova de versão (para evitar 404 no teste)
+# 🔎 rota de prova de vida/versão (usa isto para confirmar que o web está com o código novo)
 @app.get("/__version")
 def version():
     return {"api_version": "alerts-v2", "desc": "GET/POST /alerts/ask com analysis_text e dedupe"}

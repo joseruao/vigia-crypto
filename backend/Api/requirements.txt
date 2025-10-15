@@ -1,10 +1,35 @@
 ﻿fastapi==0.111.0
-uvicorn[standard]==0.30.6
+uvicorn==0.30.6
 python-dotenv==1.0.1
+
+# Supabase SDK e deps
+supabase==2.10.0
+gotrue==2.11.4
+postgrest==0.18.0
+realtime==2.22.0
+storage3==0.9.0
+
+# HTTP stack (⚠️ httpx >= 0.28 para aceitar `proxy=`)
+httpx>=0.28,<0.29
+httpcore==1.0.9
+websockets==15.0.1
 requests==2.32.3
+
+# ML stack
 numpy==2.1.1
+scipy==1.16.2
 scikit-learn==1.5.1
 joblib==1.4.2
-supabase==2.10.0
-PyJWT==2.9.0
-openai>=1.45.0
+
+# FastAPI extras
+pydantic==2.12.0
+pydantic-core==2.41.1
+starlette==0.37.2
+anyio==4.11.0
+ujson==5.11.0
+orjson==3.11.3
+python-multipart==0.0.20
+
+# Outros utilitários
+tqdm==4.67.1
+typing-extensions==4.15.0

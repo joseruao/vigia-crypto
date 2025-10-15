@@ -41,11 +41,10 @@ def _fetch_rows(detected_exchange: Optional[str]) -> List[Dict[str, Any]]:
     if detected_exchange:
         base = base.eq("exchange", detected_exchange)
 
-    # Ordena por score desc e ts desc (os melhores/mais recentes primeiro)
     resp = (
         base.order("score", desc=True)
             .order("ts", desc=True)
-            .limit(100)  # puxa mais para poder deduplicar bem
+            .limit(100)  # puxa mais para dedupe
     ).execute()
     return getattr(resp, "data", []) or []
 
@@ -73,12 +72,10 @@ def _build_answer(prompt: str, exchange: Optional[str] = None) -> dict:
         where = f"na {detected_exchange}" if detected_exchange else ""
         return {"answer": f"Nenhum token encontrado {where}."}
 
-    # Deduplica por token_address+exchange (evita spam do mesmo par)
     rows = _dedupe_rows(rows, key_fields=("token_address", "exchange"), limit=10)
 
     lines: List[str] = []
     for r in rows:
-        # Prioriza resumo humano
         if r.get("analysis_text"):
             lines.append(f"- {r['analysis_text']}")
             continue
@@ -87,7 +84,6 @@ def _build_answer(prompt: str, exchange: Optional[str] = None) -> dict:
         ex = r.get("exchange") or "—"
         score = r.get("score")
         score_txt = f"{score:.1f}" if isinstance(score, (int, float)) else "—"
-
         pair_url = _dexscreener_url(r)
         coingecko_url = _coingecko_url(token)
 
@@ -129,12 +125,10 @@ def predictions():
             ).execute()
             data = getattr(resp, "data", []) or []
 
-        # acrescenta coingecko_url para o painel
         for r in data:
             r["coingecko_url"] = _coingecko_url(r.get("token") or "")
             r["pair_url"] = _dexscreener_url(r)
 
-        # dedup leve para o painel também
         data = _dedupe_rows(data, key_fields=("token_address", "exchange"), limit=8)
         return data
     except Exception:
@@ -144,7 +138,7 @@ def predictions():
 def ask_alerts(req: ChatRequest, exchange: Optional[str] = Query(None)):
     return _build_answer(req.prompt, exchange)
 
-# GET opcional (evita 405 no teste manual)
+# GET opcional (para teste manual no browser)
 @router.get("/alerts/ask")
 def ask_alerts_get(
     prompt: str = Query(..., description="pergunta do utilizador"),
