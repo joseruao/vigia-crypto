@@ -135,7 +135,6 @@ def predictions():
     except Exception as e:
         return {"error": f"predictions failed: {e}", "data": []}
 
-# ---------- Compat: aceita POST (json ou text) e GET ----------
 @router.post("/alerts/ask")
 async def ask_alerts_post(request: Request, exchange: Optional[str] = Query(None)):
     try:

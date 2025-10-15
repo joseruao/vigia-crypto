@@ -9,17 +9,11 @@ postgrest==0.18.0
 realtime==2.22.0
 storage3==0.9.0
 
-# HTTP stack (fix do 'proxy')
+# HTTP stack (fix do 'proxy' no gotrue/supabase)
 httpx==0.28.1
 httpcore==1.0.9
 websockets==15.0.1
 requests==2.32.3
-
-# ML (se precisares no web também)
-numpy==2.1.1
-scipy==1.16.2
-scikit-learn==1.5.1
-joblib==1.4.2
 
 # FastAPI deps
 pydantic==2.12.0

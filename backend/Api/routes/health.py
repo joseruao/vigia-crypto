@@ -4,11 +4,7 @@ from fastapi.routing import APIRoute
 import importlib
 
 router = APIRouter(tags=["health"])
-routes_app: FastAPI | None = None  # será injetado pelo main
-
-@router.get("/__version")
-def version():
-    return {"api_version": "alerts-v2", "desc": "tem /alerts/ask GET e POST com analysis_text e dedupe"}
+routes_app: FastAPI | None = None  # injetado no startup
 
 @router.get("/debug/deps")
 def debug_deps():
