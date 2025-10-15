@@ -1,15 +1,10 @@
-﻿# backend/Api/routes/chat.py
-# -*- coding: utf-8 -*-
-
+﻿## -*- coding: utf-8 -*-
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Generator
-from dotenv import load_dotenv
-import os
 from openai import OpenAI
+import os
 
-load_dotenv()
 router = APIRouter(tags=["chat"])
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -30,7 +25,7 @@ def chat(req: ChatRequest):
 
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest):
-    def generate() -> Generator[str, None, None]:
+    def generate():
         with client.chat.completions.stream(
             model="gpt-4o-mini",
             messages=[
