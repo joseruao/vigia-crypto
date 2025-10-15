@@ -1,16 +1,18 @@
 ﻿# backend/Api/routes/alerts.py
 # -*- coding: utf-8 -*-
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-import os
-from dotenv import load_dotenv
-from supabase import create_client
-# --- no topo do ficheiro ---
-from supabase import create_client
-import threading, os
+import os, threading, json
 
+from dotenv import load_dotenv
+load_dotenv()
+
+router = APIRouter(tags=["alerts"])
+
+# -------- Supabase (lazy) --------
+from supabase import create_client
 _SUPA_LOCK = threading.Lock()
 _SUPA_CLIENT = None
 
@@ -22,17 +24,9 @@ def get_supabase():
                 SUPABASE_URL = os.getenv("SUPABASE_URL")
                 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
                 if not SUPABASE_URL or not SUPABASE_KEY:
-                    raise RuntimeError("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY em falta.")
+                    raise RuntimeError("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY em falta no ambiente do serviço WEB.")
                 _SUPA_CLIENT = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _SUPA_CLIENT
-
-load_dotenv()
-router = APIRouter(tags=["alerts"])
-
-# Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 EXCHANGES = ["Binance", "Coinbase", "Kraken", "Bybit", "Gate.io", "Bitget", "OKX", "MEXC"]
 
@@ -52,6 +46,7 @@ def _dexscreener_url(row: Dict[str, Any]) -> str:
     return f"https://dexscreener.com/solana/{token_addr}" if token_addr else f"https://dexscreener.com/search?q={token}"
 
 def _fetch_rows(detected_exchange: Optional[str]) -> List[Dict[str, Any]]:
+    supabase = get_supabase()
     base = supabase.table("transacted_tokens").select(
         "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
         "score, pair_url, ts, analysis_text"
@@ -62,7 +57,7 @@ def _fetch_rows(detected_exchange: Optional[str]) -> List[Dict[str, Any]]:
     resp = (
         base.order("score", desc=True)
             .order("ts", desc=True)
-            .limit(100)  # puxa mais para dedupe
+            .limit(100)
     ).execute()
     return getattr(resp, "data", []) or []
 
@@ -117,6 +112,7 @@ def _build_answer(prompt: str, exchange: Optional[str] = None) -> dict:
 @router.get("/alerts/predictions")
 def predictions():
     try:
+        supabase = get_supabase()
         q = (
             supabase.table("transacted_tokens")
             .select(
@@ -146,20 +142,45 @@ def predictions():
         for r in data:
             r["coingecko_url"] = _coingecko_url(r.get("token") or "")
             r["pair_url"] = _dexscreener_url(r)
-
         data = _dedupe_rows(data, key_fields=("token_address", "exchange"), limit=8)
         return data
-    except Exception:
-        return []
+    except Exception as e:
+        return {"error": f"predictions failed: {e}", "data": []}
 
+# ---------- Compat: aceita POST (json ou text) e GET ----------
 @router.post("/alerts/ask")
-def ask_alerts(req: ChatRequest, exchange: Optional[str] = Query(None)):
-    return _build_answer(req.prompt, exchange)
+async def ask_alerts_post(request: Request, exchange: Optional[str] = Query(None)):
+    try:
+        prompt = None
+        ctype = request.headers.get("content-type", "")
+        if "application/json" in ctype:
+            data = await request.json()
+            if isinstance(data, dict):
+                prompt = data.get("prompt")
+        elif "text/plain" in ctype:
+            prompt = (await request.body()).decode("utf-8", errors="ignore")
+        else:
+            # tentativa: se mandarem json mas com header marado
+            raw = (await request.body()).decode("utf-8", errors="ignore").strip()
+            try:
+                obj = json.loads(raw)
+                if isinstance(obj, dict):
+                    prompt = obj.get("prompt")
+            except Exception:
+                prompt = raw
 
-# GET opcional (para teste manual no browser)
+        if not prompt or not str(prompt).strip():
+            return {"answer": "⚠️ prompt vazio."}
+        return _build_answer(str(prompt), exchange)
+    except Exception as e:
+        return {"answer": f"⚠️ Erro a consultar tokens: {e}"}
+
 @router.get("/alerts/ask")
 def ask_alerts_get(
     prompt: str = Query(..., description="pergunta do utilizador"),
     exchange: Optional[str] = Query(None)
 ):
-    return _build_answer(prompt, exchange)
+    try:
+        return _build_answer(prompt, exchange)
+    except Exception as e:
+        return {"answer": f"⚠️ Erro a consultar tokens: {e}"}
