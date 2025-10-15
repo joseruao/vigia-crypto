@@ -7,6 +7,24 @@ from typing import Optional, List, Dict, Any
 import os
 from dotenv import load_dotenv
 from supabase import create_client
+# --- no topo do ficheiro ---
+from supabase import create_client
+import threading, os
+
+_SUPA_LOCK = threading.Lock()
+_SUPA_CLIENT = None
+
+def get_supabase():
+    global _SUPA_CLIENT
+    if _SUPA_CLIENT is None:
+        with _SUPA_LOCK:
+            if _SUPA_CLIENT is None:
+                SUPABASE_URL = os.getenv("SUPABASE_URL")
+                SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+                if not SUPABASE_URL or not SUPABASE_KEY:
+                    raise RuntimeError("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY em falta.")
+                _SUPA_CLIENT = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _SUPA_CLIENT
 
 load_dotenv()
 router = APIRouter(tags=["alerts"])
