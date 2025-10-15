@@ -9,7 +9,7 @@ postgrest==0.18.0
 realtime==2.22.0
 storage3==0.9.0
 
-# HTTP stack (fix do 'proxy' no gotrue/supabase)
+# HTTP stack compat (fix do 'proxy' em gotrue)
 httpx==0.28.1
 httpcore==1.0.9
 websockets==15.0.1
@@ -24,5 +24,5 @@ ujson==5.11.0
 orjson==3.11.3
 python-multipart==0.0.20
 
-# OpenAI
+# OpenAI SDK
 openai==1.52.2

@@ -1,27 +1,27 @@
 ﻿# -*- coding: utf-8 -*-
-from fastapi import APIRouter, Query, Request
+import os, json, threading
 from typing import Optional, List, Dict, Any
-import os, threading, json
+from fastapi import APIRouter, Query, Request
 from dotenv import load_dotenv
 
 load_dotenv()
 router = APIRouter(tags=["alerts"])
 
-# ---------- Supabase lazy ----------
+# Supabase lazy
 from supabase import create_client
-_SUPA_LOCK = threading.Lock()
 _SUPA_CLIENT = None
+_SUPA_LOCK = threading.Lock()
 
 def get_supabase():
     global _SUPA_CLIENT
     if _SUPA_CLIENT is None:
         with _SUPA_LOCK:
             if _SUPA_CLIENT is None:
-                SUPABASE_URL = os.getenv("SUPABASE_URL")
-                SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-                if not SUPABASE_URL or not SUPABASE_KEY:
-                    raise RuntimeError("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY em falta no ambiente do serviço WEB.")
-                _SUPA_CLIENT = create_client(SUPABASE_URL, SUPABASE_KEY)
+                url = os.getenv("SUPABASE_URL")
+                key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+                if not url or not key:
+                    raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY em falta.")
+                _SUPA_CLIENT = create_client(url, key)
     return _SUPA_CLIENT
 
 EXCHANGES = ["Binance", "Coinbase", "Kraken", "Bybit", "Gate.io", "Bitget", "OKX", "MEXC"]
@@ -31,29 +31,28 @@ def _coingecko_url(token: str) -> str:
     return f"https://www.coingecko.com/en/search?query={token}"
 
 def _dexscreener_url(row: Dict[str, Any]) -> str:
-    pair_url = row.get("pair_url")
-    if pair_url:
-        return pair_url
-    token_addr = row.get("token_address") or ""
+    if row.get("pair_url"):
+        return row["pair_url"]
+    addr = row.get("token_address") or ""
     token = row.get("token") or ""
-    return f"https://dexscreener.com/solana/{token_addr}" if token_addr else f"https://dexscreener.com/search?q={token}"
+    return f"https://dexscreener.com/solana/{addr}" if addr else f"https://dexscreener.com/search?q={token}"
 
-def _fetch_rows(detected_exchange: Optional[str]) -> List[Dict[str, Any]]:
+def _fetch_rows(exchange: Optional[str]) -> List[Dict[str, Any]]:
     supabase = get_supabase()
     base = supabase.table("transacted_tokens").select(
         "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
         "score, pair_url, ts, analysis_text"
     )
-    if detected_exchange:
-        base = base.eq("exchange", detected_exchange)
+    if exchange:
+        base = base.eq("exchange", exchange)
     resp = base.order("score", desc=True).order("ts", desc=True).limit(100).execute()
     return getattr(resp, "data", []) or []
 
-def _dedupe_rows(rows: List[Dict[str, Any]], key_fields=("token_address", "exchange"), limit=10) -> List[Dict[str, Any]]:
+def _dedupe(rows: List[Dict[str, Any]], key=("token_address","exchange"), limit=10) -> List[Dict[str, Any]]:
     seen = set()
     out: List[Dict[str, Any]] = []
     for r in rows:
-        k = tuple((r.get(f) or "").lower() for f in key_fields)
+        k = tuple((r.get(f) or "").lower() for f in key)
         if k in seen:
             continue
         seen.add(k)
@@ -62,40 +61,34 @@ def _dedupe_rows(rows: List[Dict[str, Any]], key_fields=("token_address", "excha
             break
     return out
 
-def _build_answer(prompt: str, exchange: Optional[str] = None) -> dict:
+def _build_answer(prompt: str, exchange: Optional[str]) -> Dict[str, Any]:
     q = (prompt or "").lower()
-    detected_exchange = next((ex for ex in EXCHANGES if ex.lower() in q), None)
+    detected = next((ex for ex in EXCHANGES if ex.lower() in q), None)
     if exchange:
-        detected_exchange = exchange
+        detected = exchange
 
-    rows = _fetch_rows(detected_exchange)
+    rows = _fetch_rows(detected)
     if not rows:
-        where = f"na {detected_exchange}" if detected_exchange else ""
+        where = f"na {detected}" if detected else ""
         return {"answer": f"Nenhum token encontrado {where}."}
 
-    rows = _dedupe_rows(rows, key_fields=("token_address", "exchange"), limit=10)
+    rows = _dedupe(rows, key=("token_address","exchange"), limit=10)
 
     lines: List[str] = []
     for r in rows:
         if r.get("analysis_text"):
             lines.append(f"- {r['analysis_text']}")
-            continue
-
-        token = r.get("token") or "—"
-        ex = r.get("exchange") or "—"
-        score = r.get("score")
-        score_txt = f"{score:.1f}" if isinstance(score, (int, float)) else "—"
-        pair_url = _dexscreener_url(r)
-        coingecko_url = _coingecko_url(token)
-
-        lines.append(
-            f"- **{token}** _( {ex} )_ — **Score:** {score_txt}  \n"
-            f"  ↳ [DexScreener]({pair_url}) · [CoinGecko]({coingecko_url})"
-        )
-
-    where = f"na **{detected_exchange}**" if detected_exchange else ""
-    answer = f"**Últimos potenciais listings detetados {where}:**\n\n" + "\n".join(lines)
-    return {"answer": answer}
+        else:
+            token = r.get("token") or "—"
+            ex = r.get("exchange") or "—"
+            score = r.get("score")
+            score_txt = f"{score:.1f}" if isinstance(score, (int, float)) else "—"
+            lines.append(
+                f"- **{token}** _( {ex} )_ — **Score:** {score_txt}  \n"
+                f"  ↳ [DexScreener]({_dexscreener_url(r)}) · [CoinGecko]({_coingecko_url(token)})"
+            )
+    where = f"na **{detected}**" if detected else ""
+    return {"answer": f"**Últimos potenciais listings detetados {where}:**\n\n" + "\n".join(lines)}
 
 @router.get("/alerts/predictions")
 def predictions():
@@ -103,49 +96,39 @@ def predictions():
         supabase = get_supabase()
         q = (
             supabase.table("transacted_tokens")
-            .select(
-                "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
-                "score, pair_url, ts"
-            )
+            .select("id, exchange, token, token_address, value_usd, liquidity, volume_24h, score, pair_url, ts")
             .gte("value_usd", 10000)
             .gte("liquidity", 100000)
             .order("score", desc=True)
             .order("ts", desc=True)
             .limit(20)
-        )
-        resp = q.execute()
-        data = getattr(resp, "data", []) or []
+        ).execute()
+        data = getattr(q, "data", []) or []
         if not data:
-            resp = (
+            q2 = (
                 supabase.table("transacted_tokens")
-                .select(
-                    "id, exchange, token, token_address, value_usd, liquidity, volume_24h, "
-                    "score, pair_url, ts"
-                )
+                .select("id, exchange, token, token_address, value_usd, liquidity, volume_24h, score, pair_url, ts")
                 .order("ts", desc=True)
                 .limit(20)
             ).execute()
-            data = getattr(resp, "data", []) or []
+            data = getattr(q2, "data", []) or []
 
         for r in data:
             r["coingecko_url"] = _coingecko_url(r.get("token") or "")
             r["pair_url"] = _dexscreener_url(r)
-        data = _dedupe_rows(data, key_fields=("token_address", "exchange"), limit=8)
-        return data
+        return _dedupe(data, key=("token_address","exchange"), limit=8)
     except Exception as e:
         return {"error": f"predictions failed: {e}", "data": []}
 
 @router.post("/alerts/ask")
-async def ask_alerts_post(request: Request, exchange: Optional[str] = Query(None)):
+async def ask_post(request: Request, exchange: Optional[str] = Query(None)):
     try:
         prompt = None
-        ctype = request.headers.get("content-type", "")
+        ctype = request.headers.get("content-type","")
         if "application/json" in ctype:
-            data = await request.json()
-            if isinstance(data, dict):
-                prompt = data.get("prompt")
-        elif "text/plain" in ctype:
-            prompt = (await request.body()).decode("utf-8", errors="ignore")
+            body = await request.json()
+            if isinstance(body, dict):
+                prompt = body.get("prompt")
         else:
             raw = (await request.body()).decode("utf-8", errors="ignore").strip()
             try:
@@ -154,7 +137,6 @@ async def ask_alerts_post(request: Request, exchange: Optional[str] = Query(None
                     prompt = obj.get("prompt")
             except Exception:
                 prompt = raw
-
         if not prompt or not str(prompt).strip():
             return {"answer": "⚠️ prompt vazio."}
         return _build_answer(str(prompt), exchange)
@@ -162,10 +144,7 @@ async def ask_alerts_post(request: Request, exchange: Optional[str] = Query(None
         return {"answer": f"⚠️ Erro a consultar tokens: {e}"}
 
 @router.get("/alerts/ask")
-def ask_alerts_get(
-    prompt: str = Query(..., description="pergunta do utilizador"),
-    exchange: Optional[str] = Query(None)
-):
+def ask_get(prompt: str = Query(...), exchange: Optional[str] = Query(None)):
     try:
         return _build_answer(prompt, exchange)
     except Exception as e:

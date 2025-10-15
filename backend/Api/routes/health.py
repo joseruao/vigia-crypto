@@ -4,7 +4,16 @@ from fastapi.routing import APIRoute
 import importlib
 
 router = APIRouter(tags=["health"])
-routes_app: FastAPI | None = None  # injetado no startup
+routes_app: FastAPI | None = None
+
+@router.get("/__routes")
+def list_routes():
+    assert routes_app is not None, "app não injetada"
+    items = []
+    for r in routes_app.routes:
+        if isinstance(r, APIRoute):
+            items.append({"path": r.path, "methods": sorted(list(r.methods))})
+    return items
 
 @router.get("/debug/deps")
 def debug_deps():
@@ -17,12 +26,3 @@ def debug_deps():
         except Exception as e:
             out[m] = f"ERR: {e}"
     return out
-
-@router.get("/__routes")
-def list_routes():
-    assert routes_app is not None, "app não injetada"
-    items = []
-    for r in routes_app.routes:
-        if isinstance(r, APIRoute):
-            items.append({"path": r.path, "methods": sorted(list(r.methods))})
-    return items

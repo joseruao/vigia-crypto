@@ -1,9 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
+import os
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import OpenAI
-import os
 
 router = APIRouter(tags=["chat"])
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
