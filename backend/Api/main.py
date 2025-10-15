@@ -23,3 +23,8 @@ app.include_router(chat_router, prefix="")
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
+
+# Prova de versão (para evitar 404 no teste)
+@app.get("/__version")
+def version():
+    return {"api_version": "alerts-v2", "desc": "GET/POST /alerts/ask com analysis_text e dedupe"}
