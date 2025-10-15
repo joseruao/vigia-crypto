@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 router = APIRouter(tags=["alerts"])
 
-# Supabase lazy
+# --- Supabase lazy (evita falhas em import) ---
 from supabase import create_client
 _SUPA_CLIENT = None
 _SUPA_LOCK = threading.Lock()
@@ -76,7 +76,7 @@ def _build_answer(prompt: str, exchange: Optional[str]) -> Dict[str, Any]:
 
     lines: List[str] = []
     for r in rows:
-        if r.get("analysis_text"):
+        if r.get("analysis_text"):  # preferir o texto humano
             lines.append(f"- {r['analysis_text']}")
         else:
             token = r.get("token") or "—"
