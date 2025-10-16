@@ -1,30 +1,24 @@
-﻿# Api/main.py
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+﻿# backend/Api/main.py
+from __future__ import annotations
 import os, time
-
-from .routes.alerts import router as alerts_router
-# (se tiveres mais routers, importa e inclui aqui)
+from fastapi import FastAPI
 
 app = FastAPI(title="Vigia Crypto API", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],   # ou substitui pelo domínio do Vercel para fechar
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.get("/__version")
+def version():
+    return {
+        "commit": os.getenv("RENDER_GIT_COMMIT", "")[:7],
+        "ts": int(time.time()),
+    }
 
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
 
-@app.get("/__version")
-def version():
-    return {
-        "commit": os.getenv("RENDER_GIT_COMMIT", "local"),
-        "ts": int(time.time()),
-    }
-
-app.include_router(alerts_router)
+@app.on_event("startup")
+def on_startup():
+    from .routes.alerts import router as alerts_router
+    from .routes.health import router as health_router  # se já existe
+    app.include_router(health_router)
+    app.include_router(alerts_router)
