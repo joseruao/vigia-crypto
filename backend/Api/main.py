@@ -11,7 +11,7 @@ app = FastAPI(title="Vigia Crypto API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ajusta se precisares
+    allow_origins=["*"],       # ajusta se precisares restringir domínios
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,11 +21,10 @@ app.add_middleware(
 def ping():
     return {"status": "ok"}
 
-# Registo de routers no startup para ter logs bonitos,
-# mas importar aqui também é ok (alerts.py já é safe com lazy init)
 @app.on_event("startup")
 def on_startup():
     logger.info("🚀 API startup")
-    from .routes.alerts import router as alerts_router
-    app.include_router(alerts_router)
+    # Import aqui é seguro; alerts.py já não rebenta no import
+    from .routes import alerts
+    app.include_router(alerts.router)
     logger.info("✅ Routers registados")

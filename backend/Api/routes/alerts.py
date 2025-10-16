@@ -9,7 +9,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
 
-# Supabase lazy-init
+# Supabase será inicializado apenas quando necessário (lazy)
 from supabase import create_client, Client  # type: ignore
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -32,7 +32,6 @@ class Prediction(BaseModel):
     ts: datetime
 
 # ---------- ENV & CLIENTE (lazy) ----------
-
 _SUPABASE_CLIENT: Optional[Client] = None
 
 def _get_env(name: str, *fallbacks: str) -> Optional[str]:
@@ -43,6 +42,10 @@ def _get_env(name: str, *fallbacks: str) -> Optional[str]:
     return None
 
 def get_supabase() -> Client:
+    """
+    Cria e cacheia o cliente Supabase apenas quando chamado por uma rota.
+    Não lança RuntimeError no import do módulo para não quebrar o startup.
+    """
     global _SUPABASE_CLIENT
     if _SUPABASE_CLIENT is not None:
         return _SUPABASE_CLIENT
@@ -55,8 +58,11 @@ def get_supabase() -> Client:
     )
 
     if not supabase_url or not supabase_key:
-        # Não crasha o boot; falha apenas quando a rota é chamada sem envs.
-        raise HTTPException(status_code=500, detail="Supabase envs em falta (SUPABASE_URL / SERVICE_ROLE ou ANON).")
+        # Só falha quando a rota é de facto chamada
+        raise HTTPException(
+            status_code=500,
+            detail="Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE/ANON)."
+        )
 
     _SUPABASE_CLIENT = create_client(supabase_url, supabase_key)
     return _SUPABASE_CLIENT
@@ -78,8 +84,8 @@ def format_predictions_md(rows: List[Prediction]) -> str:
 
 async def read_loose_body(request: Request) -> dict:
     """
-    Aceita application/json, form-urlencoded e texto cru.
-    Retorna sempre um dict com 'prompt' (ou lança 400).
+    Aceita application/json, x-www-form-urlencoded, e texto cru (raw).
+    Retorna sempre um dict com 'prompt' ou lança 400.
     """
     ctype = (request.headers.get("content-type") or "").lower()
 
@@ -126,7 +132,9 @@ def get_predictions(limit: int = 10) -> List[Prediction]:
 @router.post("/ask")
 async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=None)) -> dict:
     data = await read_loose_body(request)
-    prompt = str(data.get("prompt") or "").trim() if hasattr(str, "trim") else str(data.get("prompt") or "").strip()
+    # compat trim/strip
+    prompt_val = data.get("prompt") or ""
+    prompt = prompt_val.strip()
     ex = data.get("exchange") or exchange
 
     if not prompt:
