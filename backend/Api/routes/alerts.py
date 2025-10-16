@@ -1,4 +1,4 @@
-﻿# backend/Api/routes/alerts.py
+﻿# Api/routes/alerts.py
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
 
-# Supabase será inicializado apenas quando necessário (lazy)
+# Supabase: lazy init (só quando a rota é chamada)
 from supabase import create_client, Client  # type: ignore
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -44,7 +44,7 @@ def _get_env(name: str, *fallbacks: str) -> Optional[str]:
 def get_supabase() -> Client:
     """
     Cria e cacheia o cliente Supabase apenas quando chamado por uma rota.
-    Não lança RuntimeError no import do módulo para não quebrar o startup.
+    Só falha (500) quando efetivamente precisamos dele.
     """
     global _SUPABASE_CLIENT
     if _SUPABASE_CLIENT is not None:
@@ -58,7 +58,6 @@ def get_supabase() -> Client:
     )
 
     if not supabase_url or not supabase_key:
-        # Só falha quando a rota é de facto chamada
         raise HTTPException(
             status_code=500,
             detail="Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE/ANON)."
@@ -71,6 +70,7 @@ def get_supabase() -> Client:
 def format_predictions_md(rows: List[Prediction]) -> str:
     if not rows:
         return "Nenhum potencial listing detetado nas últimas leituras."
+
     lines = ["**Últimos potenciais listings detetados :**", ""]
     for r in rows:
         cg = f"https://www.coingecko.com/en/search?query={r.token}"
@@ -84,8 +84,8 @@ def format_predictions_md(rows: List[Prediction]) -> str:
 
 async def read_loose_body(request: Request) -> dict:
     """
-    Aceita application/json, x-www-form-urlencoded, e texto cru (raw).
-    Retorna sempre um dict com 'prompt' ou lança 400.
+    Aceita application/json, x-www-form-urlencoded e texto cru.
+    Retorna sempre um dict com 'prompt' (quando válido) ou lança 400.
     """
     ctype = (request.headers.get("content-type") or "").lower()
 
@@ -99,6 +99,7 @@ async def read_loose_body(request: Request) -> dict:
         form = await request.form()
         return dict(form)
 
+    # texto cru
     raw = (await request.body()) or b""
     text = raw.decode("utf-8", errors="ignore").strip()
 
@@ -132,20 +133,47 @@ def get_predictions(limit: int = 10) -> List[Prediction]:
 @router.post("/ask")
 async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=None)) -> dict:
     data = await read_loose_body(request)
-    # compat trim/strip
+
+    # compat: aceita 'prompt' e 'exchange' via body, query mantém prioridade para 'exchange'
     prompt_val = data.get("prompt") or ""
-    prompt = prompt_val.strip()
-    ex = data.get("exchange") or exchange
+    prompt = str(prompt_val).strip()
+    ex = exchange or data.get("exchange")
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Falta 'prompt'.")
 
     sb = get_supabase()
-    q = sb.table("predictions").select("*").order("ts", desc=True).limit(10)
+
+    q = (
+        sb.table("predictions")
+        .select("*")
+        .order("ts", desc=True)
+        .limit(25)
+    )
     if ex:
         q = q.eq("exchange", ex)
+
     resp = q.execute()
-    rows = [Prediction(**r) for r in (resp.data or [])]
+
+    # dedupe simples por (exchange, token)
+    seen = set()
+    rows: List[Prediction] = []
+    for r in (resp.data or []):
+        key = (r.get("exchange"), r.get("token"))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(Prediction(**r))
 
     answer = format_predictions_md(rows)
     return {"answer": answer}
+
+# (opcional) GET para debugging rápido no browser:
+@router.get("/ask")
+async def ask_alerts_get(prompt: str, exchange: Optional[str] = None) -> dict:
+    fake = Request({"type": "http"})
+    # injeta um corpo JSON falso para reaproveitar a lógica
+    body = json.dumps({"prompt": prompt, "exchange": exchange}).encode()
+    # pequeno hack: FastAPI guarda o corpo em _body quando vem de testes
+    fake._body = body  # type: ignore[attr-defined]
+    return await ask_alerts(fake, exchange=exchange)

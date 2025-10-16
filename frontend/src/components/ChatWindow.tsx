@@ -27,7 +27,7 @@ export function ChatWindow() {
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  // Base da API: usa env, senão cai para o teu Render
+  // Base da API: usa env, senão cai para o Render
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL?.trim() ||
     'https://vigia-crypto-1.onrender.com';
@@ -36,7 +36,6 @@ export function ChatWindow() {
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    // força para o fundo
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [active?.messages, loading]);
 
@@ -79,29 +78,41 @@ export function ChatWindow() {
 
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: useAlerts
+            ? 'application/json'
+            : 'text/event-stream, text/plain, application/json',
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+
+      if (!res.ok) {
+        const textErr = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${res.statusText} — ${textErr}`);
+      }
 
       if (!useAlerts) {
         // streaming normal do /chat/stream
         const reader = res.body?.getReader();
         if (!reader) throw new Error('Sem stream');
 
-        let buffer = '';
         addMessage({ role: 'assistant', content: '' });
+
+        let acc = '';
+        const decoder = new TextDecoder();
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunkStr = new TextDecoder().decode(value);
+          const chunkStr = decoder.decode(value, { stream: true });
           if (!chunkStr) continue;
 
-          buffer += chunkStr;
-          if (!gotFirstChunk && buffer.length > 0) setGotFirstChunk(true);
-          updateLastAssistantMessage(buffer);
+          acc += chunkStr;
+          if (!gotFirstChunk && acc.length > 0) setGotFirstChunk(true);
+          updateLastAssistantMessage(acc);
         }
       } else {
         // resposta direta do /alerts/ask (markdown pronto)
@@ -113,8 +124,9 @@ export function ChatWindow() {
       }
     } catch (e: any) {
       if (!abortedRef.current) {
+        const msg = e?.message ?? '⚠️ Erro ao comunicar com a API';
         console.error(e);
-        addMessage({ role: 'assistant', content: '⚠️ Erro no streaming' });
+        addMessage({ role: 'assistant', content: msg });
       }
     } finally {
       setLoading(false);
@@ -165,9 +177,7 @@ export function ChatWindow() {
         {active?.messages.map((m, i) => (
           <div
             key={i}
-            className={`flex ${
-              m.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
+            className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm prose ${

@@ -1,30 +1,25 @@
-﻿# backend/Api/main.py
-from __future__ import annotations
-
-import logging
+﻿# Api/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-logger = logging.getLogger(__name__)
+# importa o router das rotas
+from .routes.alerts import router as alerts_router
 
 app = FastAPI(title="Vigia Crypto API", version="1.0.0")
 
+# CORS: abre para o teu frontend (ajusta se quiseres afunilar)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # ajusta se precisares restringir domínios
+    allow_origins=["*"],          # ou ["https://o_teu_dominio.com"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# healthcheck básico
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
 
-@app.on_event("startup")
-def on_startup():
-    logger.info("🚀 API startup")
-    # Import aqui é seguro; alerts.py já não rebenta no import
-    from .routes import alerts
-    app.include_router(alerts.router)
-    logger.info("✅ Routers registados")
+# regista rotas
+app.include_router(alerts_router)
