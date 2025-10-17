@@ -1,14 +1,12 @@
-﻿# backend/Api/routes/alerts.py
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Set
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
-
 from supabase import create_client, Client  # type: ignore
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -43,6 +41,7 @@ def _get_env(name: str, *fallbacks: str) -> Optional[str]:
 def get_supabase() -> Client:
     """
     Cria e cacheia o cliente Supabase apenas quando chamado por uma rota.
+    Falha só quando a rota é de facto usada (não no import).
     """
     global _SUPABASE_CLIENT
     if _SUPABASE_CLIENT is not None:
@@ -65,34 +64,39 @@ def get_supabase() -> Client:
     return _SUPABASE_CLIENT
 
 # ---------- HELPERS ----------
-def format_predictions_md(rows: List[Prediction]) -> str:
-    if not rows:
-        return "Nenhum potencial listing detetado nas últimas leituras."
-
-    lines = ["**Últimos potenciais listings detetados :**", ""]
-    # Dedupe por (token, exchange) preservando ordem
-    seen = set()
-    unique_rows: List[Prediction] = []
+def _dedupe_predictions(rows: List[Prediction], max_items: int = 10) -> List[Prediction]:
+    """
+    Remove duplicados por (token, exchange, pair_url) preservando ordem temporal.
+    """
+    seen: Set[Tuple[str, str, str]] = set()
+    out: List[Prediction] = []
     for r in rows:
-        key = (r.token.upper(), r.exchange)
+        key = (r.token.upper().strip(), r.exchange.strip(), (r.pair_url or "").strip())
         if key in seen:
             continue
         seen.add(key)
-        unique_rows.append(r)
+        out.append(r)
+        if len(out) >= max_items:
+            break
+    return out
 
-    for r in unique_rows:
+def format_predictions_md(rows: List[Prediction]) -> str:
+    if not rows:
+        return "Nenhum potencial listing detetado nas últimas leituras."
+    lines = ["**Últimos potenciais listings detetados :**", ""]
+    for r in rows:
         cg = f"https://www.coingecko.com/en/search?query={r.token}"
         ds = r.pair_url or ""
         ex = r.exchange
         lines.append(
-            f"- **{r.token}** _( {ex} )_ — **Score:** {r.score}  \n"
+            f"- **{r.token}** _( {ex} )_ — **Score:** {r.score}.  \n"
             f"  ↳ [DexScreener]({ds}) · [CoinGecko]({cg})"
         )
     return "\n".join(lines)
 
 async def read_loose_body(request: Request) -> dict:
     """
-    Aceita application/json, x-www-form-urlencoded, e texto cru (raw).
+    Aceita application/json, x-www-form-urlencoded, e texto cru.
     Retorna sempre um dict com 'prompt' ou lança 400.
     """
     ctype = (request.headers.get("content-type") or "").lower()
@@ -131,15 +135,17 @@ def get_predictions(limit: int = 10) -> List[Prediction]:
         sb.table("predictions")
         .select("*")
         .order("ts", desc=True)
-        .limit(limit)
+        .limit(max(limit, 1))
         .execute()
     )
-    rows = resp.data or []
-    return [Prediction(**r) for r in rows]
+    rows = [Prediction(**r) for r in (resp.data or [])]
+    rows = _dedupe_predictions(rows, max_items=limit)
+    return rows
 
 @router.post("/ask")
 async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=None)) -> dict:
     data = await read_loose_body(request)
+
     prompt_val = data.get("prompt") or ""
     prompt = str(prompt_val).strip()
     ex = data.get("exchange") or exchange
@@ -153,6 +159,7 @@ async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=N
         q = q.eq("exchange", ex)
     resp = q.execute()
     rows = [Prediction(**r) for r in (resp.data or [])]
+    rows = _dedupe_predictions(rows, max_items=10)
 
     answer = format_predictions_md(rows)
     return {"answer": answer}
