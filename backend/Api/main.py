@@ -51,8 +51,9 @@ app.add_middleware(
 )
 
 # ---------- Routers ----------
-from backend.Api.routes.alerts import router as alerts_router
-from backend.Api.routes.chat import router as chat_router
+# CORREÇÃO: Removido "backend." porque já estamos dentro de backend/
+from Api.routes.alerts import router as alerts_router
+from Api.routes.chat import router as chat_router
 app.include_router(alerts_router)
 app.include_router(chat_router)
 
