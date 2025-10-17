@@ -1,41 +1,26 @@
-﻿# -*- coding: utf-8 -*-
-import os
-from fastapi import APIRouter
+﻿# backend/Api/routes/chat.py
+from __future__ import annotations
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from openai import OpenAI
+import asyncio
 
 router = APIRouter(tags=["chat"])
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-class ChatRequest(BaseModel):
-    prompt: str
 
 @router.post("/chat")
-def chat(req: ChatRequest):
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Tu és um assistente especializado em criptomoedas."},
-            {"role": "user", "content": req.prompt},
-        ],
-    )
-    return {"answer": completion.choices[0].message.content}
+async def chat_plain(req: Request):
+    data = await req.json()
+    prompt = (data.get("prompt") or "").strip()
+    return {"answer": f"Eco: {prompt}"}
 
 @router.post("/chat/stream")
-def chat_stream(req: ChatRequest):
-    def generate():
-        with client.chat.completions.stream(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Tu és um assistente especializado em criptomoedas."},
-                {"role": "user", "content": req.prompt},
-            ],
-        ) as stream:
-            for event in stream:
-                if event.type == "content.delta" and event.delta:
-                    yield event.delta
-                elif event.type == "error":
-                    yield f"⚠️ Erro: {event.error}"
-            stream.close()
-    return StreamingResponse(generate(), media_type="text/plain")
+async def chat_stream(req: Request):
+    data = await req.json()
+    prompt = (data.get("prompt") or "").strip()
+
+    async def gen():
+        text = f"Eco (stream): {prompt}"
+        for i in range(0, len(text), 8):
+            await asyncio.sleep(0.05)
+            yield text[i:i+8]
+
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
