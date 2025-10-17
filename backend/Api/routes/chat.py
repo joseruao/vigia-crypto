@@ -1,26 +1,37 @@
-﻿# backend/Api/routes/chat.py
-from __future__ import annotations
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+﻿from __future__ import annotations
+
 import asyncio
+from typing import AsyncGenerator, Optional, Dict, Any
 
-router = APIRouter(tags=["chat"])
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
-@router.post("/chat")
-async def chat_plain(req: Request):
-    data = await req.json()
-    prompt = (data.get("prompt") or "").strip()
-    return {"answer": f"Eco: {prompt}"}
+router = APIRouter(prefix="/chat", tags=["chat"])
 
-@router.post("/chat/stream")
-async def chat_stream(req: Request):
-    data = await req.json()
-    prompt = (data.get("prompt") or "").strip()
+async def _read_json(request: Request) -> Dict[str, Any]:
+    try:
+        data = await request.json()
+        if not isinstance(data, dict):
+            raise ValueError
+        return data
+    except Exception:
+        raise HTTPException(status_code=400, detail="Body inválido (esperado JSON object)")
 
-    async def gen():
-        text = f"Eco (stream): {prompt}"
-        for i in range(0, len(text), 8):
-            await asyncio.sleep(0.05)
-            yield text[i:i+8]
+@router.post("/stream")
+async def chat_stream(request: Request) -> StreamingResponse:
+    """
+    Stream 'cru' (text/plain) em pequenos pedaços.
+    Isto é um 'stub' para a tua UI não rebentar com 400.
+    Substitui depois por chamada ao teu LLM.
+    """
+    data = await _read_json(request)
+    prompt = str(data.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Falta 'prompt'.")
 
-    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
+    text = f"Eco: {prompt}\n(este é um stream de teste do backend)"
+    async def gen() -> AsyncGenerator[bytes, None]:
+        for chunk in [text[i:i+24] for i in range(0, len(text), 24)]:
+            await asyncio.sleep(0.05)  # simula latência
+            yield chunk.encode("utf-8")
+    return StreamingResponse(gen(), media_type="text/plain")

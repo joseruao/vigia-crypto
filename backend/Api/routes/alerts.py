@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Optional, List, Tuple, Set
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from supabase import create_client, Client  # type: ignore
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
+# ---------- MODELOS ----------
 class AskIn(BaseModel):
     prompt: str
     exchange: Optional[str] = None
@@ -27,6 +28,7 @@ class Prediction(BaseModel):
     pair_url: Optional[str] = None
     ts: datetime
 
+# ---------- ENV & CLIENTE (lazy) ----------
 _SUPABASE_CLIENT: Optional[Client] = None
 
 def _get_env(name: str, *fallbacks: str) -> Optional[str]:
@@ -47,51 +49,61 @@ def get_supabase() -> Client:
         or _get_env("SUPABASE_KEY")
         or _get_env("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY")
     )
+
     if not supabase_url or not supabase_key:
-        raise HTTPException(status_code=500, detail="Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE/ANON).")
+        raise HTTPException(
+            status_code=500,
+            detail="Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE/ANON).",
+        )
 
     _SUPABASE_CLIENT = create_client(supabase_url, supabase_key)
     return _SUPABASE_CLIENT
 
-def _dedupe_predictions(rows: List[Prediction], max_items: int = 10) -> List[Prediction]:
-    seen: Set[Tuple[str, str, str]] = set()
-    out: List[Prediction] = []
-    for r in rows:
-        key = (r.token.upper().strip(), r.exchange.strip(), (r.pair_url or "").strip())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(r)
-        if len(out) >= max_items:
-            break
-    return out
-
+# ---------- HELPERS ----------
 def format_predictions_md(rows: List[Prediction]) -> str:
     if not rows:
         return "Nenhum potencial listing detetado nas últimas leituras."
-    lines = ["**Últimos potenciais listings detetados :**", ""]
+
+    # Dedupe por token+exchange para não repetir o mesmo registo múltiplas vezes
+    seen: set[tuple[str, str]] = set()
+    uniq: List[Prediction] = []
     for r in rows:
+        key = (r.token, r.exchange)
+        if key not in seen:
+            seen.add(key)
+            uniq.append(r)
+
+    lines = ["**Últimos potenciais listings detetados :**", ""]
+    for r in uniq:
         cg = f"https://www.coingecko.com/en/search?query={r.token}"
         ds = r.pair_url or ""
         ex = r.exchange
         lines.append(
-            f"- **{r.token}** _( {ex} )_ — **Score:** {r.score}.  \n"
+            f"- **{r.token}** _( {ex} )_ — **Score:** {r.score}  \n"
             f"  ↳ [DexScreener]({ds}) · [CoinGecko]({cg})"
         )
     return "\n".join(lines)
 
-async def read_loose_body(request: Request) -> dict:
+async def read_loose_body(request: Request) -> Dict[str, Any]:
+    """
+    Aceita application/json, x-www-form-urlencoded, e texto cru.
+    Retorna sempre um dict com 'prompt' ou lança 400.
+    """
     ctype = (request.headers.get("content-type") or "").lower()
+
     if "application/json" in ctype:
         data = await request.json()
         if not isinstance(data, dict):
             raise HTTPException(status_code=400, detail="JSON body must be an object")
         return data
+
     if "application/x-www-form-urlencoded" in ctype:
         form = await request.form()
         return dict(form)
+
     raw = (await request.body()) or b""
     text = raw.decode("utf-8", errors="ignore").strip()
+
     if text.startswith("{"):
         try:
             data = json.loads(text)
@@ -99,21 +111,25 @@ async def read_loose_body(request: Request) -> dict:
                 return data
         except json.JSONDecodeError:
             pass
+
     if text:
         return {"prompt": text}
+
     raise HTTPException(status_code=400, detail="Body vazio ou inválido")
 
-@router.get("/__version")
-def alerts_version():
-    return {"marker": "alerts.v3"}
-
+# ---------- ENDPOINTS ----------
 @router.get("/predictions")
 def get_predictions(limit: int = 10) -> List[Prediction]:
     sb = get_supabase()
-    resp = sb.table("predictions").select("*").order("ts", desc=True).limit(max(limit, 1)).execute()
-    rows = [Prediction(**r) for r in (resp.data or [])]
-    rows = _dedupe_predictions(rows, max_items=limit)
-    return rows
+    resp = (
+        sb.table("predictions")
+        .select("*")
+        .order("ts", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    rows = resp.data or []
+    return [Prediction(**r) for r in rows]
 
 @router.post("/ask")
 async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=None)) -> dict:
@@ -121,6 +137,7 @@ async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=N
     prompt_val = data.get("prompt") or ""
     prompt = str(prompt_val).strip()
     ex = data.get("exchange") or exchange
+
     if not prompt:
         raise HTTPException(status_code=400, detail="Falta 'prompt'.")
 
@@ -130,7 +147,6 @@ async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=N
         q = q.eq("exchange", ex)
     resp = q.execute()
     rows = [Prediction(**r) for r in (resp.data or [])]
-    rows = _dedupe_predictions(rows, max_items=10)
 
-    answer = "⚙️ v3\n\n" + format_predictions_md(rows)
+    answer = format_predictions_md(rows)
     return {"answer": answer}
