@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Optional, List, Dict, Tuple, Set
+from typing import Optional, List, Tuple, Set
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
@@ -39,10 +39,6 @@ def _get_env(name: str, *fallbacks: str) -> Optional[str]:
     return None
 
 def get_supabase() -> Client:
-    """
-    Cria e cacheia o cliente Supabase apenas quando chamado por uma rota.
-    Falha só quando a rota é de facto usada (não no import).
-    """
     global _SUPABASE_CLIENT
     if _SUPABASE_CLIENT is not None:
         return _SUPABASE_CLIENT
@@ -128,6 +124,10 @@ async def read_loose_body(request: Request) -> dict:
     raise HTTPException(status_code=400, detail="Body vazio ou inválido")
 
 # ---------- ENDPOINTS ----------
+@router.get("/__version")
+def alerts_version():
+    return {"marker": "alerts.v3"}  # <--- MARCADOR 3
+
 @router.get("/predictions")
 def get_predictions(limit: int = 10) -> List[Prediction]:
     sb = get_supabase()
@@ -161,5 +161,6 @@ async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=N
     rows = [Prediction(**r) for r in (resp.data or [])]
     rows = _dedupe_predictions(rows, max_items=10)
 
-    answer = format_predictions_md(rows)
+    # prefixo para detetar “versão nova” no front/network
+    answer = "⚙️ v3\n\n" + format_predictions_md(rows)
     return {"answer": answer}
