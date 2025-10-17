@@ -1,23 +1,47 @@
 ﻿from __future__ import annotations
 
 import os
+import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
-from starlette.requests import Request
 
-app = FastAPI(title="Vigia API", version="0.1.0")
+# ---------- logging “amigo do Render” ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger("vigia")
 
-# ---- CORS ----
+# ---------- lifespan (substitui on_event) ----------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # imprime rotas no arranque
+    try:
+        routes_info = []
+        for r in app.routes:
+            if isinstance(r, APIRoute):
+                methods = ",".join(sorted(list(r.methods or [])))
+                routes_info.append(f" - {r.path} [{methods}]")
+        log.info("rotas carregadas:\n%s", "\n".join(routes_info) if routes_info else "(vazio)")
+    except Exception as e:
+        log.exception("falha a listar rotas: %r", e)
+    yield
+    log.info("shutdown concluído")
+
+app = FastAPI(title="Vigia API", version="0.1.0", lifespan=lifespan)
+
+# ---------- CORS ----------
 VERCEL_ORIGIN = os.environ.get("NEXT_PUBLIC_SITE_URL") or "https://vigia-crypto-mjfz.vercel.app"
 ALLOWED_ORIGINS = [
     VERCEL_ORIGIN.rstrip("/"),
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "*",  # remove quando estiveres confiante
+    "*",  # podes remover depois
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -27,14 +51,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---- Routers de negócio ----
+# ---------- Routers ----------
 from .routes.alerts import router as alerts_router
 from .routes.chat import router as chat_router
-
 app.include_router(alerts_router)
 app.include_router(chat_router)
 
-# ---- Meta / Health ----
+# ---------- Health & meta ----------
+@app.get("/")
+def root():
+    return {"ok": True, "service": "vigia-backend"}
+
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
@@ -50,9 +77,6 @@ def version():
 
 @app.get("/__routes")
 def list_routes() -> List[Dict[str, Any]]:
-    """
-    Lista todas as rotas carregadas na app (para debug).
-    """
     out: List[Dict[str, Any]] = []
     for r in app.routes:
         if isinstance(r, APIRoute):
@@ -62,18 +86,3 @@ def list_routes() -> List[Dict[str, Any]]:
                 "name": r.name,
             })
     return sorted(out, key=lambda x: x["path"])
-
-# ---- Log no arranque com as rotas (aparece nos logs do Render) ----
-@app.on_event("startup")
-async def _log_routes_on_startup():
-    try:
-        lines = ["[vigia] rotas carregadas:"]
-        for r in app.routes:
-            if isinstance(r, APIRoute):
-                methods = ",".join(sorted(list(r.methods or [])))
-                lines.append(f" - {r.path} [{methods}]")
-        print("\n".join(lines))
-    except Exception as e:
-        print("[vigia] falha a listar rotas:", repr(e))
-
-# Não precisamos de uvicorn.run aqui; o Render arranca o servidor ao executar `python -m backend.Api.main`.
