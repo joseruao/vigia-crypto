@@ -55,3 +55,7 @@ def __version():
         "ts": datetime.utcnow().isoformat() + "Z",
         "commit": os.environ.get("RENDER_GIT_COMMIT", None),
     }
+if __name__ == "__main__":
+    import uvicorn, os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("backend.Api.main:app", host="0.0.0.0", port=port)
