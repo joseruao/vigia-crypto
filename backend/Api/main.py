@@ -14,10 +14,9 @@ app = FastAPI(
     version=os.environ.get("GIT_SHA", "dev"),
 )
 
-# CORS para o front no Vercel
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # se quiseres, restringe ao domínio Vercel
+    allow_origins=["*"],   # ajusta se quiseres restringir ao teu domínio Vercel
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,17 +28,12 @@ def ping():
 
 @app.get("/__version")
 def version():
-    # Marcador explícito para sabermos que este ficheiro está live
-    return {
-        "version": os.environ.get("GIT_SHA", "dev"),
-        "marker": "main.v3"  # <--- MARCADOR 1
-    }
+    return {"version": os.environ.get("GIT_SHA", "dev"), "marker": "main.v3"}
 
 @app.get("/")
 def root():
-    return {"status": "ok", "marker": "root.v3"}  # <--- MARCADOR 2
+    return {"status": "ok", "marker": "root.v3"}
 
-# Rotas do módulo alerts
 app.include_router(alerts.router)
 
 if __name__ == "__main__":
