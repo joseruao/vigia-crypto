@@ -36,12 +36,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vigia API", version="0.1.0", lifespan=lifespan)
 
 # ---------- CORS ----------
-VERCEL_ORIGIN = os.environ.get("NEXT_PUBLIC_SITE_URL") or "https://vigia-crypto-mjfz.vercel.app"
+FRONTEND_URL = os.environ.get("FRONTEND_URL") or "https://vigia-crypto-mjfz.vercel.app"
 ALLOWED_ORIGINS = [
-    VERCEL_ORIGIN.rstrip("/"),
+    FRONTEND_URL.rstrip("/"),
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "*",  # podes remover depois
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -52,8 +51,8 @@ app.add_middleware(
 )
 
 # ---------- Routers ----------
-from .routes.alerts import router as alerts_router
-from .routes.chat import router as chat_router
+from backend.Api.routes.alerts import router as alerts_router
+from backend.Api.routes.chat import router as chat_router
 app.include_router(alerts_router)
 app.include_router(chat_router)
 
@@ -86,3 +85,14 @@ def list_routes() -> List[Dict[str, Any]]:
                 "name": r.name,
             })
     return sorted(out, key=lambda x: x["path"])
+
+@app.get("/__debug")
+def debug():
+    import sys
+    return {
+        "python_version": sys.version,
+        "paths": sys.path,
+        "current_file": __file__,
+        "env_frontend_url": os.environ.get("FRONTEND_URL"),
+        "routes_count": len([r for r in app.routes if isinstance(r, APIRoute)])
+    }

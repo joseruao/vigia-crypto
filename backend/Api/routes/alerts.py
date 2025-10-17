@@ -64,25 +64,35 @@ def format_predictions_md(rows: List[Prediction]) -> str:
     if not rows:
         return "Nenhum potencial listing detetado nas últimas leituras."
 
-    # Dedupe por token+exchange
+    # DEBUG: Log para ver o que vem da BD
+    print(f"DEBUG: Recebidas {len(rows)} linhas da BD")
+    
+    # Dedupe por token+exchange - CORRIGIDO
     seen: set[tuple[str, str]] = set()
     uniq: List[Prediction] = []
     for r in rows:
-        key = (r.token, r.exchange)
+        key = (r.token.upper(), r.exchange.upper())
         if key not in seen:
             seen.add(key)
             uniq.append(r)
 
-    lines = ["**Últimos potenciais listings detetados :**", ""]
+    print(f"DEBUG: Após deduplicação: {len(uniq)} linhas únicas")
+
+    lines = ["**Últimos potenciais listings detetados:**", ""]
     for r in uniq:
         cg = f"https://www.coingecko.com/en/search?query={r.token}"
         ds = r.pair_url or ""
         ex = r.exchange
+        
+        # LINHA CORRIGIDA - sem caracteres especiais problemáticos
         lines.append(
-            f"- **{r.token}** _( {ex} )_ — **Score:** {r.score}  \n"
-            f"  ↳ [DexScreener]({ds}) · [CoinGecko]({cg})"
+            f"- **{r.token}** ({ex}) — Score: {r.score}  \n"
+            f"  [DexScreener]({ds}) | [CoinGecko]({cg})"
         )
-    return "\n".join(lines)
+    
+    result = "\n".join(lines)
+    print(f"DEBUG: Resultado final: {result}")
+    return result
 
 async def read_loose_body(request: Request) -> Dict[str, Any]:
     ctype = (request.headers.get("content-type") or "").lower()
