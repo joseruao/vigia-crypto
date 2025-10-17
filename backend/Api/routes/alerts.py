@@ -64,7 +64,7 @@ def format_predictions_md(rows: List[Prediction]) -> str:
     if not rows:
         return "Nenhum potencial listing detetado nas últimas leituras."
 
-    # Dedupe por token+exchange para não repetir o mesmo registo múltiplas vezes
+    # Dedupe por token+exchange
     seen: set[tuple[str, str]] = set()
     uniq: List[Prediction] = []
     for r in rows:
@@ -85,10 +85,6 @@ def format_predictions_md(rows: List[Prediction]) -> str:
     return "\n".join(lines)
 
 async def read_loose_body(request: Request) -> Dict[str, Any]:
-    """
-    Aceita application/json, x-www-form-urlencoded, e texto cru.
-    Retorna sempre um dict com 'prompt' ou lança 400.
-    """
     ctype = (request.headers.get("content-type") or "").lower()
 
     if "application/json" in ctype:
