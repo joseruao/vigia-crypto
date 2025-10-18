@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+
 import os
 import logging
 from datetime import datetime
@@ -9,6 +10,16 @@ from typing import Any, Dict, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+import sys
+
+
+
+# ========== DEBUG ANTES DE TUDO ==========
+print("=== DEBUG START ===")
+print("Python path:", sys.path)
+print("Current directory:", os.getcwd())
+print("Files in current directory:", os.listdir("."))
+print("=== DEBUG END ===")
 
 # ---------- logging “amigo do Render” ----------
 logging.basicConfig(
@@ -51,11 +62,20 @@ app.add_middleware(
 )
 
 # ---------- Routers ----------
-# CORREÇÃO: Removido "backend." porque já estamos dentro de backend/
-from Api.routes.alerts import router as alerts_router
-from Api.routes.chat import router as chat_router
-app.include_router(alerts_router)
-app.include_router(chat_router)
+try:
+    print("=== IMPORTING ROUTERS ===")
+    from Api.routes.alerts import router as alerts_router
+    print("✅ alerts_router imported")
+    from Api.routes.chat import router as chat_router
+    print("✅ chat_router imported")
+    
+    app.include_router(alerts_router)
+    app.include_router(chat_router)
+    print("✅ routers included")
+except Exception as e:
+    print(f"❌ ERROR importing routers: {e}")
+    import traceback
+    traceback.print_exc()
 
 # ---------- Health & meta ----------
 @app.get("/")
@@ -97,3 +117,5 @@ def debug():
         "env_frontend_url": os.environ.get("FRONTEND_URL"),
         "routes_count": len([r for r in app.routes if isinstance(r, APIRoute)])
     }
+
+print("=== MAIN.PY LOADED SUCCESSFULLY ===")
