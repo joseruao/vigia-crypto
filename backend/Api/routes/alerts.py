@@ -38,7 +38,7 @@ def get_predictions_direct(limit: int = 25, exchange: Optional[str] = None) -> L
         raise Exception("Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE).")
 
     # Chamada direta à REST API
-    url = f"{supabase_url}/rest/v1/predictions"
+    url = f"{supabase_url}/rest/v1/transacted_tokens"
     headers = {
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
