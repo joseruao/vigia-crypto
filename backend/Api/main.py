@@ -1,61 +1,37 @@
 ﻿from __future__ import annotations
 
-
 import os
 import logging
+import sys
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.routing import APIRoute
-import sys
-
-
-
-# ========== DEBUG ANTES DE TUDO ==========
+# ========== DEBUG ==========
 print("=== DEBUG START ===")
 print("Python path:", sys.path)
 print("Current directory:", os.getcwd())
-print("Files in current directory:", os.listdir("."))
 print("=== DEBUG END ===")
 
-# ---------- logging “amigo do Render” ----------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+# ---------- logging ----------
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("vigia")
 
-# ---------- lifespan (substitui on_event) ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # imprime rotas no arranque
-    try:
-        routes_info = []
-        for r in app.routes:
-            if isinstance(r, APIRoute):
-                methods = ",".join(sorted(list(r.methods or [])))
-                routes_info.append(f" - {r.path} [{methods}]")
-        log.info("rotas carregadas:\n%s", "\n".join(routes_info) if routes_info else "(vazio)")
-    except Exception as e:
-        log.exception("falha a listar rotas: %r", e)
+    log.info("🚀 Application starting up...")
     yield
-    log.info("shutdown concluído")
+    log.info("🔴 Application shutting down...")
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="Vigia API", version="0.1.0", lifespan=lifespan)
 
 # ---------- CORS ----------
-FRONTEND_URL = os.environ.get("FRONTEND_URL") or "https://vigia-crypto-mjfz.vercel.app"
-ALLOWED_ORIGINS = [
-    FRONTEND_URL.rstrip("/"),
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://vigia-crypto-mjfz.vercel.app")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,21 +39,15 @@ app.add_middleware(
 
 # ---------- Routers ----------
 try:
-    print("=== IMPORTING ROUTERS ===")
     from Api.routes.alerts import router as alerts_router
-    print("✅ alerts_router imported")
     from Api.routes.chat import router as chat_router
-    print("✅ chat_router imported")
-    
     app.include_router(alerts_router)
     app.include_router(chat_router)
-    print("✅ routers included")
+    print("✅ Routers loaded successfully")
 except Exception as e:
-    print(f"❌ ERROR importing routers: {e}")
-    import traceback
-    traceback.print_exc()
+    print(f"❌ Router error: {e}")
 
-# ---------- Health & meta ----------
+# ---------- Routes ----------
 @app.get("/")
 def root():
     return {"ok": True, "service": "vigia-backend"}
@@ -88,34 +58,13 @@ def ping():
 
 @app.get("/__version")
 def version():
-    return {
-        "name": "vigia-backend",
-        "version": app.version,
-        "commit": os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("COMMIT") or "unknown",
-        "ts": datetime.utcnow().isoformat() + "Z",
-    }
+    return {"name": "vigia-backend", "version": "0.1.0"}
 
-@app.get("/__routes")
-def list_routes() -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    for r in app.routes:
-        if isinstance(r, APIRoute):
-            out.append({
-                "path": r.path,
-                "methods": sorted(list(r.methods or [])),
-                "name": r.name,
-            })
-    return sorted(out, key=lambda x: x["path"])
+print("=== STARTING SERVER ===")
 
-@app.get("/__debug")
-def debug():
-    import sys
-    return {
-        "python_version": sys.version,
-        "paths": sys.path,
-        "current_file": __file__,
-        "env_frontend_url": os.environ.get("FRONTEND_URL"),
-        "routes_count": len([r for r in app.routes if isinstance(r, APIRoute)])
-    }
-
-print("=== MAIN.PY LOADED SUCCESSFULLY ===")
+# ========== ESSENTIAL: Start the server ==========
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 Starting Uvicorn on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
