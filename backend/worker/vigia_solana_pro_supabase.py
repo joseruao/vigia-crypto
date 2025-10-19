@@ -416,6 +416,112 @@ class CryptoAIAnalyzer:
             return {'listing_probability': 55.0, 'score': 55.0, 'confidence': 50.0, 'is_new_token': True}
 
 # ===========================
+# ANÁLISE IA EXPLICATIVA (NOVO!)
+# ===========================
+def generate_ai_analysis(alert_data: Dict[str, Any]) -> str:
+    """
+    Gera uma análise IA explicativa do potencial listing
+    """
+    token = alert_data.get('token', 'Unknown')
+    exchange = alert_data.get('exchange', 'Unknown')
+    score = alert_data.get('score', 0)
+    liquidity = alert_data.get('liquidity', 0)
+    volume_24h = alert_data.get('volume_24h', 0)
+    value_usd = alert_data.get('value_usd', 0)
+    listed_exchanges = alert_data.get('listed_exchanges', [])
+    txns_buys = alert_data.get('txns_buys', 0)
+    txns_sells = alert_data.get('txns_sells', 0)
+    holders_concentration = alert_data.get('holders_concentration', 0.0)
+    
+    # Análise de fatores
+    factors = []
+    confidence_level = ""
+    
+    # Análise do Score ML
+    if score >= 80:
+        factors.append(f"📊 **Score ML muito alto ({score}%)** - padrão muito similar a tokens que foram listados anteriormente")
+        confidence_level = "muito alto"
+    elif score >= 60:
+        factors.append(f"📊 **Score ML alto ({score}%)** - características positivas comparando com históricos de listing")
+        confidence_level = "alto"
+    else:
+        factors.append(f"📊 **Score ML moderado ({score}%)** - alguns indicadores positivos mas não conclusivos")
+        confidence_level = "moderado"
+    
+    # Análise de Liquidez
+    if liquidity > 1000000:
+        factors.append(f"💰 **Liquidez excelente (${liquidity:,.0f})** - suficiente para suportar trading institucional")
+    elif liquidity > 500000:
+        factors.append(f"💰 **Boa liquidez (${liquidity:,.0f})** - adequada para uma exchange major")
+    elif liquidity > 100000:
+        factors.append(f"💰 **Liquidez moderada (${liquidity:,.0f})** - mínima recomendada para listing")
+    else:
+        factors.append(f"💰 **Liquidez baixa (${liquidity:,.0f})** - pode ser limitante")
+    
+    # Análise de Volume
+    if volume_24h > 500000:
+        factors.append(f"📈 **Volume muito forte (${volume_24h:,.0f}/24h)** - demonstra interesse orgânico significativo")
+    elif volume_24h > 100000:
+        factors.append(f"📈 **Volume sólido (${volume_24h:,.0f}/24h)** - trading consistente")
+    elif volume_24h > 50000:
+        factors.append(f"📈 **Volume moderado (${volume_24h:,.0f}/24h)** - aceitável para consideração")
+    
+    # Análise de Compra da Exchange
+    if value_usd > 50000:
+        factors.append(f"🏦 **Grande aquisição pela exchange (${value_usd:,.0f})** - posicionamento significativo")
+    elif value_usd > 10000:
+        factors.append(f"🏦 **Aquisição relevante (${value_usd:,.0f})** - interesse demonstrado")
+    elif value_usd > 1000:
+        factors.append(f"🏦 **Aquisição detectada (${value_usd:,.0f})** - presença na wallet")
+    
+    # Análise de Listagem em Outras Exchanges
+    if listed_exchanges:
+        other_exchanges = [ex for ex in listed_exchanges if ex != exchange]
+        if other_exchanges:
+            factors.append(f"🔗 **Já listado em {', '.join(other_exchanges)}** - precedente estabelecido para listing em {exchange}")
+        else:
+            factors.append(f"🆕 **Primeira deteção em exchange major** - potencial listing inaugural")
+    else:
+        factors.append(f"🆕 **Não listado em outras exchanges major** - oportunidade de listing exclusivo")
+    
+    # Análise de Pressão Compradora
+    if txns_buys > 0 or txns_sells > 0:
+        ratio = txns_buys / max(txns_sells, 1)
+        if ratio > 2.0:
+            factors.append(f"🎯 **Forte pressão compradora (rácio {ratio:.1f}:1)** - sentimento positivo do mercado")
+        elif ratio > 1.2:
+            factors.append(f"🎯 **Pressão compradora moderada (rácio {ratio:.1f}:1)** - mais compradores que vendedores")
+        elif ratio < 0.8:
+            factors.append(f"⚠️ **Pressão vendedora (rácio {ratio:.1f}:1)** - pode ser preocupante")
+    
+    # Análise de Concentração de Holders
+    if holders_concentration > 0.20:
+        factors.append(f"🚨 **Alta concentração de holders ({holders_concentration*100:.1f}%)** - risco de manipulação")
+    elif holders_concentration > 0.10:
+        factors.append(f"⚠️ **Concentração moderada de holders ({holders_concentration*100:.1f}%)** - merece atenção")
+    else:
+        factors.append(f"✅ **Baixa concentração de holders ({holders_concentration*100:.1f}%)** - distribuição saudável")
+    
+    # Conclusão IA
+    if confidence_level == "muito alto":
+        conclusion = f"🚨 **ALTA PROBABILIDADE** de listing iminente na {exchange}"
+    elif confidence_level == "alto":
+        conclusion = f"📈 **PROVÁVEL** listing na {exchange} nos próximos dias/semanas"
+    else:
+        conclusion = f"👀 **POTENCIAL** listing na {exchange} - merece monitorização"
+    
+    # Montar análise final
+    analysis = f"""🎯 **{token} - Análise de Potencial Listing na {exchange}**
+
+{' | '.join(factors)}
+
+💡 **Conclusão IA:** {conclusion}
+
+🔍 **Recomendação:** {'Monitorizar ativamente' if score > 50 else 'Manter em watchlist'}"""
+    
+    return analysis
+
+# ===========================
 # ANÁLISE DE TRANSACÇÃO
 # ===========================
 BLUECHIPS = {"USDC","USDT","SOL","BTC","ETH","WIF","BONK"}  # podes ajustar
@@ -510,79 +616,6 @@ def analyze_transaction(tx_data: Dict[str, Any], wallet_address: str, exchange_n
         return None
 
 # ===========================
-# “RESPOSTA HUMANA” (mais ação, menos pasta)
-# ===========================
-def _mk_reason_tags(alert: Dict[str, Any], ml: Dict[str, Any]) -> List[str]:
-    tags: List[str] = []
-    if alert.get("value_usd", 0) >= 10_000: tags.append("compra relevante")
-    if alert.get("liquidity", 0) >= 250_000: tags.append("liquidez saudável")
-    if alert.get("volume_24h", 0) >= 100_000: tags.append("volume consistente")
-    buys, sells = alert.get("txns_buys", 0), alert.get("txns_sells", 0)
-    if sells or buys:
-        ratio = buys / max(sells, 1)
-        if ratio >= 1.5: tags.append("pressão compradora")
-    conc = alert.get("holders_concentration", 0.0)
-    if conc and conc <= 0.12: tags.append("distribuição decente")
-    if alert.get("listed_exchanges"): tags.append("símbolo existe noutras CEX")
-    if ml.get("is_new_token"): tags.append("novo na CEX alvo")
-    return tags
-
-def _mk_risk_flags(alert: Dict[str, Any]) -> List[str]:
-    flags: List[str] = []
-    if alert.get("liquidity", 0) < 100_000: flags.append("liq < 100k")
-    if alert.get("volume_24h", 0) < 50_000: flags.append("vol < 50k")
-    conc = alert.get("holders_concentration", 0.0)
-    if conc and conc > 0.15: flags.append(f"concentração {conc*100:.0f}%")
-    # idade do par (se disponível)
-    ms = alert.get("pair_created_ms")
-    if isinstance(ms, (int,float)) and ms > 0:
-        age_hours = (time.time()*1000 - ms)/3600000.0
-        if age_hours < 12: flags.append("par muito recente")
-    return flags
-
-def build_human_summary(alert: Dict[str, Any], ml: Dict[str, Any]) -> str:
-    ex = alert.get("exchange", "?")
-    tok = alert.get("token", "?")
-    liq = alert.get("liquidity", 0.0)
-    vol = alert.get("volume_24h", 0.0)
-    chg = alert.get("price_change_24h", None)
-    buys = alert.get("txns_buys", 0)
-    sells = alert.get("txns_sells", 0)
-    ratio = (buys / max(sells, 1)) if (sells or buys) else 1.0
-    conc = alert.get("holders_concentration", 0.0)
-    listed_elsewhere = alert.get("listed_exchanges", [])
-    pair_url = alert.get("pair_url") or ""
-    sig = alert.get("signature")
-
-    reasons = _mk_reason_tags(alert, ml)
-    risks = _mk_risk_flags(alert)
-
-    # links úteis
-    solscan = f"https://solscan.io/tx/{sig}" if sig else ""
-    pair_link = f"[DexScreener]({pair_url})" if pair_url else "DexScreener"
-    tx_link = f"[Solscan]({solscan})" if solscan else "Solscan"
-
-    parts = []
-    parts.append(f"**{tok}** visto numa wallet **{ex}** com ~${alert.get('value_usd',0):,.0f} em compras.")
-    parts.append(f"Liq ~${liq:,.0f} · Vol24h ~${vol:,.0f} · Buys/Sells ≈ {ratio:.2f}")
-    if chg is not None:
-        try:
-            parts.append(f"Δ24h {float(chg):+.1f}%")
-        except Exception:
-            pass
-    if conc:
-        parts.append(f"Concentração holders ~{conc*100:.0f}%")
-    if listed_elsewhere:
-        parts.append(f"Já listado como símbolo em: {', '.join(listed_elsewhere)}")
-    parts.append(f"**Score ML {ml.get('score',0):.0f}/100** (conf. {ml.get('confidence',0):.0f}%).")
-    if reasons:
-        parts.append("Razões: " + ", ".join(reasons))
-    if risks:
-        parts.append("Riscos: " + ", ".join(risks))
-    parts.append(f"Links: {pair_link} · {tx_link}")
-    return " · ".join(parts)
-
-# ===========================
 # SUPABASE UPSERT
 # ===========================
 def save_transaction_supabase(alert_info: Dict[str, Any]) -> bool:
@@ -608,8 +641,8 @@ def save_transaction_supabase(alert_info: Dict[str, Any]) -> bool:
         "txns_buys": int(alert_info.get("txns_buys") or 0),
         "txns_sells": int(alert_info.get("txns_sells") or 0),
         "holders_concentration": float(alert_info.get("holders_concentration") or 0.0),
-        # texto explicativo
-        "analysis_text": alert_info.get("analysis_text"),
+        # NOVO: análise IA explicativa
+        "ai_analysis": alert_info.get("ai_analysis"),
     }
     try:
         res = supabase.table("transacted_tokens").upsert(
@@ -624,7 +657,7 @@ def save_transaction_supabase(alert_info: Dict[str, Any]) -> bool:
 # MAIN
 # ===========================
 def main():
-    logger.info("🚀 VIGIA SOLANA PRO 1.1 — INICIANDO")
+    logger.info("🚀 VIGIA SOLANA PRO 1.2 — INICIANDO (COM ANÁLISE IA)")
     load_listed_tokens_from_supabase(force=True)
     ai = CryptoAIAnalyzer()
     total_alerts = 0
@@ -650,17 +683,20 @@ def main():
             # 🤖 Predição ML
             ml = ai.predict_listing_potential(alert, exchange_name, alert["token"])
 
-            # Anexar campos ML e texto humano (otimizado)
+            # Anexar campos ML
             alert["score"] = float(ml.get("score") or 0.0)
             alert["listing_probability"] = float(ml.get("listing_probability") or 0.0)
             alert["confidence"] = float(ml.get("confidence") or 0.0)
-            alert["analysis_text"] = build_human_summary(alert, ml)
+            
+            # 🧠 GERAR ANÁLISE IA EXPLICATIVA (NOVO!)
+            alert["ai_analysis"] = generate_ai_analysis(alert)
 
             # ✅ filtro principal
             if ml.get("is_new_token", True) and alert["score"] >= ML_SCORE_THRESHOLD:
                 saved = save_transaction_supabase(alert)
                 if saved:
                     logger.info(f"   🚨 POTENCIAL LISTING: {alert['token']} — Score {alert['score']:.1f}")
+                    logger.info(f"   📝 Análise IA: {alert['ai_analysis'][:100]}...")
                     total_alerts += 1
                 else:
                     logger.debug(f"   ℹ️ Não inserido (duplicado/erro) {alert['token']} — {alert.get('signature')}")
