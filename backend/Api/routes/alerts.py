@@ -17,16 +17,20 @@ class AskIn(BaseModel):
     exchange: Optional[str] = None
 
 class Prediction(BaseModel):
-    id: int
-    exchange: str
-    token: str
-    token_address: str
-    value_usd: float
-    liquidity: float
-    volume_24h: float
-    score: int
+    id: Optional[int] = None
+    exchange: Optional[str] = None
+    token: Optional[str] = None
+    token_address: Optional[str] = None
+    value_usd: Optional[float] = None
+    liquidity: Optional[float] = None
+    volume_24h: Optional[float] = None
+    score: Optional[int] = None
     pair_url: Optional[str] = None
-    ts: datetime
+    ts: Optional[datetime] = None  # Permite None
+    
+    # Adiciona validação para campos opcionais
+    class Config:
+        extra = "ignore"  # Ignora campos extra da BD
 
 # ---------- HELPERS ----------
 def get_predictions_direct(limit: int = 25, exchange: Optional[str] = None) -> List[Prediction]:
@@ -60,13 +64,22 @@ def get_predictions_direct(limit: int = 25, exchange: Optional[str] = None) -> L
         
         if response.status_code == 200:
             data = response.json()
-            return [Prediction(**item) for item in data]
+            predictions = []
+            for item in data:
+                try:
+                    # Converte dados da BD para o modelo
+                    prediction = Prediction(**item)
+                    predictions.append(prediction)
+                except Exception as e:
+                    print(f"⚠️ Erro a processar item: {item} - {e}")
+                    continue
+            return predictions
         else:
             raise Exception(f"Supabase API error: {response.status_code} - {response.text}")
             
     except Exception as e:
         print(f"ERROR in get_predictions_direct: {e}")
-        raise
+        return []  # Retorna lista vazia em vez de crashar
 
 def format_predictions_md(rows: List[Prediction]) -> str:
     if not rows:
@@ -75,10 +88,13 @@ def format_predictions_md(rows: List[Prediction]) -> str:
     # DEBUG: Log para ver o que vem da BD
     print(f"DEBUG: Recebidas {len(rows)} linhas da BD")
     
+    # Filtra linhas que têm pelo menos token e exchange
+    valid_rows = [r for r in rows if r.token and r.exchange]
+    
     # Dedupe por token+exchange
     seen: set[tuple[str, str]] = set()
     uniq: List[Prediction] = []
-    for r in rows:
+    for r in valid_rows:
         key = (r.token.upper(), r.exchange.upper())
         if key not in seen:
             seen.add(key)
@@ -86,14 +102,18 @@ def format_predictions_md(rows: List[Prediction]) -> str:
 
     print(f"DEBUG: Após deduplicação: {len(uniq)} linhas únicas")
 
+    if not uniq:
+        return "Nenhum dado válido encontrado na base de dados."
+
     lines = ["**Últimos potenciais listings detetados:**", ""]
     for r in uniq:
-        cg = f"https://www.coingecko.com/en/search?query={r.token}"
+        cg = f"https://www.coingecko.com/en/search?query={r.token}" if r.token else "#"
         ds = r.pair_url or ""
-        ex = r.exchange
+        ex = r.exchange or "Unknown"
+        score = r.score or "N/A"
         
         lines.append(
-            f"- **{r.token}** ({ex}) — Score: {r.score}  \n"
+            f"- **{r.token}** ({ex}) — Score: {score}  \n"
             f"  [DexScreener]({ds}) | [CoinGecko]({cg})"
         )
     
@@ -152,9 +172,13 @@ async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=N
     try:
         # Usa a chamada direta em vez do cliente Supabase
         rows = get_predictions_direct(limit=25, exchange=ex)
+        
+        if not rows:
+            return {"answer": "⚠️ Nenhum dado encontrado na base de dados"}
+        
         answer = format_predictions_md(rows)
         return {"answer": answer}
         
     except Exception as e:
         print(f"ERROR in /alerts/ask: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro temporário ao aceder aos dados: {str(e)}")
+        return {"answer": f"⚠️ Erro temporário ao aceder aos dados: {str(e)}"}
