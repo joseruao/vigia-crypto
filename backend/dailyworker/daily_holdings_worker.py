@@ -58,7 +58,7 @@ HOLDING_THRESHOLDS = {
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
 MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
-MIN_SCORE_ALERT = 80     # Score mínimo para alerta
+MIN_SCORE_ALERT = 70     # Score mínimo para alerta
 
 # ===========================
 # WALLETS
@@ -506,6 +506,59 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
 # ===========================
 # FUNÇÕES PRINCIPAIS
 # ===========================
+# LINHA 33 - Baixar score mínimo
+
+
+# Adicionar função de análise (antes da função save_holding_to_supabase)
+def generate_holding_analysis(holding_data, exchange_name):
+    """Gera análise automática para o holding"""
+    score = holding_data['score']
+    value = holding_data['value_usd']
+    liquidity = holding_data['liquidity']
+    volume = holding_data['volume_24h']
+    symbol = holding_data['symbol']
+    
+    if score >= 90:
+        return f"🚀 ALTO POTENCIAL - {symbol} tem ${value:,.0f} na {exchange_name} com liquidez sólida (${liquidity:,.0f}). Volume 24h: ${volume:,.0f}. Forte candidato a listing."
+    elif score >= 80:
+        return f"✅ BOM POTENCIAL - {symbol} com exposição significativa (${value:,.0f}) na {exchange_name}. Liquidez: ${liquidity:,.0f}. Volume: ${volume:,.0f}."
+    elif score >= 70:
+        return f"📊 INTERESSANTE - {symbol} detido pela {exchange_name}. Valor: ${value:,.0f}. Liquidez: ${liquidity:,.0f}. Merece monitorização."
+    else:
+        return f"👀 EM OBSERVAÇÃO - {symbol} presente na {exchange_name}."
+
+# Atualizar a função save_holding_to_supabase
+def save_holding_to_supabase(holding_data, exchange_name):
+    """Guarda o holding COM análise"""
+    try:
+        analysis = generate_holding_analysis(holding_data, exchange_name)
+        
+        payload = {
+            "exchange": exchange_name,
+            "token": holding_data['symbol'],
+            "token_address": holding_data['address'],
+            "amount": holding_data['balance'],
+            "value_usd": holding_data['value_usd'],
+            "liquidity": holding_data['liquidity'],
+            "volume_24h": holding_data['volume_24h'],
+            "price": holding_data['price'],
+            "price_change_24h": holding_data['price_change_24h'],
+            "pair_url": holding_data['pair_url'],
+            "score": holding_data['score'],
+            "analysis": analysis,  # ⬅️ NOVO CAMPO
+            "type": "holding", 
+            "chain": holding_data['chain'],
+            "ts": datetime.now().isoformat(),
+        }
+        
+        success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])
+        if success:
+            print(f"   💾 GUARDADO: {holding_data['symbol']} (Score: {holding_data['score']})")
+        return success
+        
+    except Exception as e:
+        print(f"❌ Erro ao guardar holding: {e}")
+        return False
 def save_holding_to_supabase(holding_data, exchange_name):
     """Guarda o holding na base de dados"""
     try:

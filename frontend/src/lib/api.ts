@@ -10,3 +10,23 @@ export async function getPredictions() {
     return [];
   }
 }
+// Adicionar função para buscar holdings
+export async function getHoldings(): Promise<Holding[]> {
+  const res = await fetch('/api/holdings');
+  if (!res.ok) throw new Error('Failed to fetch holdings');
+  return res.json();
+}
+
+// Atualizar o tipo Prediction para Holding
+export interface Holding {
+  id: string;
+  token: string;
+  exchange: string;
+  value_usd: number;
+  liquidity: number;
+  volume_24h: number;
+  score: number;
+  pair_url?: string;
+  token_address?: string;
+  analysis?: string; // ⬅️ NOVO CAMPO
+}

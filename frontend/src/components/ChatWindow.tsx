@@ -1,3 +1,4 @@
+// frontend/src/components/ChatWindow.tsx
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -5,7 +6,7 @@ import { Suggestions } from '@/components/Suggestions';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { CircleStop } from 'lucide-react';
+import { CircleStop, Send } from 'lucide-react';
 
 export function ChatWindow() {
   const {
@@ -20,24 +21,28 @@ export function ChatWindow() {
   const [loading, setLoading] = useState(false);
   const [gotFirstChunk, setGotFirstChunk] = useState(false);
 
-  // área que faz scroll (apenas as mensagens)
-  const listRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // controlo de stream/abort
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  // Base da API: usa env, senão cai para o Render
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL?.trim() ||
     'https://vigia-crypto-1.onrender.com';
 
-  // scroll para o fundo quando chegam novas mensagens / termina loading
+  // Auto-scroll para a última mensagem
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [active?.messages, loading]);
+
+  // Auto-resize do textarea
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
+    }
+  }, [input]);
 
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
@@ -47,7 +52,7 @@ export function ChatWindow() {
       q.includes('listing') ||
       q.includes('exchange') ||
       q.includes('prediction') ||
-      q.includes('vist') // "visto", "viste", etc.
+      q.includes('vist')
     );
   }
 
@@ -68,7 +73,6 @@ export function ChatWindow() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      // escolhe endpoint
       const useAlerts = shouldUseAlertsAPI(content);
       const url = useAlerts
         ? `${API_URL}/alerts/ask`
@@ -94,7 +98,6 @@ export function ChatWindow() {
       }
 
       if (!useAlerts) {
-        // streaming normal do /chat/stream
         const reader = res.body?.getReader();
         if (!reader) throw new Error('Sem stream');
 
@@ -115,7 +118,6 @@ export function ChatWindow() {
           updateLastAssistantMessage(acc);
         }
       } else {
-        // resposta direta do /alerts/ask (markdown pronto)
         const data = await res.json();
         addMessage({
           role: 'assistant',
@@ -153,100 +155,104 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
 
   return (
-    // container full-height; layout em coluna
-    <div className="h-[100dvh] min-h-[100dvh] w-full flex flex-col bg-white">
-      {/* zona de mensagens (cresce e faz scroll) */}
-      <main ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+    <div className="h-screen flex flex-col bg-white">
+      {/* Área das mensagens - cresce automaticamente */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
         {!hasMessages && !loading && (
-          <div className="h-full w-full flex flex-col items-center justify-center">
+          <div className="h-full flex flex-col items-center justify-center pb-20">
             <img
               src="/logo_full.png"
               alt="José Ruão.io"
-              className="h-96 mb-12"
+              className="h-32 mb-8"
             />
             <Suggestions
               visible={!hasMessages}
               onSelect={(t) => {
                 setInput(t);
-                sendMessage(t);
+                setTimeout(() => sendMessage(t), 100);
               }}
             />
           </div>
         )}
 
-        {active?.messages.map((m, i) => (
-          <div
-            key={i}
-            className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
+        {/* Mensagens */}
+        <div className="max-w-4xl mx-auto space-y-6">
+          {active?.messages.map((m, i) => (
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm prose ${
-                m.role === 'user'
-                  ? 'bg-black text-white prose-invert'
-                  : 'bg-zinc-100 text-black'
-              }`}
+              key={i}
+              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {m.content}
-              </ReactMarkdown>
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm prose ${
+                  m.role === 'user'
+                    ? 'bg-blue-600 text-white prose-invert'
+                    : 'bg-gray-100 text-gray-800 border border-gray-200'
+                }`}
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {m.content}
+                </ReactMarkdown>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {loading && !gotFirstChunk && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-zinc-100 text-black">
-              <span className="animate-pulse">● ● ●</span>
+          {loading && !gotFirstChunk && (
+            <div className="flex justify-start">
+              <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-gray-100 text-gray-600">
+                <span className="animate-pulse">● ● ●</span>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
-
-      {/* composer colado em baixo */}
-      <footer className="sticky bottom-0 w-full bg-white/95 backdrop-blur border-t border-zinc-200">
-        <div className="mx-auto max-w-5xl flex items-center gap-2 p-3">
-          {loading ? (
-            <button
-              onClick={stopStreaming}
-              className="p-2 rounded hover:bg-zinc-100"
-              title="Parar geração"
-            >
-              <CircleStop className="h-5 w-5" />
-            </button>
-          ) : null}
-
-          <textarea
-            className="flex-1 resize-none bg-zinc-100 text-black rounded-lg px-3 py-2 outline-none"
-            rows={1}
-            placeholder="Escreve a tua mensagem..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-          />
-
-          <button
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
-            className="p-2 text-black hover:text-emerald-500 disabled:opacity-50"
-            title="Enviar"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 12h14M12 5l7 7-7 7"
-              />
-            </svg>
-          </button>
+          )}
         </div>
-      </footer>
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input fixo no fundo - estilo DeepSeek */}
+      <div className="border-t border-gray-200 bg-white/95 backdrop-blur-sm">
+        <div className="max-w-4xl mx-auto p-4">
+          <div className="relative flex items-end gap-2">
+            {loading && (
+              <button
+                onClick={stopStreaming}
+                className="absolute left-3 bottom-3 p-1 rounded hover:bg-gray-100 text-gray-500"
+                title="Parar geração"
+              >
+                <CircleStop className="h-5 w-5" />
+              </button>
+            )}
+            
+            <textarea
+              ref={inputRef}
+              className={`flex-1 resize-none bg-gray-100 text-gray-900 rounded-2xl px-4 py-3 pr-12 outline-none border border-gray-200 focus:border-blue-500 transition-colors ${
+                loading ? 'pl-10' : ''
+              }`}
+              rows={1}
+              placeholder="Escreve a tua mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              disabled={loading}
+            />
+            
+            <button
+              onClick={() => sendMessage()}
+              disabled={loading || !input.trim()}
+              className={`absolute right-2 bottom-2 p-2 rounded-full transition-colors ${
+                input.trim() && !loading
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              title="Enviar mensagem"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+          
+          <div className="text-xs text-gray-500 text-center mt-2">
+            Vigia Crypto pode cometer erros. Verifica informações importantes.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
