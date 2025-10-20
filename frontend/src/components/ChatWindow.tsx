@@ -44,17 +44,21 @@ export function ChatWindow() {
     }
   }, [input]);
 
-  function shouldUseAlertsAPI(prompt: string) {
-    const q = prompt.toLowerCase();
-    return (
-      q.includes('token') ||
-      q.includes('listado') ||
-      q.includes('listing') ||
-      q.includes('exchange') ||
-      q.includes('prediction') ||
-      q.includes('vist')
-    );
-  }
+ function shouldUseAlertsAPI(prompt: string) {
+  const q = prompt.toLowerCase();
+  return (
+    q.includes('token') ||
+    q.includes('listado') || 
+    q.includes('listing') ||
+    q.includes('exchange') ||
+    q.includes('prediction') ||
+    q.includes('vistos') ||     // ✅ CORRIGIDO
+    q.includes('vista') ||      // ✅ CORRIGIDO  
+    q.includes('viste') ||      // ✅ CORRIGIDO
+    q.includes('holding') ||    // ✅ ADICIONA TAMBÉM
+    q.includes('score')         // ✅ ADICIONA TAMBÉM
+  );
+}
 
   async function sendMessage(text?: string) {
     const content = (text ?? input).trim();
