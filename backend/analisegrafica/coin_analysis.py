@@ -45,6 +45,23 @@ class AdvancedCoinAnalyzer:
         except Exception as e:
             return {"error": f"Erro na análise: {str(e)}"}
     
+    async def _fetch_coin_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        """Busca dados históricos da moeda"""
+        try:
+            symbol = f"{coin}-USD" if coin.upper() != "BTC" else "BTC-USD"
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period=period)
+            
+            if hist.empty:
+                print(f"❌ Nenhum dado encontrado para {coin}")
+                return None
+                
+            print(f"✅ Dados obtidos: {len(hist)} candles para {coin}")
+            return hist
+        except Exception as e:
+            print(f"❌ Erro ao buscar dados para {coin}: {e}")
+            return None
+    
     async def _calculate_advanced_indicators(self, data: pd.DataFrame, coin: str) -> Dict:
         """Calcula indicadores avançados"""
         current_price = float(data['Close'].iloc[-1])
@@ -82,6 +99,103 @@ class AdvancedCoinAnalyzer:
             'fibonacci': fib_levels,
             'volume': volume_analysis,
             'support_resistance': await self._find_dynamic_support_resistance(data)
+        }
+    
+    def _calculate_rsi(self, prices, window=14):
+        """Calcula RSI manualmente"""
+        try:
+            if len(prices) < window + 1:
+                return 50
+                
+            deltas = np.diff(prices)
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            
+            avg_gains = pd.Series(gains).rolling(window=window, min_periods=1).mean()
+            avg_losses = pd.Series(losses).rolling(window=window, min_periods=1).mean()
+            
+            rs = avg_gains / np.where(avg_losses == 0, 0.001, avg_losses)
+            rsi = 100 - (100 / (1 + rs))
+            
+            return rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50
+        except:
+            return 50
+    
+    def _calculate_trend_strength(self, data: pd.DataFrame) -> Dict:
+        """Calcula força e direção da tendência"""
+        prices = data['Close'].tail(50)
+        sma_20 = prices.rolling(20).mean()
+        sma_50 = prices.rolling(50).mean()
+        
+        current_sma_20 = sma_20.iloc[-1] if not pd.isna(sma_20.iloc[-1]) else prices.iloc[-1]
+        current_sma_50 = sma_50.iloc[-1] if not pd.isna(sma_50.iloc[-1]) else prices.iloc[-1]
+        
+        if current_sma_20 > current_sma_50:
+            direction = "UPTREND"
+            strength = min(((current_sma_20 - current_sma_50) / current_sma_50) * 100, 20)
+        else:
+            direction = "DOWNTREND" 
+            strength = min(((current_sma_50 - current_sma_20) / current_sma_20) * 100, 20)
+        
+        return {"direction": direction, "strength": round(strength, 1)}
+    
+    def _calculate_volatility(self, data: pd.DataFrame) -> float:
+        """Calcula volatilidade (desvio padrão dos retornos)"""
+        returns = data['Close'].pct_change().dropna()
+        return round(returns.std() * 100, 2)  # Em percentagem
+    
+    def _calculate_fibonacci_levels(self, data: pd.DataFrame) -> Dict:
+        """Calcula níveis de Fibonacci"""
+        closes = data['Close'].tail(60)
+        high = float(closes.max())
+        low = float(closes.min())
+        diff = high - low
+        
+        return {
+            'high': round(high, 2),
+            'low': round(low, 2),
+            'levels': {
+                '0.236': round(high - diff * 0.236, 2),
+                '0.382': round(high - diff * 0.382, 2),
+                '0.5': round(high - diff * 0.5, 2),
+                '0.618': round(high - diff * 0.618, 2),
+                '0.786': round(high - diff * 0.786, 2)
+            }
+        }
+    
+    def _analyze_volume(self, data: pd.DataFrame) -> Dict:
+        """Analisa volume"""
+        current_volume = int(data['Volume'].iloc[-1])
+        avg_volume_20 = data['Volume'].tail(20).mean()
+        volume_ratio = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1
+        
+        return {
+            'current': current_volume,
+            'ratio_20d': round(volume_ratio, 2),
+            'trend': 'HIGH' if volume_ratio > 1.5 else 'LOW' if volume_ratio < 0.7 else 'NORMAL'
+        }
+    
+    async def _find_dynamic_support_resistance(self, data: pd.DataFrame) -> Dict:
+        """Encontra suporte e resistência dinâmicos"""
+        closes = data['Close'].tail(30)
+        
+        # Suporte: mínimo recente com buffer
+        support = float(closes.min())
+        dynamic_support = support * 0.98  # 2% abaixo do mínimo
+        
+        # Resistência: máximo recente com buffer  
+        resistance = float(closes.max())
+        dynamic_resistance = resistance * 1.02  # 2% acima do máximo
+        
+        current = float(closes.iloc[-1])
+        position_pct = round(((current - dynamic_support) / (dynamic_resistance - dynamic_support)) * 100, 1) if dynamic_resistance != dynamic_support else 50
+        
+        return {
+            'static_support': round(support, 2),
+            'static_resistance': round(resistance, 2),
+            'dynamic_support': round(dynamic_support, 2),
+            'dynamic_resistance': round(dynamic_resistance, 2),
+            'current_position': position_pct
         }
     
     async def _define_trading_zones(self, analysis: Dict, data: pd.DataFrame) -> Dict:
@@ -247,73 +361,6 @@ class AdvancedCoinAnalyzer:
                 "observacao": "Mercado em consolidação - esperar breakout"
             }
     
-    async def _generate_ai_summary(self, analysis: Dict, trading_zones: Dict, coin: str) -> str:
-        """Gera resumo usando OpenAI"""
-        if not self.openai_api_key:
-            return "OpenAI API key não configurada"
-        
-        try:
-            prompt = f"""
-            Analise técnica do {coin}:
-            
-            PREÇO ATUAL: ${analysis['current_price']}
-            RSI: {analysis['rsi']}
-            ZONA ATUAL: {trading_zones['posicao_atual']}
-            
-            ZONAS DE COMPRA:
-            {json.dumps(trading_zones['compra'], indent=2)}
-            
-            ZONAS DE VENDA:
-            {json.dumps(trading_zones['venda'], indent=2)}
-            
-            Gere um resumo conciso em português com:
-            1. Situação atual em 1 frase
-            2. Melhor estratégia 
-            3. Principais riscos
-            4. Conclusão final
-            
-            Seja direto e prático.
-            """
-            
-            # Aqui iria a chamada à API OpenAI
-            # Por enquanto retornamos um resumo manual
-            return self._generate_manual_summary(analysis, trading_zones, coin)
-            
-        except:
-            return self._generate_manual_summary(analysis, trading_zones, coin)
-    
-    def _generate_manual_summary(self, analysis: Dict, trading_zones: Dict, coin: str) -> str:
-        """Gera resumo manual quando OpenAI não está disponível"""
-        current_zone = trading_zones['posicao_atual']
-        rsi = analysis['rsi']
-        
-        if current_zone == "ZONA_DE_COMPRA" and rsi < 30:
-            return f"🎯 OPORTUNIDADE DE COMPRA EM {coin}! Preço na zona de acumulação com RSI oversold. Estratégia: Comprar em scale nas zonas definidas. Stop loss: ${trading_zones['compra']['zona_compra_agressiva']['alvo_stop_loss']:.2f}"
-        elif current_zone == "ZONA_DE_VENDA":
-            return f"💸 MOMENTO DE VENDA EM {coin}. Preço nas zonas de realização de lucro. Estratégia: Vender em scale, não vender tudo de uma vez."
-        else:
-            return f"⚖️ {coin} EM CONSOLIDAÇÃO. Aguardar confirmação de direção antes de entrar em novas posições."
-    
-    # ... (outros métodos auxiliares do código anterior - _calculate_rsi, _fetch_coin_data, etc.)
-    
-    def _calculate_trend_strength(self, data: pd.DataFrame) -> Dict:
-        """Calcula força e direção da tendência"""
-        prices = data['Close'].tail(50)
-        sma_20 = prices.rolling(20).mean()
-        sma_50 = prices.rolling(50).mean()
-        
-        current_sma_20 = sma_20.iloc[-1] if not pd.isna(sma_20.iloc[-1]) else prices.iloc[-1]
-        current_sma_50 = sma_50.iloc[-1] if not pd.isna(sma_50.iloc[-1]) else prices.iloc[-1]
-        
-        if current_sma_20 > current_sma_50:
-            direction = "UPTREND"
-            strength = min(((current_sma_20 - current_sma_50) / current_sma_50) * 100, 20)
-        else:
-            direction = "DOWNTREND" 
-            strength = min(((current_sma_50 - current_sma_20) / current_sma_20) * 100, 20)
-        
-        return {"direction": direction, "strength": round(strength, 1)}
-    
     def _get_main_action(self, score: int) -> str:
         if score >= 70: return "COMPRA FORTE"
         if score >= 60: return "COMPRA"
@@ -334,6 +381,31 @@ class AdvancedCoinAnalyzer:
         if analysis['rsi'] > 80:
             return "RSI EXTREMO - CUIDADO COM REVERSÃO"
         return "RISCO MODERADO"
+    
+    async def _generate_ai_summary(self, analysis: Dict, trading_zones: Dict, coin: str) -> str:
+        """Gera resumo usando OpenAI"""
+        if not self.openai_api_key:
+            return "OpenAI API key não configurada"
+        
+        try:
+            # Aqui iria a chamada à API OpenAI
+            # Por enquanto retornamos um resumo manual
+            return self._generate_manual_summary(analysis, trading_zones, coin)
+            
+        except:
+            return self._generate_manual_summary(analysis, trading_zones, coin)
+    
+    def _generate_manual_summary(self, analysis: Dict, trading_zones: Dict, coin: str) -> str:
+        """Gera resumo manual quando OpenAI não está disponível"""
+        current_zone = trading_zones['posicao_atual']
+        rsi = analysis['rsi']
+        
+        if current_zone == "ZONA_DE_COMPRA" and rsi < 30:
+            return f"🎯 OPORTUNIDADE DE COMPRA EM {coin}! Preço na zona de acumulação com RSI oversold. Estratégia: Comprar em scale nas zonas definidas. Stop loss: ${trading_zones['compra']['zona_compra_agressiva']['alvo_stop_loss']:.2f}"
+        elif current_zone == "ZONA_DE_VENDA":
+            return f"💸 MOMENTO DE VENDA EM {coin}. Preço nas zonas de realização de lucro. Estratégia: Vender em scale, não vender tudo de uma vez."
+        else:
+            return f"⚖️ {coin} EM CONSOLIDAÇÃO. Aguardar confirmação de direção antes de entrar em novas posições."
 
 # Teste
 async def main():
