@@ -1,19 +1,30 @@
-﻿# Dependências existentes
+﻿# --- Core ---
 python-dotenv==1.0.1
 requests==2.32.3
-supabase>=2.18.0
+
+# --- Supabase & DB ---
+supabase==2.4.5
+psycopg2-binary==2.9.6
+
+# --- Telegram Bot ---
+python-telegram-bot==20.3
+
+# --- API Backend ---
 fastapi==0.115.0
 uvicorn==0.30.6
+starlette==0.38.6
+
+# --- Machine Learning ---
 scikit-learn==1.5.2
 numpy==2.1.1
 joblib==1.4.2
-pydantic==2.9.2
-openai==1.45.0
-psycopg2-binary==2.9.9
 
-# Dependências para Daily Worker (VERSÕES COMPATIVEIS)
-aiohttp==3.9.5
-solana==0.25.0
-solders==0.15.1
-base58==2.1.1
-pandas==2.2.2
+# --- OpenAI ---
+openai==1.45.0
+
+# --- Pydantic & Helpers ---
+pydantic==2.9.2
+pydantic-core==2.23.4
+
+# --- Optional extras ---
+typing-extensions==4.15.0
