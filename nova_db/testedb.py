@@ -2,17 +2,68 @@
 import requests
 import time
 import json
-from supabase import create_client, Client
 
 # -----------------------------
-# Configuração Supabase (coloca a tua key aqui OU usa uma variável de ambiente)
+# Configuração Supabase (SEM supabase-py)
 # -----------------------------
 SUPABASE_URL = "https://qynnajpvxnqcmkzrhpde.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bm5hanB2eG5xY21renJocGRlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzQzODg2MywiZXhwIjoyMDczMDE0ODYzfQ.P6jxgFLmQZnVSalWB3UykT9QO3EAW-tljTdoGZ6pY7A"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bm5hanB2eG5xY21renJocGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Mzg4NjMsImV4cCI6MjA3MzAxNDg2M30.M30wZ79mQz2i3verO9JtyMn7JVE3yW1FjtcFJlnTvaw"
+
+# Headers para Supabase REST API
+SUPABASE_HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
+
+def supabase_query(table, query_params=None):
+    """Faz query à Supabase usando REST API"""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        response = requests.get(url, headers=SUPABASE_HEADERS, params=query_params, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        print(f"❌ Erro Supabase query: {response.status_code}")
+        return []
+    except Exception as e:
+        print(f"❌ Erro Supabase query: {e}")
+        return []
+
+def supabase_insert(table, data):
+    """Insere dados na Supabase usando REST API"""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        response = requests.post(url, headers=SUPABASE_HEADERS, json=data, timeout=10)
+        if response.status_code in [200, 201, 204]:
+            return True
+        print(f"❌ Erro Supabase insert: {response.status_code} - {response.text}")
+        return False
+    except Exception as e:
+        print(f"❌ Erro Supabase insert: {e}")
+        return False
+
+def supabase_upsert(table, data, conflict_columns):
+    """Upsert na Supabase"""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        headers = SUPABASE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        
+        # Adicionar on_conflict como query parameter
+        conflict_str = ",".join(conflict_columns)
+        url += f"?on_conflict={conflict_str}"
+        
+        response = requests.post(url, headers=headers, json=data, timeout=10)
+        if response.status_code in [200, 201, 204]:
+            return True
+        print(f"❌ Erro Supabase upsert: {response.status_code} - {response.text}")
+        return False
+    except Exception as e:
+        print(f"❌ Erro Supabase upsert: {e}")
+        return False
 
 # -----------------------------
-# Funções de coleta por exchange
+# Funções de coleta por exchange (MANTIDAS)
 # -----------------------------
 def fetch_binance_tokens():
     try:
@@ -104,13 +155,10 @@ def fetch_kraken_tokens():
             for p in pairs.values():
                 base = p.get('base')
                 if base:
-                    # Kraken usa X... e Z... prefixos para some assets; tentamos normalizar
-                    # remove leading X or Z if followed by 3-5 letters, ex: XBTC -> BTC
                     cleaned = base
                     if cleaned.startswith(('X','Z')) and len(cleaned) > 3:
-                        # remove leading X/Z chars until letters found
                         cleaned = ''.join([c for c in cleaned if c.isalpha()])
-                    cleaned = cleaned.replace('^', '')  # precaution
+                    cleaned = cleaned.replace('^', '')
                     if 1 < len(cleaned) <= 10:
                         tokens.append(cleaned.upper())
             return list(set(tokens))
@@ -143,11 +191,9 @@ def fetch_gemini_tokens():
         r = requests.get("https://api.gemini.com/v1/symbols", timeout=15)
         if r.status_code == 200:
             data = r.json()
-            # Gemini symbols like 'btcusd' -> take prefix base
             tokens = []
             for s in data:
                 s = (s or "").upper()
-                # heurística: if contains USD/USDT/ETH etc, split by those suffixes
                 for suffix in ("USD","USDT","USDC","ETH","BTC"):
                     if s.endswith(suffix):
                         tokens.append(s[:-len(suffix)])
@@ -157,40 +203,36 @@ def fetch_gemini_tokens():
         print("   ❌ Erro Gemini:", e)
     return []
 
-#def fetch_bittrex_tokens():
-    try:
-        r = requests.get("https://api.bittrex.com/v3/markets", timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            # markets like 'BTC-USD' => base is left of hyphen
-            return list({(item.get('symbol') or "").split('-')[0].upper() for item in data if item.get('symbol')})
-    except Exception as e:
-        print("   ❌ Erro Bittrex:", e)
-    return []
-
 # -----------------------------
-# Função para enviar ao Supabase (robusta)
+# Função para enviar ao Supabase
 # -----------------------------
 def send_to_supabase(exchange: str, token: str):
     token = (token or "").strip()
     if not token:
         return
     token = token.upper()
-    data = {
-        "exchange": exchange,
-        "token": token,
-        "signature": None
-    }
+    
     try:
-        # upsert on the unique constraint (exchange, token) — a constraint deve existir no DB
-        res = supabase.table("exchange_tokens").upsert(data, on_conflict="exchange,token").execute()
-        err = getattr(res, "error", None)
-        if err:
-            print(f"❌ Erro ao inserir {exchange} - {token}: {err}")
-        else:
+        # Verificar se já existe
+        query_params = {
+            "exchange": f"eq.{exchange}",
+            "token": f"eq.{token}"
+        }
+        existing = supabase_query("exchange_tokens", query_params)
+        
+        if existing:
+            print(f"⏭️  Já existe: {exchange} - {token}")
+            return
+        
+        # Inserir novo
+        data = {"exchange": exchange, "token": token}
+        if supabase_insert("exchange_tokens", data):
             print(f"✅ Inserido: {exchange} - {token}")
+        else:
+            print(f"❌ Erro ao inserir {exchange} - {token}")
+            
     except Exception as e:
-        print(f"❌ Erro ao inserir {exchange} - {token}: {e}")
+        print(f"❌ Exception ao inserir {exchange} - {token}: {e}")
 
 # -----------------------------
 # Execução principal
@@ -209,22 +251,33 @@ def main():
         ("Crypto.com", fetch_crypto_com_tokens),
         ("Huobi", fetch_huobi_tokens),
         ("Gemini", fetch_gemini_tokens),
-      #  ("Bittrex", fetch_bittrex_tokens),
     ]
 
+    print("🚀 INICIANDO ATUALIZAÇÃO DE TOKENS LISTADOS")
+    print("==================================================")
+
     for name, func in exchanges:
-        print("==================================================")
         print(f"📊 Buscando {name}...")
         start = time.time()
-        tokens = func()
-        elapsed = time.time() - start
-        print(f"   ✅ {len(tokens)} tokens ({elapsed:.1f}s)")
+        try:
+            tokens = func()
+            elapsed = time.time() - start
+            print(f"   ✅ {len(tokens)} tokens encontrados ({elapsed:.1f}s)")
+            
+            # Inserir tokens (limitar a 1000 por exchange para não sobrecarregar)
+            tokens = tokens[:1000]
+            for i, token in enumerate(tokens):
+                send_to_supabase(name, token)
+                if i % 50 == 0:  # Pequena pausa a cada 50 tokens
+                    time.sleep(0.3)
+                    
+        except Exception as e:
+            print(f"   ❌ Erro em {name}: {e}")
+        
+        time.sleep(1)  # Pausa entre exchanges
 
-        for token in tokens:
-            send_to_supabase(name, token)
-        # pequena pausa para não sobrecarregar APIs
-        time.sleep(0.8)
+    print("==================================================")
+    print("🎯 ATUALIZAÇÃO CONCLUÍDA")
 
 if __name__ == "__main__":
     main()
-
