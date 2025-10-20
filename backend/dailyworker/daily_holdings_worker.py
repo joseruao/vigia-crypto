@@ -1,12 +1,9 @@
-# backend/workers/daily/daily_holdings_worker.py
 import requests
 import time
 import json
 import asyncio
-import aiohttp
 from datetime import datetime
 import os
-
 # ===========================
 # CONFIGURAÇÃO
 # ===========================
@@ -321,7 +318,7 @@ def is_scam_token(token_data, value_usd):
 # SOLANA HOLDINGS
 # ===========================
 async def get_solana_holdings(wallet_address, wallet_name):
-    """Busca holdings de uma wallet Solana"""
+    """Busca holdings de uma wallet Solana (usando requests)"""
     try:
         holdings = []
         payload = {
@@ -335,70 +332,71 @@ async def get_solana_holdings(wallet_address, wallet_name):
             ]
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(HELIUS_URL, json=payload, timeout=30) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if 'result' in data and 'value' in data['result']:
-                        print(f"   📊 {len(data['result']['value'])} token accounts encontrados")
+        # TROCA aiohttp por requests
+        response = requests.post(HELIUS_URL, json=payload, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            if 'result' in data and 'value' in data['result']:
+                print(f"   📊 {len(data['result']['value'])} token accounts encontrados")
+                
+                for token_account in data['result']['value']:
+                    try:
+                        token_info = token_account['account']['data']['parsed']['info']
+                        mint = token_info['mint']
+                        balance = float(token_info['tokenAmount']['uiAmount'])
                         
-                        for token_account in data['result']['value']:
-                            try:
-                                token_info = token_account['account']['data']['parsed']['info']
-                                mint = token_info['mint']
-                                balance = float(token_info['tokenAmount']['uiAmount'])
-                                
-                                # Ignorar stablecoins, SOL e balances muito pequenos
-                                if balance <= 0.001 or mint in [
-                                    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
-                                    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
-                                    "So11111111111111111111111111111111111111112"     # SOL
-                                ]:
-                                    continue
-                                
-                                # Buscar dados do token
-                                token_data = get_token_data_dexscreener(mint)
-                                price = token_data['price']
-                                value_usd = balance * price
-                                
-                                # APLICAR FILTROS REALISTAS
-                                threshold = HOLDING_THRESHOLDS.get(wallet_name, 100000)
-                                
-                                if (value_usd >= threshold and 
-                                    token_data['liquidity'] >= MIN_LIQUIDITY and
-                                    token_data['symbol'] != 'UNKNOWN' and
-                                    not is_scam_token(token_data, value_usd)):
-                                    
-                                    # Calcular score
-                                    score = calculate_holding_score({
-                                        'symbol': token_data['symbol'],
-                                        'value_usd': value_usd,
-                                        'liquidity': token_data['liquidity'],
-                                        'volume_24h': token_data['volume_24h']
-                                    }, wallet_name)
-                                    
-                                    holding_info = {
-                                        "symbol": token_data['symbol'],
-                                        "name": token_data.get('name', ''),
-                                        "balance": balance, 
-                                        "value_usd": value_usd,
-                                        "address": mint, 
-                                        "liquidity": token_data['liquidity'],
-                                        "volume_24h": token_data['volume_24h'],
-                                        "price": price,
-                                        "price_change_24h": token_data['price_change_24h'],
-                                        "pair_url": token_data['pair_url'],
-                                        "score": score,
-                                        "chain": "solana"
-                                    }
-                                    
-                                    holdings.append(holding_info)
-                                    print(f"   ✅ {token_data['symbol']}: ${value_usd:,.0f} (Score: {score})")
-                                    
-                            except Exception as e:
-                                continue
-                else:
-                    print(f"   ❌ Erro API Helius: {response.status}")
+                        # ... resto do código IGUAL ...
+                        # Ignorar stablecoins, SOL e balances muito pequenos
+                        if balance <= 0.001 or mint in [
+                            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+                            "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
+                            "So11111111111111111111111111111111111111112"     # SOL
+                        ]:
+                            continue
+                        
+                        # Buscar dados do token
+                        token_data = get_token_data_dexscreener(mint)
+                        price = token_data['price']
+                        value_usd = balance * price
+                        
+                        # APLICAR FILTROS REALISTAS
+                        threshold = HOLDING_THRESHOLDS.get(wallet_name, 100000)
+                        
+                        if (value_usd >= threshold and 
+                            token_data['liquidity'] >= MIN_LIQUIDITY and
+                            token_data['symbol'] != 'UNKNOWN' and
+                            not is_scam_token(token_data, value_usd)):
+                            
+                            # Calcular score
+                            score = calculate_holding_score({
+                                'symbol': token_data['symbol'],
+                                'value_usd': value_usd,
+                                'liquidity': token_data['liquidity'],
+                                'volume_24h': token_data['volume_24h']
+                            }, wallet_name)
+                            
+                            holding_info = {
+                                "symbol": token_data['symbol'],
+                                "name": token_data.get('name', ''),
+                                "balance": balance, 
+                                "value_usd": value_usd,
+                                "address": mint, 
+                                "liquidity": token_data['liquidity'],
+                                "volume_24h": token_data['volume_24h'],
+                                "price": price,
+                                "price_change_24h": token_data['price_change_24h'],
+                                "pair_url": token_data['pair_url'],
+                                "score": score,
+                                "chain": "solana"
+                            }
+                            
+                            holdings.append(holding_info)
+                            print(f"   ✅ {token_data['symbol']}: ${value_usd:,.0f} (Score: {score})")
+                            
+                    except Exception as e:
+                        continue
+        else:
+            print(f"   ❌ Erro API Helius: {response.status_code}")
         return holdings
     except Exception as e:
         print(f"   ❌ Erro geral get_solana_holdings: {e}")
