@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 
 function GoogleLogo() {
@@ -21,12 +22,38 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [mode, setMode] = useState<"signin"|"signup">("signin")
+  const router = useRouter()
+
+  // Redireciona se já estiver autenticado
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.push("/")
+      }
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        router.push("/")
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [router])
 
   async function loginGoogle() {
     setErr(null)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/` }
+      options: { 
+        redirectTo: `${window.location.origin}/`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
+      }
     })
     if (error) setErr(error.message)
   }
@@ -41,37 +68,40 @@ export default function LoginPage() {
     setLoading(false)
     if (error) setErr(error.message)
     else {
-      if (mode === "signin") window.location.href = "/"
-      else alert("Conta criada. Verifica o teu email para confirmar.")
+      if (mode === "signin") {
+        router.push("/")
+      } else {
+        alert("Conta criada. Verifica o teu email para confirmar.")
+      }
     }
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex flex-col">
-      {/* header minimal tipo ChatGPT */}
-      <header className="w-full border-b border-white/10">
+    <div className="min-h-screen bg-white text-black flex flex-col">
+      {/* header minimal estilo limpo */}
+      <header className="w-full border-b border-gray-200 bg-white">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded bg-white/90" />
-            <span className="font-semibold tracking-tight">Joseruao.io</span>
+            <div className="h-7 w-7 rounded bg-blue-600" />
+            <span className="font-semibold tracking-tight">joseruao.com</span>
           </div>
-          <span className="text-xs text-white/50">beta</span>
+          <span className="text-xs text-gray-500">Vigia Crypto</span>
         </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
-          {/* card central */}
-          <div className="rounded-2xl bg-neutral-900/80 border border-white/10 shadow-2xl p-8 backdrop-blur">
+          {/* card central limpo */}
+          <div className="rounded-xl bg-white border border-gray-200 shadow-sm p-8">
             <div className="flex flex-col items-center text-center space-y-2 mb-6">
               <h1 className="text-2xl font-semibold">Entrar no Vigia Crypto</h1>
-              <p className="text-sm text-white/60">Usa a tua conta Google ou email.</p>
+              <p className="text-sm text-gray-600">Usa a tua conta Google ou email.</p>
             </div>
 
-            {/* botão Google grande */}
+            {/* botão Google */}
             <button
               onClick={loginGoogle}
-              className="w-full inline-flex items-center justify-center gap-3 rounded-xl bg-white text-black font-medium py-3 hover:bg-neutral-100 transition ring-1 ring-black/5"
+              className="w-full inline-flex items-center justify-center gap-3 rounded-lg bg-white text-gray-700 font-medium py-3 hover:bg-gray-50 transition border border-gray-300 shadow-sm"
             >
               <GoogleLogo />
               Continuar com Google
@@ -79,28 +109,28 @@ export default function LoginPage() {
 
             {/* separador */}
             <div className="flex items-center gap-3 my-6">
-              <div className="h-px flex-1 bg-white/10" />
-              <span className="text-xs text-white/40">ou</span>
-              <div className="h-px flex-1 bg-white/10" />
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-xs text-gray-500">ou</span>
+              <div className="h-px flex-1 bg-gray-200" />
             </div>
 
             {/* toggle email */}
             {!showEmail ? (
               <button
                 onClick={() => setShowEmail(true)}
-                className="w-full text-sm text-white/70 hover:text-white transition"
+                className="w-full text-sm text-blue-600 hover:text-blue-700 transition font-medium"
               >
                 Usar email e password
               </button>
             ) : (
-              <form onSubmit={handleEmail} className="space-y-3">
+              <form onSubmit={handleEmail} className="space-y-4">
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="Email"
                   required
-                  className="w-full rounded-lg bg-neutral-800 text-white placeholder-white/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/20"
+                  className="w-full rounded-lg bg-gray-50 text-gray-900 placeholder-gray-500 px-4 py-3 outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <input
                   type="password"
@@ -108,24 +138,24 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   placeholder="Password"
                   required
-                  className="w-full rounded-lg bg-neutral-800 text-white placeholder-white/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/20"
+                  className="w-full rounded-lg bg-gray-50 text-gray-900 placeholder-gray-500 px-4 py-3 outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                 />
                 <button
                   disabled={loading}
-                  className="w-full rounded-lg bg-emerald-500 text-black font-semibold py-2.5 hover:bg-emerald-400 disabled:opacity-60"
+                  className="w-full rounded-lg bg-blue-600 text-white font-semibold py-3 hover:bg-blue-700 disabled:opacity-60 transition-colors"
                 >
                   {mode === "signin" ? (loading ? "A entrar…" : "Entrar") : (loading ? "A criar…" : "Criar conta")}
                 </button>
-                <div className="text-xs text-white/60 text-center">
+                <div className="text-xs text-gray-600 text-center">
                   {mode === "signin" ? (
                     <>Ainda não tens conta?{" "}
-                      <button type="button" onClick={() => setMode("signup")} className="underline hover:text-white">
+                      <button type="button" onClick={() => setMode("signup")} className="text-blue-600 hover:text-blue-700 font-medium">
                         Criar conta
                       </button>
                     </>
                   ) : (
                     <>Já tens conta?{" "}
-                      <button type="button" onClick={() => setMode("signin")} className="underline hover:text-white">
+                      <button type="button" onClick={() => setMode("signin")} className="text-blue-600 hover:text-blue-700 font-medium">
                         Entrar
                       </button>
                     </>
@@ -134,12 +164,12 @@ export default function LoginPage() {
               </form>
             )}
 
-            {err && <p className="text-red-400 text-xs mt-4">{err}</p>}
+            {err && <p className="text-red-600 text-sm mt-4 text-center">{err}</p>}
           </div>
 
           {/* rodapé */}
-          <p className="text-xs text-center text-white/40 mt-6">
-            © {new Date().getFullYear()} Joseruao.io · Todos os direitos reservados
+          <p className="text-xs text-center text-gray-500 mt-6">
+            © {new Date().getFullYear()} joseruao.com · Vigia Crypto
           </p>
         </div>
       </main>
