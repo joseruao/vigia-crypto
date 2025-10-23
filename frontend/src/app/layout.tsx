@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider';
 
 export const metadata: Metadata = {
-  title: 'joseruao.io',
+  title: 'joseruao.com', // Muda para .com
   description: 'Vigia Crypto',
 };
 
