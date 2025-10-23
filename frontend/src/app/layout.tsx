@@ -1,10 +1,11 @@
+// frontend/src/app/layout.tsx
 import type { Metadata } from 'next';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider';
 
 export const metadata: Metadata = {
-  title: 'joseruao.com', // Muda para .com
+  title: 'joseruao.com',
   description: 'Vigia Crypto',
 };
 

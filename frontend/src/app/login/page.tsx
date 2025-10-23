@@ -1,5 +1,4 @@
-﻿// frontend/src/app/login/page.tsx
-"use client"
+﻿"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -33,7 +32,9 @@ export default function LoginPage() {
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         router.push("/")
       }
@@ -47,7 +48,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { 
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/`,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
