@@ -1,14 +1,13 @@
 @echo off
 :: =====================================================
-:: Script rápido para commit & push
-:: Uso: basta dar duplo clique neste ficheiro
-:: (deve estar dentro da pasta principal do repositório)
+:: Script para commit & push do ambiente de trabalho
+:: Coloca este ficheiro no Desktop e dá duplo clique
 :: =====================================================
 
 setlocal enabledelayedexpansion
 
-:: Detecta o diretório atual
-set "REPO=%cd%"
+:: Vai diretamente para a pasta do projeto
+cd /d "C:\Users\joser\vigia_crypto"
 
 :: Pede mensagem do commit
 set /p MESSAGE="Mensagem do commit: "
@@ -18,8 +17,8 @@ if "%MESSAGE%"=="" (
 )
 
 echo.
-echo [INFO] A fazer commit em %REPO%
-cd /d "%REPO%"
+echo [INFO] A fazer commit em %cd%
+echo.
 
 :: Mostra branch atual
 for /f "tokens=2 delims=* " %%a in ('git branch ^| find "*"') do set BRANCH=%%a

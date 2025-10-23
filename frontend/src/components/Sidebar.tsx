@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { Trash2, Plus, Save, LogOut } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+import { Trash2, Plus, Save } from 'lucide-react';
 
 function formatDate(ts: number) {
   try {
@@ -32,19 +31,6 @@ export function Sidebar() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState('');
-  const [email, setEmail] = useState<string | null>(null);
-
-  // carregar utilizador logado
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-    });
-  }, []);
-
-  async function logout() {
-    await supabase.auth.signOut();
-    window.location.href = '/login';
-  }
 
   function startEdit(id: string, title: string) {
     setEditingId(id);
@@ -156,19 +142,14 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* perfil e logout */}
+      {/* perfil SIMPLES sem auth */}
       <div className="border-t border-zinc-200 p-4 flex items-center gap-3 bg-zinc-50">
         <div className="h-9 w-9 rounded-full bg-black text-white grid place-items-center font-semibold">
-          {email ? email[0].toUpperCase() : '?'}
+          U
         </div>
         <div className="flex flex-col flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">{email ?? 'Utilizador'}</div>
-          <button
-            onClick={logout}
-            className="text-xs text-zinc-500 hover:text-zinc-800 flex items-center gap-1"
-          >
-            <LogOut size={12} /> Sair
-          </button>
+          <div className="text-sm font-medium truncate">Utilizador</div>
+          <div className="text-xs text-zinc-500">Vigia Crypto</div>
         </div>
       </div>
     </aside>
