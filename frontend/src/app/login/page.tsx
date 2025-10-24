@@ -1,4 +1,5 @@
-﻿"use client"
+﻿// frontend/src/app/login/page.tsx
+"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -32,9 +33,7 @@ export default function LoginPage() {
       }
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       if (session) {
         router.push("/")
       }
@@ -48,14 +47,17 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { 
-        redirectTo: `${window.location.origin}/`,
+        redirectTo: `https://joseruao.vercel.app/auth/callback`,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
         }
       }
     })
-    if (error) setErr(error.message)
+    if (error) {
+      setErr(error.message)
+      console.error('Login error:', error)
+    }
   }
 
   async function handleEmail(e: React.FormEvent) {
