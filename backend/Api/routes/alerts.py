@@ -1,184 +1,52 @@
-﻿from __future__ import annotations
-
+﻿# backend/Api/routes/alerts.py
+# -*- coding: utf-8 -*-
 import json
-import os
-import requests
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-
+from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Query
-from pydantic import BaseModel
+from typing import Optional, Dict, Any
+
+from Api.services.db import fetch_alerts
+from Api.services.summaries import items_to_markdown
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
-# ---------- MODELOS ----------
-class AskIn(BaseModel):
-    prompt: str
-    exchange: Optional[str] = None
-
-class Prediction(BaseModel):
-    id: Optional[int] = None
-    exchange: Optional[str] = None
-    token: Optional[str] = None
-    token_address: Optional[str] = None
-    value_usd: Optional[float] = None
-    liquidity: Optional[float] = None
-    volume_24h: Optional[float] = None
-    score: Optional[int] = None
-    pair_url: Optional[str] = None
-    ts: Optional[datetime] = None  # Permite None
-    
-    # Adiciona validação para campos opcionais
-    class Config:
-        extra = "ignore"  # Ignora campos extra da BD
-
-# ---------- HELPERS ----------
-def get_predictions_direct(limit: int = 25, exchange: Optional[str] = None) -> List[Prediction]:
-    """Chamada direta à REST API do Supabase (sem cliente)"""
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE")
-    
-    if not supabase_url or not supabase_key:
-        raise Exception("Supabase envs em falta (SUPABASE_URL e SERVICE_ROLE).")
-
-    # Chamada direta à REST API
-    url = f"{supabase_url}/rest/v1/transacted_tokens"
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Content-Type": "application/json"
-    }
-    
-    params = {
-        "select": "*",
-        "order": "ts.desc", 
-        "limit": str(limit)
-    }
-    
-    # Se exchange for especificada, adiciona filtro
-    if exchange:
-        params["exchange"] = f"eq.{exchange}"
-    
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            predictions = []
-            for item in data:
-                try:
-                    # Converte dados da BD para o modelo
-                    prediction = Prediction(**item)
-                    predictions.append(prediction)
-                except Exception as e:
-                    print(f"⚠️ Erro a processar item: {item} - {e}")
-                    continue
-            return predictions
-        else:
-            raise Exception(f"Supabase API error: {response.status_code} - {response.text}")
-            
-    except Exception as e:
-        print(f"ERROR in get_predictions_direct: {e}")
-        return []  # Retorna lista vazia em vez de crashar
-
-def format_predictions_md(rows: List[Prediction]) -> str:
-    if not rows:
-        return "Nenhum potencial listing detetado nas últimas leituras."
-
-    # DEBUG: Log para ver o que vem da BD
-    print(f"DEBUG: Recebidas {len(rows)} linhas da BD")
-    
-    # Filtra linhas que têm pelo menos token e exchange
-    valid_rows = [r for r in rows if r.token and r.exchange]
-    
-    # Dedupe por token+exchange
-    seen: set[tuple[str, str]] = set()
-    uniq: List[Prediction] = []
-    for r in valid_rows:
-        key = (r.token.upper(), r.exchange.upper())
-        if key not in seen:
-            seen.add(key)
-            uniq.append(r)
-
-    print(f"DEBUG: Após deduplicação: {len(uniq)} linhas únicas")
-
-    if not uniq:
-        return "Nenhum dado válido encontrado na base de dados."
-
-    lines = ["**Últimos potenciais listings detetados:**", ""]
-    for r in uniq:
-        cg = f"https://www.coingecko.com/en/search?query={r.token}" if r.token else "#"
-        ds = r.pair_url or ""
-        ex = r.exchange or "Unknown"
-        score = r.score or "N/A"
-        
-        lines.append(
-            f"- **{r.token}** ({ex}) — Score: {score}  \n"
-            f"  [DexScreener]({ds}) | [CoinGecko]({cg})"
-        )
-    
-    result = "\n".join(lines)
-    print(f"DEBUG: Resultado final: {result}")
-    return result
-
 async def read_loose_body(request: Request) -> Dict[str, Any]:
     ctype = (request.headers.get("content-type") or "").lower()
-
     if "application/json" in ctype:
-        data = await request.json()
-        if not isinstance(data, dict):
-            raise HTTPException(status_code=400, detail="JSON body must be an object")
-        return data
-
-    if "application/x-www-form-urlencoded" in ctype:
-        form = await request.form()
-        return dict(form)
-
+        return await request.json()
     raw = (await request.body()) or b""
     text = raw.decode("utf-8", errors="ignore").strip()
-
     if text.startswith("{"):
         try:
             data = json.loads(text)
             if isinstance(data, dict):
                 return data
-        except json.JSONDecodeError:
+        except Exception:
             pass
-
     if text:
         return {"prompt": text}
-
     raise HTTPException(status_code=400, detail="Body vazio ou inválido")
-
-# ---------- ENDPOINTS ----------
-@router.get("/predictions")
-def get_predictions(limit: int = 10) -> List[Prediction]:
-    """Endpoint GET para testar a ligação à BD"""
-    try:
-        return get_predictions_direct(limit=limit)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao aceder aos dados: {str(e)}")
 
 @router.post("/ask")
 async def ask_alerts(request: Request, exchange: Optional[str] = Query(default=None)) -> dict:
-    data = await read_loose_body(request)
-    prompt_val = data.get("prompt") or ""
-    prompt = str(prompt_val).strip()
-    ex = data.get("exchange") or exchange
-
-    if not prompt:
-        raise HTTPException(status_code=400, detail="Falta 'prompt'.")
-
     try:
-        # Usa a chamada direta em vez do cliente Supabase
-        rows = get_predictions_direct(limit=25, exchange=ex)
+        data = await read_loose_body(request)
+        prompt_val = data.get("prompt") or ""
+        prompt = str(prompt_val).strip()
+        ex = data.get("exchange") or exchange
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Falta 'prompt'.")
         
-        if not rows:
-            return {"answer": "⚠️ Nenhum dado encontrado na base de dados"}
-        
-        answer = format_predictions_md(rows)
+        rows, _ = fetch_alerts(exchange=ex, limit=25)
+        answer = items_to_markdown(rows)
         return {"answer": answer}
-        
     except Exception as e:
-        print(f"ERROR in /alerts/ask: {e}")
-        return {"answer": f"⚠️ Erro temporário ao aceder aos dados: {str(e)}"}
+        return {"answer": f"⚠️ Erro ao processar: {str(e)}"}
+
+@router.get("/predictions")
+def get_predictions(limit: int = 10, exchange: Optional[str] = None):
+    try:
+        rows, _ = fetch_alerts(exchange=exchange, limit=limit)
+        return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
