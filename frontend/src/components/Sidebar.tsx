@@ -1,83 +1,45 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { Trash2, Plus, Save, LogOut } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
+// frontend/src/components/Sidebar.tsx
+'use client'
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Session } from '@supabase/auth-helpers-nextjs';
 
-function formatDate(ts: number) {
-  try {
-    return new Date(ts).toLocaleString(undefined, {
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
-}
 
-export function Sidebar() {
-  const {
-    conversations,
-    activeId,
-    newConversation,
-    selectConversation,
-    deleteConversation,
-    clearAll,
-    updateTitle,
-  } = useChatHistoryContext();
+export function Sidebar({ userSession }: { userSession: Session | null }) {
+const pathname = usePathname();
+const supabase = createClientComponentClient();
+const [session, setSession] = useState<Session | null>(userSession);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [tempTitle, setTempTitle] = useState('');
-  const [email, setEmail] = useState<string | null>(null);
-  const pathname = usePathname();
 
-  // Esconde sidebar na página de login
-  if (pathname === '/login') {
-    return null;
-  }
+useEffect(() => {
+const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+setSession(session);
+});
+return () => listener?.subscription?.unsubscribe();
+}, [supabase]);
 
-  // carregar utilizador logado
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-    });
-  }, []);
 
-  async function logout() {
-    await supabase.auth.signOut();
-    window.location.href = '/login';
-  }
+const logout = async () => {
+await supabase.auth.signOut();
+location.href = '/login';
+};
 
-  function startEdit(id: string, title: string) {
-    setEditingId(id);
-    setTempTitle(title);
-  }
 
-  function confirmEdit(id: string) {
-    updateTitle(id, tempTitle.trim() || 'Sem título');
-    setEditingId(null);
-  }
-
-  function exportConversations() {
-    const blob = new Blob([JSON.stringify(conversations, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'conversas.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <aside className="hidden md:flex w-64 flex-col border-r border-zinc-300 bg-white text-black">
-      {/* ... (resto do código igual) ... */}
-    </aside>
-  );
+return (
+<aside className="w-64 bg-gray-50 border-r border-gray-200 p-4">
+<h2 className="text-xl font-semibold mb-4">Vigia Crypto</h2>
+<nav className="space-y-2">
+<Link href="/" className={pathname === '/' ? 'font-bold' : ''}>Dashboard</Link>
+<Link href="/wallets" className={pathname === '/wallets' ? 'font-bold' : ''}>Wallets</Link>
+<Link href="/holdings" className={pathname === '/holdings' ? 'font-bold' : ''}>Holdings</Link>
+</nav>
+{session ? (
+<button onClick={logout} className="mt-6 text-sm text-red-600">Sair</button>
+) : (
+<Link href="/login" className="mt-6 text-sm text-blue-600">Entrar</Link>
+)}
+</aside>
+);
 }

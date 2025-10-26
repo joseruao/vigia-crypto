@@ -28,7 +28,10 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="Vigia API", version="0.1.0", lifespan=lifespan)
 
 # ---------- CORS ----------
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://vigia-crypto-mjfz.vercel.app")
+FRONTEND_URL = os.environ.get("FRONTEND_URL")
+if not FRONTEND_URL:
+    raise RuntimeError("❌ FRONTEND_URL não definido no ambiente")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL, "http://localhost:3000"],

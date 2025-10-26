@@ -5,9 +5,10 @@ from typing import List
 
 def _fmt_money(v: float) -> str:
     try:
-        return f"\"
+        return f"${v:,.0f}"  # <- estava cortado!
     except Exception:
         return str(v)
+
 
 def items_to_markdown(items: List[dict]) -> str:
     if not items:
