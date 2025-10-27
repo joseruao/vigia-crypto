@@ -3,10 +3,6 @@ from fastapi import APIRouter
 
 router = APIRouter(tags=["health"])
 
-@router.get("/ping")
-def ping():
+@router.get("/healthz")
+def healthz():
     return {"status": "ok"}
-
-@router.get("/__version")
-def version():
-    return {"name": "vigia-backend", "version": "0.1.0"}

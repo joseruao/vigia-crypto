@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Sidebar } from '@/components/Sidebar'
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
-import { createSupabaseServerClient } from '@/lib/supabase-server'
+// Se quiseres, podes remover completamente o supabase aqui enquanto debugas
 
 export const metadata: Metadata = {
   title: 'joseruao.com',
@@ -17,10 +17,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = createSupabaseServerClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Durante debug: não lê sessão no servidor
+  const session = null
 
   return (
     <html lang="pt">
