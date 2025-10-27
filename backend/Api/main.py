@@ -4,9 +4,8 @@ from __future__ import annotations
 import os
 import logging
 import sys
-from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # ========== DEBUG INICIAL ==========
@@ -31,21 +30,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vigia API", version="0.1.0", lifespan=lifespan)
 
 # ========== CORS ==========
-frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-origins = [
-    frontend_url,
+# Usa domínio único de produção. Mantém localhost p/ dev.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+ALLOWED_ORIGINS = {
+    FRONTEND_URL,
     "http://localhost:3000",
-    "https://www.joseruao.com",
     "https://joseruao.com",
-]
+    "https://www.joseruao.com",
+}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=list(ALLOWED_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ========== HEADERS úteis p/ streaming ==========
+@app.middleware("http")
+async def add_no_buffering_headers(request: Request, call_next):
+    resp = await call_next(request)
+    # Evita buffering em alguns proxies e cache agressivo
+    resp.headers.setdefault("X-Accel-Buffering", "no")
+    resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
 
 # ========== IMPORT DE ROTAS ==========
 try:

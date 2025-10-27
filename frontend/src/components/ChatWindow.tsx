@@ -28,8 +28,13 @@ export function ChatWindow() {
   const abortedRef = useRef(false);
 
   const API_URL =
-    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    (process.env.NEXT_PUBLIC_API_URL?.trim() as string) ||
     'https://vigia-crypto-1.onrender.com';
+
+  // Warm-up para evitar cold start do Render
+  useEffect(() => {
+    fetch(`${API_URL}/`).catch(() => {});
+  }, [API_URL]);
 
   // Auto-scroll para a última mensagem
   useEffect(() => {
@@ -44,21 +49,21 @@ export function ChatWindow() {
     }
   }, [input]);
 
- function shouldUseAlertsAPI(prompt: string) {
-  const q = prompt.toLowerCase();
-  return (
-    q.includes('token') ||
-    q.includes('listado') || 
-    q.includes('listing') ||
-    q.includes('exchange') ||
-    q.includes('prediction') ||
-    q.includes('vistos') ||     // ✅ CORRIGIDO
-    q.includes('vista') ||      // ✅ CORRIGIDO  
-    q.includes('viste') ||      // ✅ CORRIGIDO
-    q.includes('holding') ||    // ✅ ADICIONA TAMBÉM
-    q.includes('score')         // ✅ ADICIONA TAMBÉM
-  );
-}
+  function shouldUseAlertsAPI(prompt: string) {
+    const q = prompt.toLowerCase();
+    return (
+      q.includes('token') ||
+      q.includes('listado') ||
+      q.includes('listing') ||
+      q.includes('exchange') ||
+      q.includes('prediction') ||
+      q.includes('vistos') ||
+      q.includes('vista') ||
+      q.includes('viste') ||
+      q.includes('holding') ||
+      q.includes('score')
+    );
+  }
 
   async function sendMessage(text?: string) {
     const content = (text ?? input).trim();
@@ -82,17 +87,14 @@ export function ChatWindow() {
         ? `${API_URL}/alerts/ask`
         : `${API_URL}/chat/stream`;
 
-      const body = { prompt: content };
-
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Accept: useAlerts
-            ? 'application/json'
-            : 'text/event-stream, text/plain, application/json',
+          // stream = text/plain; alerts = application/json
+          'Accept': useAlerts ? 'application/json' : 'text/plain',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ prompt: content }),
         signal: controller.signal,
       });
 
@@ -101,10 +103,17 @@ export function ChatWindow() {
         throw new Error(`HTTP ${res.status} ${res.statusText} — ${textErr}`);
       }
 
-      if (!useAlerts) {
+      if (useAlerts) {
+        const data = await res.json().catch(() => ({}));
+        addMessage({
+          role: 'assistant',
+          content: data?.answer ?? '⚠️ Sem resposta',
+        });
+      } else {
         const reader = res.body?.getReader();
         if (!reader) throw new Error('Sem stream');
 
+        // cria a msg vazia do assistant que iremos preencher
         addMessage({ role: 'assistant', content: '' });
 
         let acc = '';
@@ -121,12 +130,6 @@ export function ChatWindow() {
           if (!gotFirstChunk && acc.length > 0) setGotFirstChunk(true);
           updateLastAssistantMessage(acc);
         }
-      } else {
-        const data = await res.json();
-        addMessage({
-          role: 'assistant',
-          content: data.answer ?? '⚠️ Sem resposta',
-        });
       }
     } catch (e: any) {
       if (!abortedRef.current) {
@@ -211,7 +214,7 @@ export function ChatWindow() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input fixo no fundo - estilo DeepSeek */}
+      {/* Input fixo no fundo */}
       <div className="border-t border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto p-4">
           <div className="relative flex items-end gap-2">
@@ -224,7 +227,7 @@ export function ChatWindow() {
                 <CircleStop className="h-5 w-5" />
               </button>
             )}
-            
+
             <textarea
               ref={inputRef}
               className={`flex-1 resize-none bg-gray-100 text-gray-900 rounded-2xl px-4 py-3 pr-12 outline-none border border-gray-200 focus:border-blue-500 transition-colors ${
@@ -237,7 +240,7 @@ export function ChatWindow() {
               onKeyDown={onKeyDown}
               disabled={loading}
             />
-            
+
             <button
               onClick={() => sendMessage()}
               disabled={loading || !input.trim()}
@@ -251,7 +254,7 @@ export function ChatWindow() {
               <Send className="h-4 w-4" />
             </button>
           </div>
-          
+
           <div className="text-xs text-gray-500 text-center mt-2">
             Vigia Crypto pode cometer erros. Verifica informações importantes.
           </div>
