@@ -4,18 +4,18 @@ from fastapi.responses import StreamingResponse, PlainTextResponse
 import os
 import asyncio
 import json
-import openai
+from openai import AsyncOpenAI
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# ===== CONFIG =====
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# === CONFIG ===
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+client = AsyncOpenAI(api_key=OPENAI_KEY)
 
 
 async def stream_openai(prompt: str):
-    """Stream de resposta do OpenAI (GPT-4-mini)."""
+    """Stream da resposta do OpenAI (modelo GPT-4o-mini)."""
     try:
-        client = openai.AsyncOpenAI(api_key=openai.api_key)
         print(f"🧠 OpenAI request: {prompt[:80]}...")
 
         stream = await client.chat.completions.create(
@@ -29,6 +29,7 @@ async def stream_openai(prompt: str):
             if "content" in delta:
                 yield delta.content
                 await asyncio.sleep(0)
+
     except Exception as e:
         print("❌ OpenAI stream error:", str(e))
         yield f"\n⚠️ Erro interno no modelo: {str(e)}"
@@ -36,14 +37,18 @@ async def stream_openai(prompt: str):
 
 @router.post("/stream")
 async def chat_stream(request: Request):
-    """Endpoint de streaming para o ChatWindow."""
+    """Endpoint de streaming do chat (usado pelo ChatWindow)."""
     try:
+        # --- parsing seguro do corpo ---
         try:
             data = await request.json()
         except Exception:
             body = await request.body()
             print("🟠 RAW BODY:", body)
-            data = json.loads(body.decode("utf-8")) if body else {}
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except UnicodeDecodeError:
+                data = json.loads(body.decode("latin-1"))
 
         print("🟡 DATA RECEIVED:", data)
         prompt = data.get("prompt", "").strip()
@@ -52,6 +57,7 @@ async def chat_stream(request: Request):
         if not prompt:
             return PlainTextResponse("⚠️ Prompt vazio ou inválido.", status_code=400)
 
+        # --- stream normal ---
         return StreamingResponse(stream_openai(prompt), media_type="text/plain")
 
     except Exception as e:
