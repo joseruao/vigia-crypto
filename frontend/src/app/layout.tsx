@@ -3,7 +3,6 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Sidebar } from '@/components/Sidebar'
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
-// Se quiseres, podes remover completamente o supabase aqui enquanto debugas
 
 export const metadata: Metadata = {
   title: 'joseruao.com',
@@ -12,22 +11,16 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  // Durante debug: não lê sessão no servidor
-  const session = null
-
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt">
-      <body className="flex min-h-screen bg-white text-black antialiased">
+      <body className="flex h-screen bg-white text-black antialiased overflow-hidden">
         <ChatHistoryProvider>
-          <Sidebar userSession={session} />
-          <div className="flex-1 flex flex-col">{children}</div>
+          <Sidebar />
+          <div className="flex-1 flex flex-col overflow-y-auto">{children}</div>
         </ChatHistoryProvider>
       </body>
     </html>
   )
 }
+
