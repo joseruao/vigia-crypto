@@ -49,6 +49,7 @@ export function ChatWindow() {
     }
   }, [input]);
 
+  // Heurística para usar a API de alerts (prediction/holdings/etc.)
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
     return (
@@ -57,11 +58,13 @@ export function ChatWindow() {
       q.includes('listing') ||
       q.includes('exchange') ||
       q.includes('prediction') ||
-      q.includes('vistos') ||
-      q.includes('vista') ||
-      q.includes('viste') ||
+      q.includes('previsão') ||
+      q.includes('predição') ||
+      q.includes('holders') ||
       q.includes('holding') ||
-      q.includes('score')
+      q.includes('wallet') ||
+      q.includes('score') ||
+      q.includes('scoring')
     );
   }
 
@@ -163,60 +166,71 @@ export function ChatWindow() {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      {/* Área das mensagens - cresce automaticamente */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        {!hasMessages && !loading && (
-          <div className="h-full flex flex-col items-center justify-center pb-20">
-            <img
-              src="/logo_full.png"
-              alt="José Ruão.io"
-              className="h-32 mb-8"
-            />
-            <Suggestions
-              visible={!hasMessages}
-              onSelect={(t) => {
-                setInput(t);
-                setTimeout(() => sendMessage(t), 100);
-              }}
-            />
-          </div>
-        )}
-
-        {/* Mensagens */}
-        <div className="max-w-4xl mx-auto space-y-6">
-          {active?.messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm prose ${
-                  m.role === 'user'
-                    ? 'bg-blue-600 text-white prose-invert'
-                    : 'bg-gray-100 text-gray-800 border border-gray-200'
-                }`}
-              >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {m.content}
-                </ReactMarkdown>
-              </div>
-            </div>
-          ))}
-
-          {loading && !gotFirstChunk && (
-            <div className="flex justify-start">
-              <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-gray-100 text-gray-600">
-                <span className="animate-pulse">● ● ●</span>
-              </div>
-            </div>
-          )}
+      {/* TOP BAR minimal */}
+      <div className="border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="text-sm font-medium text-gray-700">Vigia Crypto</div>
+          <div className="text-xs text-gray-500">joseruao.com</div>
         </div>
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input fixo no fundo */}
-      <div className="border-t border-gray-200 bg-white/95 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto p-4">
+      {/* Área das mensagens */}
+      <div className="flex-1 overflow-y-auto">
+        {!hasMessages && !loading ? (
+          <div className="h-full flex flex-col items-center justify-center px-4">
+            <img src="/logo_full.png" alt="José Ruão.io" className="h-28 mb-6 opacity-90" />
+            <div className="text-sm text-gray-600 mb-4">
+              Que tokens achas que vão ser listados?
+            </div>
+            <div className="w-full max-w-2xl">
+              <Suggestions
+                visible={!hasMessages}
+                onSelect={(t) => {
+                  setInput(t);
+                  setTimeout(() => sendMessage(t), 80);
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="px-4 py-6">
+            <div className="max-w-3xl mx-auto space-y-4">
+              {active?.messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm ${
+                      m.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-50 text-gray-800 border border-gray-200'
+                    }`}
+                  >
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              ))}
+
+              {loading && !gotFirstChunk && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600 border border-gray-200">
+                    <span className="animate-pulse">● ● ●</span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input fixo */}
+      <div className="border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <div className="max-w-5xl mx-auto p-4">
           <div className="relative flex items-end gap-2">
             {loading && (
               <button
@@ -230,7 +244,7 @@ export function ChatWindow() {
 
             <textarea
               ref={inputRef}
-              className={`flex-1 resize-none bg-gray-100 text-gray-900 rounded-2xl px-4 py-3 pr-12 outline-none border border-gray-200 focus:border-blue-500 transition-colors ${
+              className={`flex-1 resize-none bg-gray-50 text-gray-900 rounded-2xl px-4 py-3 pr-12 outline-none border border-gray-200 focus:border-blue-500 transition-colors ${
                 loading ? 'pl-10' : ''
               }`}
               rows={1}
@@ -255,7 +269,7 @@ export function ChatWindow() {
             </button>
           </div>
 
-          <div className="text-xs text-gray-500 text-center mt-2">
+          <div className="text-[11px] text-gray-500 text-center mt-2">
             Vigia Crypto pode cometer erros. Verifica informações importantes.
           </div>
         </div>
