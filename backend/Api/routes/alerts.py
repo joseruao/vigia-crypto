@@ -13,58 +13,81 @@ except ImportError:
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 log = logging.getLogger("vigia.alerts")
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE = os.environ.get("SUPABASE_SERVICE_ROLE") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
+# ---------------------- HELPERS ----------------------
 def get_supabase():
     if not create_client:
-        raise RuntimeError("supabase lib not installed")
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE:
-        raise RuntimeError("Supabase envs missing")
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+        raise RuntimeError("⚠️ supabase lib não instalada")
 
+    url = os.environ.get("SUPABASE_URL")
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_SERVICE_ROLE")
+        or os.environ.get("SUPABASE_KEY")
+        or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    )
+
+    if not url or not key:
+        raise RuntimeError("⚠️ variáveis SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausentes")
+
+    return create_client(url, key)
+
+
+# ---------------------- MODELOS ----------------------
 class AskPayload(BaseModel):
     prompt: str
 
+
+# ---------------------- ROTAS ----------------------
 @router.post("/ask")
 async def alerts_ask(payload: AskPayload):
     prompt = (payload.prompt or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Missing prompt")
-    return {"answer": f"Alerta-base para: {prompt}"}
+    return {"answer": f"Resposta simulada para: {prompt}"}
+
 
 @router.get("/holdings")
 def get_holdings():
-    """Retorna tokens com type='holding' da tabela transacted_tokens."""
+    """Retorna holdings de transacted_tokens (ou lista vazia em erro)."""
     try:
         sb = get_supabase()
-        resp = (
+        res = (
             sb.table("transacted_tokens")
-            .select("id, token, exchange, token_address, value_usd, liquidity, volume_24h, score, pair_url, analysis, ts")
+            .select(
+                "id, token, exchange, token_address, value_usd, liquidity, volume_24h, "
+                "score, pair_url, analysis, ts"
+            )
             .eq("type", "holding")
             .order("ts", desc=True)
             .limit(100)
             .execute()
         )
-        return JSONResponse(resp.data or [])
+        data = getattr(res, "data", None) or []
+        return JSONResponse(data)
     except Exception as e:
-        log.error(f"Erro holdings: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao carregar holdings")
+        log.error(f"❌ /alerts/holdings erro: {e}")
+        return JSONResponse([], status_code=200)
+
 
 @router.get("/predictions")
 def get_predictions():
-    """Retorna tokens com type='prediction' da tabela transacted_tokens."""
+    """Retorna predictions de transacted_tokens (ou lista vazia em erro)."""
     try:
         sb = get_supabase()
-        resp = (
+        res = (
             sb.table("transacted_tokens")
-            .select("id, token, exchange, token_address, value_usd, liquidity, volume_24h, score, pair_url, analysis, ts")
+            .select(
+                "id, token, exchange, token_address, value_usd, liquidity, volume_24h, "
+                "score, listing_probability, confidence, pair_url, ts"
+            )
             .eq("type", "prediction")
             .order("ts", desc=True)
             .limit(100)
             .execute()
         )
-        return JSONResponse(resp.data or [])
+        data = getattr(res, "data", None) or []
+        return JSONResponse(data)
     except Exception as e:
-        log.error(f"Erro predictions: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao carregar predictions")
+        log.error(f"❌ /alerts/predictions erro: {e}")
+        return JSONResponse([], status_code=200)
