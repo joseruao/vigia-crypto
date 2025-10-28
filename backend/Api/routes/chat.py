@@ -1,106 +1,73 @@
 ﻿# backend/Api/routes/chat.py
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse
 import os
-import openai
 import json
-import asyncio
 import logging
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+import openai
+import asyncio
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 log = logging.getLogger("vigia.chat")
 
-# ========================
-# CONFIGURAÇÃO
-# ========================
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("❌ OPENAI_API_KEY não definido")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# --- Helper para stream async ---
+async def stream_openai_response(prompt: str):
+    """Stream de texto contínuo (UTF-8 seguro)."""
+    try:
+        stream = await openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+            temperature=0.7,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta and delta.get("content"):
+                yield delta["content"].encode("utf-8")
+                await asyncio.sleep(0)
+    except Exception as e:
+        log.error(f"❌ Erro no stream OpenAI: {e}")
+        yield f"\n[ERRO]: {str(e)}".encode("utf-8")
 
-# ========================
-# OPTIONS UNIVERSAL (CORS preflight)
-# ========================
-@router.options("/{path:path}")
-async def options_handler():
-    """Responde 200 a todos os preflights OPTIONS para evitar 405"""
-    return PlainTextResponse("ok", status_code=200)
-
-# ========================
-# /chat/stream (streaming)
-# ========================
+# --- Endpoint /chat/stream ---
 @router.post("/stream")
 async def chat_stream(request: Request):
-    """
-    Endpoint de streaming contínuo (text/plain)
-    Retorna chunks em tempo real com respostas do modelo
-    """
     try:
-        data = await request.json()
-        prompt = (data.get("prompt") or "").strip()
+        body = await request.body()
+        try:
+            data = json.loads(body.decode("utf-8", errors="ignore"))
+        except Exception:
+            return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+        prompt = data.get("prompt", "").strip()
         if not prompt:
             return JSONResponse({"error": "Missing prompt"}, status_code=400)
 
-        log.info(f"🟢 Novo pedido de stream: {prompt[:80]}...")
-
-        async def generate():
-            yield f"Recebi: {prompt}\nA gerar resposta...\n\n"
-            try:
-                stream = await asyncio.to_thread(
-                    lambda: client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": "És o assistente do Vigia Crypto."},
-                            {"role": "user", "content": prompt},
-                        ],
-                        stream=True,
-                    )
-                )
-                for chunk in stream:
-                    delta = chunk.choices[0].delta
-                    if delta and delta.content:
-                        yield delta.content
-                yield "\n\n✅ [fim da resposta]"
-            except Exception as e:
-                log.error(f"❌ Erro no stream: {e}")
-                yield f"\n[Erro interno: {e}]"
-
-        return StreamingResponse(generate(), media_type="text/plain")
-
+        log.info(f"🟢 CHAT prompt recebido: {prompt[:80]}...")
+        return StreamingResponse(stream_openai_response(prompt),
+                                 media_type="text/plain; charset=utf-8")
     except Exception as e:
-        log.error(f"❌ CHAT STREAM ERROR: {e}")
+        log.error(f"💥 Falha geral no /chat/stream: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
-# ========================
-# /chat/complete (resposta única)
-# ========================
+# --- Endpoint /chat/complete (resposta JSON normal) ---
 @router.post("/complete")
 async def chat_complete(request: Request):
-    """
-    Endpoint simples — devolve resposta completa (sem stream)
-    """
     try:
-        data = await request.json()
-        prompt = (data.get("prompt") or "").strip()
+        body = await request.json()
+        prompt = body.get("prompt", "").strip()
         if not prompt:
             return JSONResponse({"error": "Missing prompt"}, status_code=400)
 
-        log.info(f"🟡 Novo pedido completo: {prompt[:80]}...")
-
-        completion = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "És o assistente do Vigia Crypto."},
-                    {"role": "user", "content": prompt},
-                ],
-            )
+        resp = await openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
         )
-
-        answer = completion.choices[0].message.content.strip()
-        return JSONResponse({"answer": answer})
-
+        text = resp.choices[0].message.content
+        return JSONResponse({"answer": text})
     except Exception as e:
-        log.error(f"❌ CHAT COMPLETE ERROR: {e}")
+        log.error(f"💥 Falha no /chat/complete: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)

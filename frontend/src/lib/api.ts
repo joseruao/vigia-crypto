@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// frontend/src/lib/api.ts
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+  "https://vigia-crypto-1.onrender.com";
 
 export async function getPredictions() {
   try {
@@ -10,16 +13,20 @@ export async function getPredictions() {
     return [];
   }
 }
-// Adicionar função para buscar holdings
+
 export async function getHoldings(): Promise<Holding[]> {
-  const res = await fetch('/api/holdings');
-  if (!res.ok) throw new Error('Failed to fetch holdings');
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/alerts/holdings`);
+    if (!res.ok) throw new Error(`Erro HTTP: ${res.status}`);
+    return res.json();
+  } catch (err) {
+    console.error("Erro a buscar holdings:", err);
+    return [];
+  }
 }
 
-// Atualizar o tipo Prediction para Holding
 export interface Holding {
-  id: string;
+  id?: string;
   token: string;
   exchange: string;
   value_usd: number;
@@ -28,5 +35,5 @@ export interface Holding {
   score: number;
   pair_url?: string;
   token_address?: string;
-  analysis?: string; // ⬅️ NOVO CAMPO
+  analysis?: string;
 }
