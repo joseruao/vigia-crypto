@@ -1,35 +1,28 @@
 ﻿# backend/Api/routes/alerts.py
 from __future__ import annotations
+
 import os
 import time
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
-
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
-# =========================
-# ENV / Const
-# =========================
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY", "").strip()
-HELIUS_BASE = "https://api.helius.xyz"
-
+# ========= ENV =========
 SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE") or ""
-SUPABASE_HEADERS = {
-    "apikey": SUPABASE_SERVICE_ROLE_KEY,
-    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-    "Content-Type": "application/json",
-}
+SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 
-# =========================
-# HTTP Session (requests) com retries
-# =========================
+if not SUPABASE_URL:
+    raise RuntimeError("SUPABASE_URL em falta")
+if not SUPABASE_SERVICE_ROLE:
+    raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_KEY) em falta")
+
+# ========= HTTP SESSION =========
 def build_session() -> requests.Session:
     s = requests.Session()
     retries = Retry(
@@ -38,19 +31,39 @@ def build_session() -> requests.Session:
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET", "POST"]),
     )
-    adapter = HTTPAdapter(max_retries=retries, pool_connections=16, pool_maxsize=16)
-    s.mount("https://", adapter)
-    s.mount("http://", adapter)
+    ad = HTTPAdapter(max_retries=retries, pool_connections=16, pool_maxsize=16)
+    s.mount("https://", ad)
+    s.mount("http://", ad)
     s.headers.update({"User-Agent": "VigiaCrypto/alerts"})
     return s
 
 HTTP = build_session()
 
-# =========================
-# Pydantic Models
-# =========================
+# ========= SUPABASE REST HELPERS =========
+def sb_headers() -> Dict[str, str]:
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE}",
+        "Content-Type": "application/json",
+    }
+
+def sb_get(path: str, params: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    url = f"{SUPABASE_URL}/rest/v1/{path.lstrip('/')}"
+    r = HTTP.get(url, headers=sb_headers(), params=params or {}, timeout=20)
+    # Se PostgREST responder erro (ex.: coluna inexistente), devolvemos []
+    if r.status_code >= 400:
+        # log leve no servidor
+        print(f"[alerts] Supabase GET {url} -> {r.status_code} {r.text[:200]}")
+        return []
+    try:
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+# ========= MODELS (para /ask com Helius) =========
 class AskIn(BaseModel):
-    wallets: List[str] = Field(..., description="Wallets Solana (base58)")
+    wallets: List[str] = Field(..., description="Wallets Solana (base58).")
     limit: int = Field(10, ge=1, le=100)
     min_usd: float = Field(0, ge=0)
 
@@ -59,11 +72,11 @@ class TxLite(BaseModel):
     slot: Optional[int] = None
     timestamp: Optional[int] = None
     wallet: str
-    source: Optional[str] = None           # "JUPITER", "PHANTOM", etc.
-    direction: Optional[str] = None        # "buy"|"sell"|"swap"|"in"|"out"|"transfer"
+    source: Optional[str] = None
+    direction: Optional[str] = None   # buy/sell/swap/in/out/transfer
     usd_value: Optional[float] = None
-    tokens_in: List[Dict[str, Any]] = Field(default_factory=list)
-    tokens_out: List[Dict[str, Any]] = Field(default_factory=list)
+    tokens_in: List[Dict[str, Any]] = []
+    tokens_out: List[Dict[str, Any]] = []
     explorer: Optional[str] = None
 
 class AlertOut(BaseModel):
@@ -76,152 +89,198 @@ class AskOut(BaseModel):
     alerts: List[AlertOut]
     meta: Dict[str, Any]
 
-# =========================
-# Helius helpers
-# =========================
-def _fetch_wallet_txs_helius(address: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Helius enhanced txs: /v0/addresses/:address/transactions"""
+# ========= HELIUS (requests) =========
+_HELIUS_BASE = "https://api.helius.xyz"
+
+def helius_get_txs(address: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Enhanced transactions: /v0/addresses/:address/transactions"""
     if not HELIUS_API_KEY:
         return []
-    url = f"{HELIUS_BASE}/v0/addresses/{address}/transactions"
     params = {"api-key": HELIUS_API_KEY, "limit": str(limit)}
-    r = HTTP.get(url, params=params, timeout=20)
-    r.raise_for_status()
-    data = r.json()
-    return data if isinstance(data, list) else []
+    url = f"{_HELIUS_BASE}/v0/addresses/{address}/transactions"
+    r = HTTP.get(url, params=params, timeout=25)
+    if r.status_code != 200:
+        print(f"[alerts] Helius {r.status_code} {r.text[:160]}")
+        return []
+    try:
+        j = r.json()
+        return j if isinstance(j, list) else []
+    except Exception:
+        return []
 
-def _simplify_tx(address: str, tx: Dict[str, Any]) -> TxLite:
-    sig = tx.get("signature", "")
+def simplify_tx(address: str, tx: Dict[str, Any]) -> TxLite:
+    sig = tx.get("signature") or ""
     slot = tx.get("slot")
-    ts = tx.get("timestamp")
+    ts   = tx.get("timestamp")
     source = tx.get("source")
     direction = None
-    usd = None
     tokens_in: List[Dict[str, Any]] = []
     tokens_out: List[Dict[str, Any]] = []
+    usd = None
 
-    events = tx.get("events") or {}
-
-    swap = events.get("swap")
+    ev = tx.get("events") or {}
+    swap = ev.get("swap")
     if swap:
-        # heurística simples para direção com base em estáveis
+        source = (swap.get("programInfo") or {}).get("source") or source
         def is_stable(t):
             sym = (t.get("symbol") or "").lower()
             mint = (t.get("mint") or "").lower()
-            return "usdc" in sym or "usdt" in sym or "usd" in sym or "usdc" in mint or "usdt" in mint
-
+            return ("usdc" in sym) or ("usdt" in sym) or ("usd" in sym) or ("usdc" in mint) or ("usdt" in mint)
+        st_in = sum(float(t.get("tokenAmount", 0) or 0) for t in swap.get("tokenInputs", [])  if is_stable(t))
+        st_out= sum(float(t.get("tokenAmount", 0) or 0) for t in swap.get("tokenOutputs", []) if is_stable(t))
+        if st_in > st_out: direction = "buy"
+        elif st_out > st_in: direction = "sell"
+        else: direction = "swap"
         tokens_in = swap.get("tokenInputs", []) or []
         tokens_out = swap.get("tokenOutputs", []) or []
-        stables_in = sum(float(t.get("tokenAmount", 0) or 0) for t in tokens_in if is_stable(t))
-        stables_out = sum(float(t.get("tokenAmount", 0) or 0) for t in tokens_out if is_stable(t))
-        if stables_in > stables_out:
-            direction = "buy"
-        elif stables_out > stables_in:
-            direction = "sell"
-        else:
-            direction = "swap"
-
-        # usd_value nem sempre disponível em enhanced – deixamos None
-        source = swap.get("programInfo", {}).get("source") or source
     else:
-        transfers = events.get("tokenTransfers") or []
+        transfers = ev.get("tokenTransfers") or []
         tokens_in = [t for t in transfers if t.get("toUserAccount") == address]
-        tokens_out = [t for t in transfers if t.get("fromUserAccount") == address]
+        tokens_out= [t for t in transfers if t.get("fromUserAccount") == address]
         direction = "in" if tokens_in and not tokens_out else ("out" if tokens_out and not tokens_in else "transfer")
 
     explorer = f"https://solscan.io/tx/{sig}" if sig else None
-
     return TxLite(
-        signature=sig,
-        slot=slot,
-        timestamp=ts,
-        wallet=address,
-        source=source,
-        direction=direction,
-        usd_value=usd,
-        tokens_in=tokens_in,
-        tokens_out=tokens_out,
-        explorer=explorer,
+        signature=sig, slot=slot, timestamp=ts, wallet=address,
+        source=source, direction=direction, usd_value=usd,
+        tokens_in=tokens_in, tokens_out=tokens_out, explorer=explorer
     )
 
-def _mock_txs(address: str, limit: int) -> List[TxLite]:
-    now = int(time.time())
-    out: List[TxLite] = []
-    for i in range(limit):
-        out.append(TxLite(
-            signature=f"FAKE_SIG_{i}_{address[:6]}",
-            slot=123456 + i,
-            timestamp=now - i * 120,
-            wallet=address,
-            source="MOCK",
-            direction=("buy" if i % 2 == 0 else "sell"),
-            usd_value=100 + 5 * i,
-            tokens_in=[{"symbol": "SOL", "tokenAmount": 0.5}],
-            tokens_out=[{"symbol": "USDC", "tokenAmount": 50}],
-            explorer=None,
-        ))
-    return out
-
-# =========================
-# Scoring
-# =========================
-def _score_wallet_txs(txs: List[TxLite]) -> int:
+def score_txs(txs: List[TxLite]) -> int:
     if not txs:
         return 0
-    swaps = sum(1 for t in txs if t.direction in {"buy", "sell", "swap"})
-    ts_sorted = sorted([t.timestamp for t in txs if t.timestamp] or [])
+    swaps = sum(1 for t in txs if (t.direction in {"buy", "sell", "swap"}))
+    timestamps = [t.timestamp for t in txs if t.timestamp]
     pace = 0
-    if len(ts_sorted) >= 2:
-        span = max(ts_sorted) - min(ts_sorted)
-        pace = 60000 / max(1, span)  # arbitrário
+    if len(timestamps) >= 2:
+        span = max(timestamps) - min(timestamps)
+        pace = 60_000 / max(1, span)
     usd = sum(t.usd_value or 0 for t in txs)
-    score = 0
-    score += min(50, swaps * 5)
-    score += min(30, int(pace))
-    score += min(20, int(usd / 500))
-    return max(0, min(100, score))
+    s = 0
+    s += min(50, swaps * 5)
+    s += min(30, int(pace))
+    s += min(20, int(usd / 500))
+    return max(0, min(100, int(s)))
 
-def _explain(wallet: str, score: int, txs: List[TxLite]) -> str:
+def explain(address: str, score: int, txs: List[TxLite]) -> str:
     c_swaps = sum(1 for t in txs if t.direction in {"buy", "sell", "swap"})
     latest = max((t.timestamp or 0 for t in txs), default=0)
     mins = int((time.time() - latest) / 60) if latest else None
-    parts = [f"Atividade em {wallet[:4]}…{wallet[-4:]}: {c_swaps} swaps."]
+    parts = [f"Atividade em {address[:4]}…{address[-4:]}: {c_swaps} swaps."]
     if mins is not None:
-        parts.append(f"Última há ~{mins} min.")
-    parts.append("Ritmo elevado." if score >= 70 else ("Ritmo moderado." if score >= 40 else "Baixa intensidade."))
+        parts.append(f"Última tx há ~{mins} min.")
+    if score >= 70: parts.append("Ritmo elevado.")
+    elif score >= 40: parts.append("Ritmo moderado.")
+    else: parts.append("Baixa intensidade.")
     return " ".join(parts)
 
-# =========================
-# Routes
-# =========================
+# ========= API =========
 @router.get("/health")
-def health():
+def alerts_health():
     return {"ok": True, "ts": int(time.time())}
 
+@router.get("/holdings")
+def get_holdings():
+    """
+    Lê holdings guardados em transacted_tokens.
+    NÃO usa 'type' (a tua tabela não tem). Usamos apenas colunas existentes.
+    """
+    # campos que existem no teu schema:
+    select_cols = ",".join([
+        "id", "token", "exchange", "value_usd", "liquidity", "volume_24h",
+        "score", "pair_url", "token_address", "analysis_text", "ts"
+    ])
+    params = {
+        "select": select_cols,
+        "order": "ts.desc",
+        "limit": "100",
+    }
+    rows = sb_get("transacted_tokens", params)
+    # opcional: filtrar serverside por mínimos > 0
+    out = []
+    for r in rows:
+        try:
+            vu = float(r.get("value_usd") or 0.0)
+            liq = float(r.get("liquidity") or 0.0)
+            if vu <= 0 or liq <= 0:
+                continue
+            out.append(r)
+        except Exception:
+            continue
+    return out
+
+@router.get("/predictions")
+def get_predictions():
+    """
+    Predictions = entradas com campos de ML (listing_probability/confidence) OU transações (signature) relevantes.
+    Não dependemos de coluna 'type'.
+    """
+    select_cols = ",".join([
+        "id","token","exchange","value_usd","liquidity","volume_24h","score",
+        "listing_probability","confidence","ai_analysis","pair_url","token_address","signature","ts"
+    ])
+    params = {
+        "select": select_cols,
+        "order": "ts.desc",
+        "limit": "100",
+    }
+    rows = sb_get("transacted_tokens", params)
+    out = []
+    for r in rows:
+        lp = r.get("listing_probability")
+        sig = r.get("signature")
+        try:
+            # Se tem probabilidade OU é uma transação com score aceitável, mostramos
+            if (lp is not None and float(lp) >= 1) or (sig and float(r.get("score") or 0) >= 50):
+                out.append(r)
+        except Exception:
+            continue
+    return out
+
 @router.post("/ask", response_model=AskOut)
-def ask(payload: AskIn):
+def ask(payload: AskIn = Body(...)):
+    """
+    Perguntas sobre atividade em wallets Solana (via Helius). Sem httpx.
+    """
     if not payload.wallets:
         raise HTTPException(status_code=400, detail="Fornece pelo menos uma wallet.")
     alerts: List[AlertOut] = []
     used_mock = False
+
     for w in payload.wallets:
+        raw = []
         try:
-            raw = _fetch_wallet_txs_helius(w, payload.limit)
-            txs = [_simplify_tx(w, tx) for tx in raw] if raw else _mock_txs(w, payload.limit)
-            if not raw:
-                used_mock = True
-        except Exception:
+            raw = helius_get_txs(w, payload.limit)
+        except Exception as e:
+            print(f"[alerts] Helius exception: {e}")
+
+        txs: List[TxLite] = []
+        if raw:
+            txs = [simplify_tx(w, tx) for tx in raw]
+        else:
+            # mock mínimo para não falhar quando não tens HELIUS_API_KEY
             used_mock = True
-            txs = _mock_txs(w, payload.limit)
+            now = int(time.time())
+            for i in range(payload.limit):
+                txs.append(TxLite(
+                    signature=f"FAKE_{i}_{w[:6]}",
+                    slot=123456+i,
+                    timestamp=now - i*120,
+                    wallet=w,
+                    source="MOCK",
+                    direction=("buy" if i%2==0 else "sell"),
+                    usd_value=100 + 5*i,
+                    tokens_in=[{"symbol":"SOL","tokenAmount":0.5}],
+                    tokens_out=[{"symbol":"USDC","tokenAmount":50}],
+                    explorer=None
+                ))
+
         if payload.min_usd > 0:
             txs = [t for t in txs if (t.usd_value or 0) >= payload.min_usd]
-        score = _score_wallet_txs(txs)
-        alerts.append(AlertOut(
-            wallet=w,
-            txs=txs,
-            score=score,
-            explanation=_explain(w, score, txs),
-        ))
+
+        s = score_txs(txs)
+        alerts.append(AlertOut(wallet=w, txs=txs, score=s, explanation=explain(w, s, txs)))
+
     meta = {
         "wallets": payload.wallets,
         "limit": payload.limit,
@@ -230,89 +289,3 @@ def ask(payload: AskIn):
         "mock_data": used_mock,
     }
     return AskOut(alerts=alerts, meta=meta)
-
-# =========================
-# Supabase: holdings & predictions
-# =========================
-def _sb_get(table: str, params: Dict[str, str]) -> List[Dict[str, Any]]:
-    if not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
-        return []
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
-    r = HTTP.get(url, headers=SUPABASE_HEADERS, params=params, timeout=15)
-    if r.status_code == 404:
-        return []
-    r.raise_for_status()
-    data = r.json()
-    return data if isinstance(data, list) else []
-
-@router.get("/holdings")
-def get_holdings(limit: int = Query(50, ge=1, le=200)):
-    """
-    Lê holdings relevantes de transacted_tokens (sem 'type'),
-    ordenados por ts desc. Filtra value_usd>0.
-    """
-    if not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
-        return []
-    params = {
-        "select": "id,token,exchange,value_usd,liquidity,volume_24h,score,price,price_change_24h,pair_url,token_address,analysis_text,ts,chain",
-        "order": "ts.desc",
-        "limit": str(limit),
-        "value_usd": "gt.0",
-    }
-    rows = _sb_get("transacted_tokens", params)
-    out = []
-    for r in rows:
-        out.append({
-            "id": r.get("id"),
-            "token": r.get("token"),
-            "exchange": r.get("exchange"),
-            "value_usd": float(r.get("value_usd") or 0),
-            "liquidity": float(r.get("liquidity") or 0),
-            "volume_24h": float(r.get("volume_24h") or 0),
-            "score": float(r.get("score") or 0),
-            "pair_url": r.get("pair_url"),
-            "token_address": r.get("token_address"),
-            "analysis": r.get("analysis_text"),
-            "chain": r.get("chain"),
-            "price": float(r.get("price") or 0),
-            "price_change_24h": float(r.get("price_change_24h") or 0),
-            "ts": r.get("ts"),
-        })
-    return out
-
-@router.get("/predictions")
-def get_predictions(limit: int = Query(50, ge=1, le=200), min_score: float = Query(50, ge=0, le=100)):
-    """
-    Lê potenciais listings (usa score/listing_probability/confidence),
-    ordena por ts desc, sem depender de campo 'type'.
-    """
-    if not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY):
-        return []
-    # Filtrar por score >= min_score
-    # PostgREST: score=gte.X
-    params = {
-        "select": "id,token,exchange,value_usd,liquidity,volume_24h,score,listing_probability,confidence,pair_url,token_address,ai_analysis,ts,chain",
-        "order": "ts.desc",
-        "limit": str(limit),
-        "score": f"gte.{min_score}",
-    }
-    rows = _sb_get("transacted_tokens", params)
-    out = []
-    for r in rows:
-        out.append({
-            "id": r.get("id"),
-            "token": r.get("token"),
-            "exchange": r.get("exchange"),
-            "value_usd": float(r.get("value_usd") or 0),
-            "liquidity": float(r.get("liquidity") or 0),
-            "volume_24h": float(r.get("volume_24h") or 0),
-            "score": float(r.get("score") or 0),
-            "listing_probability": float(r.get("listing_probability") or 0),
-            "confidence": float(r.get("confidence") or 0),
-            "pair_url": r.get("pair_url"),
-            "token_address": r.get("token_address"),
-            "analysis": r.get("ai_analysis"),
-            "chain": r.get("chain"),
-            "ts": r.get("ts"),
-        })
-    return out
