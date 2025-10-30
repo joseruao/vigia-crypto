@@ -1,105 +1,106 @@
-﻿# backend/Api/routes/chat.py
-import os
-import json
-import logging
-import asyncio
-from typing import AsyncGenerator
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-from openai import AsyncOpenAI
+﻿# backend/Api/chat.py
+from fastapi import APIRouter, HTTPException, Query
+from typing import List, Dict, Any, Optional
+from . import alerts  # importa o ficheiro de cima
 
-router = APIRouter(prefix="/chat", tags=["chat"])
-log = logging.getLogger("vigia.chat")
+router = APIRouter(prefix="/alerts", tags=["alerts"])
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-SYSTEM_PT = {
-    "role": "system",
-    "content": "Responde em PT-PT, direto ao assunto."
-}
+@router.get("/health")
+def health():
+    return {"ok": True}
 
-# ============ STREAM ============
-async def stream_openai_response(prompt: str) -> AsyncGenerator[bytes, None]:
+
+@router.get("/holdings")
+def get_holdings(
+    limit: int = Query(50, ge=1, le=200),
+    min_score: float = Query(0.0, ge=0.0, le=100.0),
+    exchange: Optional[str] = None,
+):
+    """
+    devolve lista JSON que o teu frontend pode meter na UI.
+    """
     try:
-        stream = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[SYSTEM_PT, {"role": "user", "content": prompt}],
-            temperature=0.7,
-            stream=True,
-        )
-        async for chunk in stream:
-            try:
-                delta = chunk.choices[0].delta
-                if delta and getattr(delta, "content", None):
-                    yield delta.content.encode("utf-8")
-                    await asyncio.sleep(0)
-            except Exception:
-                pass
-    except Exception as e:
-        log.error(f"❌ stream_openai_response: {e}")
-        yield f"[ERRO]: {e}".encode("utf-8")
+        if exchange:
+            rows = alerts.search_holdings_by_exchange(exchange, min_score=min_score)
+        else:
+            rows = alerts.get_top_holdings(limit=limit, min_score=min_score)
 
-@router.post("/stream")
-async def chat_stream(request: Request):
+        # normalizar chaves para o frontend
+        return [
+            {
+                "token": r.get("token"),
+                "exchange": r.get("exchange"),
+                "chain": r.get("chain"),
+                "value_usd": float(r.get("value_usd") or 0),
+                "liquidity": float(r.get("liquidity") or 0),
+                "volume_24h": float(r.get("volume_24h") or 0),
+                "score": float(r.get("score") or 0),
+                "pair_url": r.get("pair_url"),
+                "analysis": r.get("analysis") or r.get("analysis_text"),
+                "ts": r.get("ts"),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        # não rebentar o frontend
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/predictions")
+def get_predictions(
+    limit: int = Query(50, ge=1, le=200),
+    min_score: float = Query(0.0, ge=0.0, le=100.0),
+):
     try:
-        raw = await request.body()
-        data = json.loads(raw.decode("utf-8", errors="ignore"))
-        prompt = (data.get("prompt") or "").strip()
-        if not prompt:
-            return JSONResponse({"error": "Missing prompt"}, status_code=400)
-
-        log.info(f"🟢 /chat/stream: {prompt[:120]}...")
-        return StreamingResponse(
-            stream_openai_response(prompt),
-            media_type="text/plain; charset=utf-8",
-        )
+        rows = alerts.get_top_predictions(limit=limit, min_score=min_score)
+        return [
+            {
+                "token": r.get("token"),
+                "exchange": r.get("exchange"),
+                "chain": r.get("chain"),
+                "value_usd": float(r.get("value_usd") or 0),
+                "liquidity": float(r.get("liquidity") or 0),
+                "volume_24h": float(r.get("volume_24h") or 0),
+                "score": float(r.get("score") or 0),
+                "pair_url": r.get("pair_url"),
+                "analysis": r.get("analysis") or r.get("analysis_text"),
+                "ts": r.get("ts"),
+            }
+            for r in rows
+        ]
     except Exception as e:
-        log.error(f"💥 /chat/stream exception: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        raise HTTPException(status_code=404, detail=str(e))
 
-# ============ COMPLETE ============
-@router.post("/complete")
-async def chat_complete(request: Request):
-    try:
-        # ⚠️ Não uses request.json() por causa de encoding no PowerShell
-        raw = await request.body()
-        data = json.loads(raw.decode("utf-8", errors="ignore"))
-        prompt = (data.get("prompt") or "").strip()
-        if not prompt:
-            return JSONResponse({"error": "Missing prompt"}, status_code=400)
 
-        # (A) tentativa normal
-        try:
-            resp = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[SYSTEM_PT, {"role": "user", "content": prompt}],
-                temperature=0.7,
-            )
-            text = None
-            try:
-                text = resp.choices[0].message.content
-            except Exception:
-                pass
-            if not text:
-                try:
-                    text = getattr(resp.choices[0], "text", None)
-                except Exception:
-                    pass
-            if not text:
-                text = "Sem resposta."
-            return JSONResponse({"answer": text})
-        except Exception as inner:
-            log.warning(f"⚠️ complete normal falhou, fallback: {inner}")
+# ============== ASK STYLE ==============
 
-        # (B) fallback: usa o mesmo fluxo de stream e concatena
-        acc = []
-        async for chunk in stream_openai_response(prompt):
-            try:
-                acc.append(chunk.decode("utf-8", errors="ignore"))
-            except Exception:
-                pass
-        return JSONResponse({"answer": ("".join(acc).strip() or "Sem resposta.")})
+from pydantic import BaseModel
 
-    except Exception as e:
-        log.error(f"💥 /chat/complete exception: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+class AskPayload(BaseModel):
+    prompt: str
+
+@router.post("/ask")
+def ask_alerts(payload: AskPayload):
+    q = payload.prompt.lower().strip()
+
+    # 1) se perguntar por exchange
+    exchanges = [
+        "Binance", "Coinbase", "Bybit", "Gate.io", "Bitget",
+        "OKX", "MEXC", "Kraken"
+    ]
+    for ex in exchanges:
+        if ex.lower() in q:
+            rows = alerts.search_holdings_by_exchange(ex, min_score=0)
+            if not rows:
+                return {"answer": f"Não encontrei holdings recentes da {ex}."}
+            top = rows[:10]
+            txt = "\n".join(alerts.build_holding_msg(r) for r in top)
+            return {"answer": txt}
+
+    # 2) genérico – manda top holdings
+    rows = alerts.get_top_holdings(limit=10, min_score=0)
+    if not rows:
+        return {"answer": "Sem holdings relevantes registados."}
+    txt = "\n".join(alerts.build_holding_msg(r) for r in rows)
+    return {"answer": txt}
