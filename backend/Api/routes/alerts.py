@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -12,53 +12,17 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 log = logging.getLogger("vigia.alerts")
 
-# =====================================================
-# ENV / CONFIG
-# =====================================================
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or ""
-# se estiveres a testar local com a anon, deixa passar
-if not SUPABASE_URL:
-    log.warning("⚠️ SUPABASE_URL em falta — /alerts vai devolver vazio")
-if not SUPABASE_SERVICE_ROLE_KEY:
-    log.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY em falta — só dá para ler se RLS permitir")
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+    or ""
+)
 
 TABLE = "transacted_tokens"
-HTTP_TIMEOUT = 10.0
+HTTP_TIMEOUT = 8.0
 
-# =====================================================
-# HELPERS SUPABASE
-# =====================================================
-async def sb_select(
-    params: Dict[str, str],
-    limit: int = 50,
-) -> List[Dict[str, Any]]:
-    """
-    Faz GET ao Supabase REST.
-    Usa sempre a tabela transacted_tokens.
-    """
-    if not SUPABASE_URL:
-        return []
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-    }
-    # order=-ts é suportado
-    params = dict(params)
-    params.setdefault("order", "ts.desc")
-    params.setdefault("limit", str(limit))
-
-    url = f"{SUPABASE_URL}/rest/v1/{TABLE}"
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        r = await client.get(url, headers=headers, params=params)
-    if r.status_code == 200:
-        return r.json()
-    log.error(f"❌ Supabase GET {r.status_code}: {r.text}")
-    return []
-
-# =====================================================
-# NORMALIZAÇÕES
-# =====================================================
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance",
     "Binance 2": "Binance",
@@ -72,13 +36,45 @@ EXCHANGE_NORMALIZE = {
 }
 
 def norm_exchange(ex: str) -> str:
-    if not ex:
-        return ex
     return EXCHANGE_NORMALIZE.get(ex, ex)
 
-# =====================================================
-# MODELOS DE SAÍDA (simples)
-# =====================================================
+async def sb_select(params: Dict[str, str], limit: int = 50) -> Dict[str, Any]:
+    """
+    devolve {ok: bool, data: [...], error: ...}
+    assim o frontend nunca vê 'Failed to fetch' por JSON inválido
+    """
+    if not SUPABASE_URL:
+        return {"ok": False, "data": [], "error": "SUPABASE_URL missing"}
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+    params = dict(params)
+    params.setdefault("order", "ts.desc")
+    params.setdefault("limit", str(limit))
+
+    url = f"{SUPABASE_URL}/rest/v1/{TABLE}"
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        log.error(f"❌ Supabase fetch error: {e}")
+        return {"ok": False, "data": [], "error": str(e)}
+
+    if r.status_code == 200:
+        return {"ok": True, "data": r.json(), "error": None}
+
+    # se for 401 ou 42501 (RLS) devolve vazio mas com erro
+    try:
+        err_txt = r.text
+    except Exception:
+        err_txt = f"HTTP {r.status_code}"
+    log.error(f"❌ Supabase {r.status_code}: {err_txt}")
+    return {"ok": False, "data": [], "error": err_txt}
+
 def to_holding_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "exchange": row.get("exchange"),
@@ -95,78 +91,64 @@ def to_holding_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "ts": row.get("ts"),
     }
 
-# =====================================================
-# ENDPOINTS
-# =====================================================
-
 @router.get("/health")
 async def alerts_health():
     return {
         "ok": True,
         "ts": int(datetime.now(tz=timezone.utc).timestamp()),
-        "supabase": bool(SUPABASE_URL),
+        "supabase_url": bool(SUPABASE_URL),
+        "has_key": bool(SUPABASE_SERVICE_ROLE_KEY),
     }
-
 
 @router.get("/holdings")
 async def get_holdings(
-    exchange: Optional[str] = Query(None, description="Filtrar por exchange (ex: Binance, Gate.io)"),
-    min_score: float = Query(50, description="Score mínimo"),
+    exchange: Optional[str] = Query(None),
+    min_score: float = Query(50),
     limit: int = Query(50, le=200),
 ):
-    """
-    Devolve holdings mais recentes da tabela transacted_tokens.
-    Só traz type=holding.
-    Se estiver vazio devolve [] com 200, não 500.
-    """
     params: Dict[str, str] = {
         "type": "eq.holding",
         "score": f"gte.{min_score}",
     }
     if exchange:
-        # aceitar 'Binance' e 'Binance 1'
         params["exchange"] = f"ilike.{exchange}%"
 
-    rows = await sb_select(params, limit=limit)
-    holdings = [to_holding_row(r) for r in rows]
-    return holdings  # [] se não houver
-
+    res = await sb_select(params, limit=limit)
+    data = [to_holding_row(r) for r in res["data"]]
+    return {
+        "ok": res["ok"],
+        "error": res["error"],
+        "items": data,
+    }
 
 @router.get("/predictions")
 async def get_predictions(
     min_score: float = Query(50),
     limit: int = Query(50, le=200),
 ):
-    """
-    Para já vamos assumir que predictions também são guardadas em transacted_tokens,
-    mas com type='prediction' (se ainda não tens, isto devolve []).
-    """
-    params = {
+    params: Dict[str, str] = {
         "type": "eq.prediction",
         "score": f"gte.{min_score}",
     }
-    rows = await sb_select(params, limit=limit)
-    preds = [to_holding_row(r) for r in rows]
-    return preds
-
+    res = await sb_select(params, limit=limit)
+    data = [to_holding_row(r) for r in res["data"]]
+    return {
+        "ok": res["ok"],
+        "error": res["error"],
+        "items": data,
+    }
 
 @router.post("/ask")
 async def alerts_ask(payload: Dict[str, Any]):
-    """
-    Perguntas tipo:
-    - "que tokens a binance está a fazer holding e ainda não foram listados?"
-    - "mostra holdings da gate.io com score > 70"
-    Isto é simples, não LLM.
-    """
+    # front tem de mandar JSON:
+    # fetch('/alerts/ask', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt:'...'})})
     q = (payload.get("prompt") or payload.get("question") or "").lower().strip()
     if not q:
         raise HTTPException(status_code=400, detail="prompt/question em falta")
 
-    # 1) detectar exchange
     target_ex: Optional[str] = None
     for ex in ["binance", "gate.io", "gate", "bybit", "mexc", "okx", "kraken", "coinbase", "bitget"]:
         if ex in q:
-            # normalizar
             if ex == "gate":
                 target_ex = "Gate.io"
             elif ex == "binance":
@@ -175,14 +157,12 @@ async def alerts_ask(payload: Dict[str, Any]):
                 target_ex = ex.capitalize() if "." not in ex else ex
             break
 
-    # 2) detectar score
     min_score = 50.0
-    if "score > 70" in q or "score acima de 70" in q or "score >= 70" in q:
+    if "70" in q:
         min_score = 70.0
-    elif "score > 60" in q:
+    elif "60" in q:
         min_score = 60.0
 
-    # 3) buscar
     params: Dict[str, str] = {
         "type": "eq.holding",
         "score": f"gte.{min_score}",
@@ -190,18 +170,22 @@ async def alerts_ask(payload: Dict[str, Any]):
     if target_ex:
         params["exchange"] = f"ilike.{target_ex}%"
 
-    rows = await sb_select(params, limit=50)
+    res = await sb_select(params, limit=50)
+    items = [to_holding_row(r) for r in res["data"]]
 
-    # 4) se pediste "ainda não listados" — aqui dependias da tua lógica antiga
-    # neste momento só devolvemos o que está gravado
-    if not rows:
-        return {
-            "answer": "Não encontrei holdings que batam nesses filtros.",
-            "items": [],
-        }
+    # “ainda não foram listados” → filtra por listed_exchanges vazio se existir
+    if "ainda nao foram listados" in q or "ainda não foram listados" in q:
+        # só passa os que NÃO têm listed_exchanges ou lista vazia
+        filtered = []
+        for it in items:
+            le = it.get("listed_exchanges")
+            if not le or (isinstance(le, list) and len(le) == 0):
+                filtered.append(it)
+        items = filtered
 
-    items = [to_holding_row(r) for r in rows]
     return {
-        "answer": f"Encontrei {len(items)} holdings.",
+        "ok": res["ok"],
+        "error": res["error"],
+        "count": len(items),
         "items": items,
     }

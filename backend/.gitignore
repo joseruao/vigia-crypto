@@ -11,5 +11,4 @@ node_modules/
 .next/
 
 
-backend/dailyworker/daily_holdings_worker.py
-backend/worker/vigia_solana_pro_supabase.py
+
