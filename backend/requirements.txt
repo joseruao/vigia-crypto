@@ -1,4 +1,5 @@
-﻿# --- Core ---
+﻿
+# --- Core ---
 python-dotenv==1.0.1
 requests==2.32.3
 
@@ -22,9 +23,3 @@ openai>=1.45.0
 # --- Helpers ---
 pydantic==2.9.2
 typing-extensions==4.15.0
-
-# --- HTTP client ---
-httpx==0.27.2
-
-# --- Tests (opcional no Render) ---
-pytest==8.3.3
