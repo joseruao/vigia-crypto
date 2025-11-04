@@ -1,191 +1,162 @@
 ﻿# backend/Api/routes/alerts.py
 from __future__ import annotations
-import os
-import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+import os, time
+from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from utils import supa
 
-import httpx
-from fastapi import APIRouter, HTTPException, Query
+router = APIRouter(tags=["alerts"])
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
-
-log = logging.getLogger("vigia.alerts")
-
-SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").rstrip("/")
-SUPABASE_SERVICE_ROLE_KEY = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    or os.getenv("SUPABASE_KEY")
-    or os.getenv("SUPABASE_ANON_KEY")
-    or ""
-)
-
-TABLE = "transacted_tokens"
-HTTP_TIMEOUT = 8.0
-
+# Normalização de exchanges (p/ “listado noutra”)
 EXCHANGE_NORMALIZE = {
-    "Binance 1": "Binance",
-    "Binance 2": "Binance",
-    "Binance 3": "Binance",
-    "Coinbase 1": "Coinbase",
-    "Coinbase Hot": "Coinbase",
-    "Kraken Cold 1": "Kraken",
-    "Kraken Cold 2": "Kraken",
-    "OKX 73": "OKX",
-    "OKX 93": "OKX",
+    "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
+    "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
+    "Bybit": "Bybit", "Gate.io": "Gate.io", "Bitget": "Bitget",
+    "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
+    "OKX": "OKX", "MEXC": "MEXC"
 }
 
-def norm_exchange(ex: str) -> str:
-    return EXCHANGE_NORMALIZE.get(ex, ex)
+class AskIn(BaseModel):
+    prompt: str
 
-async def sb_select(params: Dict[str, str], limit: int = 50) -> Dict[str, Any]:
-    """
-    devolve {ok: bool, data: [...], error: ...}
-    assim o frontend nunca vê 'Failed to fetch' por JSON inválido
-    """
-    if not SUPABASE_URL:
-        return {"ok": False, "data": [], "error": "SUPABASE_URL missing"}
-
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-    }
-
-    params = dict(params)
-    params.setdefault("order", "ts.desc")
-    params.setdefault("limit", str(limit))
-
-    url = f"{SUPABASE_URL}/rest/v1/{TABLE}"
-
-    try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-            r = await client.get(url, headers=headers, params=params)
-    except Exception as e:
-        log.error(f"❌ Supabase fetch error: {e}")
-        return {"ok": False, "data": [], "error": str(e)}
-
-    if r.status_code == 200:
-        return {"ok": True, "data": r.json(), "error": None}
-
-    # se for 401 ou 42501 (RLS) devolve vazio mas com erro
-    try:
-        err_txt = r.text
-    except Exception:
-        err_txt = f"HTTP {r.status_code}"
-    log.error(f"❌ Supabase {r.status_code}: {err_txt}")
-    return {"ok": False, "data": [], "error": err_txt}
-
-def to_holding_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "exchange": row.get("exchange"),
-        "exchange_norm": norm_exchange(row.get("exchange") or ""),
-        "token": row.get("token"),
-        "token_address": row.get("token_address"),
-        "value_usd": row.get("value_usd"),
-        "liquidity": row.get("liquidity"),
-        "volume_24h": row.get("volume_24h"),
-        "score": row.get("score"),
-        "pair_url": row.get("pair_url"),
-        "analysis": row.get("analysis") or row.get("analysis_text"),
-        "chain": row.get("chain"),
-        "ts": row.get("ts"),
-    }
-
-@router.get("/health")
-async def alerts_health():
+@router.get("/alerts/health")
+def alerts_health():
     return {
         "ok": True,
-        "ts": int(datetime.now(tz=timezone.utc).timestamp()),
-        "supabase_url": bool(SUPABASE_URL),
-        "has_key": bool(SUPABASE_SERVICE_ROLE_KEY),
+        "ts": int(time.time()),
+        "supabase_url": bool(os.getenv("SUPABASE_URL")),
+        "has_key": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
     }
 
-@router.get("/holdings")
-async def get_holdings(
-    exchange: Optional[str] = Query(None),
-    min_score: float = Query(50),
-    limit: int = Query(50, le=200),
-):
-    params: Dict[str, str] = {
+@router.get("/alerts/holdings")
+def get_holdings():
+    """
+    Devolve os holdings atuais (tabela transacted_tokens) — último snapshot por token/exchange.
+    """
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase não configurado", "items": []}
+
+    # 1) Trazer últimas linhas por (exchange, token, chain, type='holding')
+    # Nota: se tiveres a VIEW transacted_tokens_latest, usa-a. Caso não, faz filtro simples.
+    params = {"type": "eq.holding", "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
+    r = supa.rest_get("transacted_tokens", params=params)
+    if r.status_code != 200:
+        return {"ok": False, "error": r.text, "items": []}
+
+    data: List[Dict[str, Any]] = r.json() or []
+
+    # 2) Opcional: deduplicar por (exchange, token, chain) pegando o mais recente
+    latest: Dict[str, Dict[str, Any]] = {}
+    for row in data:
+        k = f"{row.get('exchange')}|{row.get('token')}|{row.get('chain')}"
+        if k not in latest:
+            latest[k] = row
+        else:
+            prev_ts = latest[k].get("ts") or ""
+            cur_ts  = row.get("ts") or ""
+            if cur_ts > prev_ts:
+                latest[k] = row
+
+    items = list(latest.values())
+    # Ordena por score desc depois ts desc
+    items.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+
+    return {"ok": True, "count": len(items), "items": items}
+
+@router.get("/alerts/predictions")
+def get_predictions():
+    """
+    Lê potenciais listings (se já guardas nesta mesma tabela com type='prediction').
+    Senão, volta lista vazia (sem 500).
+    """
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase não configurado", "items": []}
+
+    params = {"type": "eq.prediction", "select": "exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
+    r = supa.rest_get("transacted_tokens", params=params)
+    if r.status_code != 200:
+        return {"ok": False, "error": r.text, "items": []}
+
+    data = r.json() or []
+    data.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+    return {"ok": True, "count": len(data), "items": data}
+
+@router.post("/alerts/ask")
+def ask_alerts(payload: AskIn):
+    """
+    Perguntas tipo:
+    - "que tokens a binance tem em holding que ainda nao foram listados?"
+    - "mostra holdings da gate.io com score > 70"
+    """
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase não configurado", "count": 0, "items": []}
+
+    q = (payload.prompt or "").lower()
+
+    # Defaults
+    ex_norm = None
+    min_score = 0
+    chain = None
+
+    # Inferência simples
+    if "binance" in q: ex_norm = "Binance"
+    if "gate" in q:    ex_norm = "Gate.io"
+    if "bybit" in q:   ex_norm = "Bybit"
+    if "bitget" in q:  ex_norm = "Bitget"
+    if "kraken" in q:  ex_norm = "Kraken"
+    if "okx" in q:     ex_norm = "OKX"
+    if "mexc" in q:    ex_norm = "MEXC"
+    if "coinbase" in q: ex_norm = "Coinbase"
+
+    if "solana" in q:    chain = "solana"
+    if "ethereum" in q:  chain = "ethereum"
+    if "score >" in q:
+        try:
+            min_score = int(q.split("score >")[1].split()[0])
+        except Exception:
+            min_score = 70
+    elif "score" in q and ("alto" in q or "elevado" in q):
+        min_score = 70
+
+    # Base query
+    params = {
         "type": "eq.holding",
-        "score": f"gte.{min_score}",
+        "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,pair_url,value_usd,liquidity,volume_24h"
     }
-    if exchange:
-        params["exchange"] = f"ilike.{exchange}%"
+    if chain:
+        params["chain"] = f"eq.{chain}"
 
-    res = await sb_select(params, limit=limit)
-    data = [to_holding_row(r) for r in res["data"]]
-    return {
-        "ok": res["ok"],
-        "error": res["error"],
-        "items": data,
-    }
+    r = supa.rest_get("transacted_tokens", params=params)
+    if r.status_code != 200:
+        return {"ok": False, "error": r.text, "count": 0, "items": []}
 
-@router.get("/predictions")
-async def get_predictions(
-    min_score: float = Query(50),
-    limit: int = Query(50, le=200),
-):
-    params: Dict[str, str] = {
-        "type": "eq.prediction",
-        "score": f"gte.{min_score}",
-    }
-    res = await sb_select(params, limit=limit)
-    data = [to_holding_row(r) for r in res["data"]]
-    return {
-        "ok": res["ok"],
-        "error": res["error"],
-        "items": data,
-    }
+    data: List[Dict[str, Any]] = r.json() or []
 
-@router.post("/ask")
-async def alerts_ask(payload: Dict[str, Any]):
-    # front tem de mandar JSON:
-    # fetch('/alerts/ask', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt:'...'})})
-    q = (payload.get("prompt") or payload.get("question") or "").lower().strip()
-    if not q:
-        raise HTTPException(status_code=400, detail="prompt/question em falta")
+    # Normalizar exchange → ex_norm
+    def norm(ex: str) -> str:
+        return EXCHANGE_NORMALIZE.get(ex, ex)
 
-    target_ex: Optional[str] = None
-    for ex in ["binance", "gate.io", "gate", "bybit", "mexc", "okx", "kraken", "coinbase", "bitget"]:
-        if ex in q:
-            if ex == "gate":
-                target_ex = "Gate.io"
-            elif ex == "binance":
-                target_ex = "Binance"
-            else:
-                target_ex = ex.capitalize() if "." not in ex else ex
-            break
+    # Filtrar
+    out: List[Dict[str, Any]] = []
+    for row in data:
+        if ex_norm and norm(row.get("exchange", "")) != ex_norm:
+            continue
+        if float(row.get("score") or 0) < min_score:
+            continue
 
-    min_score = 50.0
-    if "70" in q:
-        min_score = 70.0
-    elif "60" in q:
-        min_score = 60.0
+        # “ainda não foram listados” → listed_exchanges não contém ex_norm
+        if "nao foram listados" in q or "não foram listados" in q or "unlisted" in q:
+            lst = row.get("listed_exchanges") or []
+            if not isinstance(lst, list):
+                lst = []
+            if ex_norm and ex_norm in lst:
+                # já listado lá → exclui
+                continue
 
-    params: Dict[str, str] = {
-        "type": "eq.holding",
-        "score": f"gte.{min_score}",
-    }
-    if target_ex:
-        params["exchange"] = f"ilike.{target_ex}%"
+        out.append(row)
 
-    res = await sb_select(params, limit=50)
-    items = [to_holding_row(r) for r in res["data"]]
+    # Ordena por score desc
+    out.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
 
-    # “ainda não foram listados” → filtra por listed_exchanges vazio se existir
-    if "ainda nao foram listados" in q or "ainda não foram listados" in q:
-        # só passa os que NÃO têm listed_exchanges ou lista vazia
-        filtered = []
-        for it in items:
-            le = it.get("listed_exchanges")
-            if not le or (isinstance(le, list) and len(le) == 0):
-                filtered.append(it)
-        items = filtered
-
-    return {
-        "ok": res["ok"],
-        "error": res["error"],
-        "count": len(items),
-        "items": items,
-    }
+    return {"ok": True, "count": len(out), "items": out}
