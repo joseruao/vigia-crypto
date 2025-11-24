@@ -4,6 +4,14 @@ import os, time
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+import sys
+from pathlib import Path
+
+# Garante que o diretório backend está no path para imports absolutos
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from utils import supa
 
 router = APIRouter(tags=["alerts"])

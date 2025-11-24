@@ -1,9 +1,15 @@
 ﻿# backend/Api/main.py
 from __future__ import annotations
-import os, logging
+import os, logging, sys
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+# Garante que o diretório backend está no path para imports absolutos
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("vigia")
