@@ -70,7 +70,7 @@ def ping():
 
 @app.get("/__version")
 def version():
-    return {"name": "vigia-backend", "version": "0.1.0"}
+    return {"name": "vigia-backend", "version": "0.1.1"}
 
 # ============================
 # CHAT ENDPOINTS
