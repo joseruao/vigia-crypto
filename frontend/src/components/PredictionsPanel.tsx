@@ -6,27 +6,37 @@ import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 
 // Define o tipo Holding localmente
 interface Holding {
-  id: string;
+  id?: string;
   token: string;
   exchange: string;
-  value_usd: number;
-  liquidity: number;
-  volume_24h: number;
-  score: number;
+  value_usd?: number;
+  liquidity?: number;
+  volume_24h?: number;
+  score?: number;
   pair_url?: string;
   token_address?: string;
   analysis?: string;
+  analysis_text?: string;
+  ai_analysis?: string;
   chain?: string;
 }
 
-// Função para buscar holdings
-async function getHoldings(): Promise<Holding[]> {
+// Função para buscar predictions (holdings com score alto)
+async function getPredictions(): Promise<Holding[]> {
   try {
-    const res = await fetch('/api/holdings');
-    if (!res.ok) throw new Error('Failed to fetch holdings');
-    return res.json();
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
+    const res = await fetch(`${API_BASE}/alerts/predictions`, {
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('Failed to fetch predictions');
+    const data = await res.json();
+    // Se retornar objeto com items, extrair items; senão usar diretamente
+    return Array.isArray(data) ? data : (data?.items || []);
   } catch (error) {
-    console.error('Error fetching holdings:', error);
+    console.error('Error fetching predictions:', error);
     return [];
   }
 }
@@ -44,11 +54,11 @@ export function PredictionsPanel() {
     
     (async () => {
       try {
-        const data = await getHoldings();
+        const data = await getPredictions();
         if (!mounted) return;
         setItems(Array.isArray(data) ? data : []);
       } catch (e) {
-        console.error("Falha a carregar holdings:", e);
+        console.error("Falha a carregar predictions:", e);
         if (mounted) setItems([]);
       } finally {
         if (mounted) setLoading(false);
@@ -64,7 +74,7 @@ export function PredictionsPanel() {
     <div className="fixed top-4 right-4 z-30 w-80">
       <div className="border border-zinc-200 rounded-xl bg-white shadow-md overflow-hidden">
         <div className="px-3 py-2 border-b border-zinc-100">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Holdings Detetados</div>
+          <div className="text-xs uppercase tracking-wide text-zinc-500">Previsões de Listing</div>
         </div>
 
         <div className="max-h-80 overflow-auto p-3 space-y-2">
@@ -81,9 +91,9 @@ export function PredictionsPanel() {
                 </div>
                 
                 {/* ANÁLISE */}
-                {h.analysis && (
+                {(h.analysis || h.analysis_text || h.ai_analysis) && (
                   <div className="mt-1 text-[11px] text-zinc-700 bg-yellow-50 p-1 rounded">
-                    {h.analysis}
+                    {h.analysis || h.analysis_text || h.ai_analysis}
                   </div>
                 )}
                 

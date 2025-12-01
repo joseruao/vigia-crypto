@@ -77,15 +77,16 @@ def get_predictions():
     """
     Lê potenciais listings (holdings com score alto que ainda não foram listados).
     Busca na tabela transacted_tokens com type='holding' e filtra por score alto.
+    Retorna lista direta de items (não objeto com ok/items) para compatibilidade com frontend.
     """
     if not supa.ok():
-        return {"ok": False, "error": "Supabase não configurado", "items": []}
+        return []
 
     # Busca holdings (que são as predictions de potencial listing)
-    params = {"type": "eq.holding", "select": "exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
+    params = {"type": "eq.holding", "select": "id,exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h,token_address"}
     r = supa.rest_get("transacted_tokens", params=params)
     if r.status_code != 200:
-        return {"ok": False, "error": r.text, "items": []}
+        return []
 
     data = r.json() or []
     
@@ -93,7 +94,8 @@ def get_predictions():
     filtered = [x for x in data if float(x.get("score") or 0) >= 50]
     filtered.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
     
-    return {"ok": True, "count": len(filtered), "items": filtered}
+    # Retorna lista direta (formato esperado pelo frontend)
+    return filtered
 
 @router.post("/alerts/ask")
 def ask_alerts(payload: AskIn):

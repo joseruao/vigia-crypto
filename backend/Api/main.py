@@ -95,7 +95,15 @@ def _should_use_coin_analysis(prompt: str) -> bool:
     has_analysis = any(kw in prompt_lower for kw in analysis_keywords)
     has_coin = any(kw in prompt_lower for kw in coin_keywords)
     
-    return has_analysis and has_coin
+    # Se tem análise E (moeda OU é pedido genérico "analisa-me uma criptomoeda")
+    if has_analysis:
+        if has_coin:
+            return True
+        # Também aceita pedidos genéricos como "analisa-me uma criptomoeda"
+        if "uma" in prompt_lower or "one" in prompt_lower:
+            return True
+    
+    return False
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
@@ -323,6 +331,24 @@ async def chat_stream(req: ChatRequest):
                                 yield f"{summary}\n"
                         
                         return StreamingResponse(generate_analysis(), media_type="text/plain")
+                    else:
+                        # Erro na análise
+                        def error_response():
+                            error_msg = analysis_result.get("error", "Erro desconhecido na análise")
+                            yield f"⚠️ Erro ao analisar {coin}: {error_msg}\n"
+                            yield "\nPor favor, tenta com outro símbolo de moeda."
+                        return StreamingResponse(error_response(), media_type="text/plain")
+                else:
+                    # Não encontrou moeda específica
+                    def ask_for_coin():
+                        yield "Por favor, especifica qual criptomoeda queres que analise.\n\n"
+                        yield "Exemplos:\n"
+                        yield "- Analisa-me a moeda BTC\n"
+                        yield "- Analisa-me a moeda ETH\n"
+                        yield "- Analisa-me a moeda ADA\n"
+                        yield "- Analisa-me a moeda SOL\n"
+                    
+                    return StreamingResponse(ask_for_coin(), media_type="text/plain")
             except Exception as e:
                 log.warning(f"Erro ao tentar análise gráfica: {e}")
                 # Continua com o fluxo normal

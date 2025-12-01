@@ -50,8 +50,17 @@ export function ChatWindow() {
   }, [input]);
 
   // Heurística para usar a API de alerts (prediction/holdings/etc.)
+  // NÃO usar para análise de moedas (coin analysis)
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
+    
+    // Se for pedido de análise de moeda, usar chat/stream
+    if (q.includes('analisa-me') || q.includes('analisa') || q.includes('análise')) {
+      if (q.includes('moeda') || q.includes('coin') || q.includes('criptomoeda') || q.includes('cryptocurrency')) {
+        return false; // Usar chat/stream para análise de moedas
+      }
+    }
+    
     return (
       q.includes('token') ||
       q.includes('listado') ||
