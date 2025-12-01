@@ -166,14 +166,6 @@ export function ChatWindow() {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      {/* TOP BAR minimal */}
-      <div className="border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="text-sm font-medium text-gray-700">Vigia Crypto</div>
-          <div className="text-xs text-gray-500">joseruao.com</div>
-        </div>
-      </div>
-
       {/* Área das mensagens */}
       <div className="flex-1 overflow-y-auto">
         {!hasMessages && !loading ? (

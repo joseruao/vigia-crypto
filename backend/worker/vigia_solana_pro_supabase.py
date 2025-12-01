@@ -614,3 +614,71 @@ def analyze_transaction(tx_data: Dict[str, Any], wallet_address: str, exchange_n
     except Exception as e:
         logger.error(f"Erro na análise de transação: {e}")
         return None
+
+# ===========================
+# FUNÇÃO MAIN PARA CRON JOB
+# ===========================
+def main():
+    """
+    Função principal para executar o worker.
+    Pode ser chamada por cron job ou worker_vigia.py
+    """
+    try:
+        logger.info("🚀 Iniciando Vigia Solana Pro Supabase Worker...")
+        
+        # Carrega tokens listados
+        load_listed_tokens_from_supabase(force=True)
+        
+        # Inicializa ML analyzer
+        analyzer = CryptoAIAnalyzer()
+        
+        total_alerts = 0
+        
+        # Processa cada exchange
+        for exchange_name, wallet_address in EXCHANGE_WALLETS.items():
+            logger.info(f"🔍 Analisando {exchange_name} (wallet: {wallet_address[:8]}...)")
+            
+            # Busca transações recentes (últimas 24h)
+            signatures = get_recent_signatures(wallet_address, hours=24)
+            logger.info(f"   📊 {len(signatures)} transações encontradas")
+            
+            for sig in signatures:
+                tx_data = get_transaction_details(sig)
+                if not tx_data:
+                    continue
+                
+                alert_data = analyze_transaction(tx_data, wallet_address, exchange_name)
+                if not alert_data:
+                    continue
+                
+                # Calcula score ML
+                ml_result = analyzer.predict_listing_potential(
+                    alert_data, exchange_name, alert_data.get("token", "UNKNOWN")
+                )
+                alert_data["score"] = ml_result["score"]
+                alert_data["listing_probability"] = ml_result["listing_probability"]
+                
+                # Gera análise IA
+                alert_data["ai_analysis"] = generate_ai_analysis(alert_data)
+                alert_data["analysis_text"] = alert_data["ai_analysis"]
+                
+                # Salva no Supabase
+                try:
+                    alert_data["type"] = "holding"
+                    alert_data["ts"] = datetime.now(timezone.utc).isoformat()
+                    
+                    supabase.table("transacted_tokens").insert(alert_data).execute()
+                    total_alerts += 1
+                    logger.info(f"   ✅ Alert salvo: {alert_data.get('token')} - Score: {alert_data.get('score'):.1f}%")
+                except Exception as e:
+                    logger.error(f"   ❌ Erro ao salvar alert: {e}")
+        
+        logger.info(f"✅ Worker concluído! Total de alertas: {total_alerts}")
+        return total_alerts
+        
+    except Exception as e:
+        logger.error(f"💥 Erro fatal no worker: {e}", exc_info=True)
+        raise
+
+if __name__ == "__main__":
+    main()

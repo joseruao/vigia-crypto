@@ -1,23 +1,27 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from('transacted_tokens')
-      .select('*')
-      .eq('type', 'holding')
-      .gte('score', 70)
-      .order('created_at', { ascending: false })
-      .limit(15);
+    // Usa o backend API em vez de Supabase diretamente
+    const res = await fetch(`${API_BASE}/alerts/holdings`, {
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json([], { status: 500 });
+    if (!res.ok) {
+      console.error(`Backend API error: ${res.status} ${res.statusText}`);
+      return NextResponse.json([], { status: res.status });
     }
+
+    const data = await res.json();
+    const items = data?.items || [];
     
-    console.log(`📊 API Holdings: ${data?.length || 0} holdings encontrados`);
-    return NextResponse.json(data || []);
+    console.log(`📊 API Holdings: ${items.length} holdings encontrados`);
+    return NextResponse.json(items);
   } catch (error) {
     console.error('Error fetching holdings:', error);
     return NextResponse.json([], { status: 500 });

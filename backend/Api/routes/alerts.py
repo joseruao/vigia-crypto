@@ -1,4 +1,4 @@
-﻿# backend/Api/routes/alerts.py
+# backend/Api/routes/alerts.py
 from __future__ import annotations
 import os, time
 from typing import List, Dict, Any
@@ -75,20 +75,25 @@ def get_holdings():
 @router.get("/alerts/predictions")
 def get_predictions():
     """
-    Lê potenciais listings (se já guardas nesta mesma tabela com type='prediction').
-    Senão, volta lista vazia (sem 500).
+    Lê potenciais listings (holdings com score alto que ainda não foram listados).
+    Busca na tabela transacted_tokens com type='holding' e filtra por score alto.
     """
     if not supa.ok():
         return {"ok": False, "error": "Supabase não configurado", "items": []}
 
-    params = {"type": "eq.prediction", "select": "exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
+    # Busca holdings (que são as predictions de potencial listing)
+    params = {"type": "eq.holding", "select": "exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
     r = supa.rest_get("transacted_tokens", params=params)
     if r.status_code != 200:
         return {"ok": False, "error": r.text, "items": []}
 
     data = r.json() or []
-    data.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
-    return {"ok": True, "count": len(data), "items": data}
+    
+    # Filtra por score mínimo de 50 e ordena por score desc
+    filtered = [x for x in data if float(x.get("score") or 0) >= 50]
+    filtered.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+    
+    return {"ok": True, "count": len(filtered), "items": filtered}
 
 @router.post("/alerts/ask")
 def ask_alerts(payload: AskIn):
