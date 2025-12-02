@@ -25,18 +25,32 @@ interface Holding {
 async function getPredictions(): Promise<Holding[]> {
   try {
     const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
-    const res = await fetch(`${API_BASE}/alerts/predictions`, {
+    const url = `${API_BASE}/alerts/predictions`;
+    console.log('🌐 Fetching from:', url);
+    
+    const res = await fetch(url, {
       cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
       },
     });
-    if (!res.ok) throw new Error('Failed to fetch predictions');
+    
+    console.log('📡 Response status:', res.status);
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => 'Unknown error');
+      console.error('❌ Response not OK:', res.status, errorText);
+      throw new Error(`Failed to fetch predictions: ${res.status} ${errorText}`);
+    }
+    
     const data = await res.json();
+    console.log('✅ Data received:', Array.isArray(data) ? `Array with ${data.length} items` : typeof data);
+    if (Array.isArray(data) && data.length > 0) {
+      console.log('📋 First item:', data[0]);
+    }
     // Se retornar objeto com items, extrair items; senão usar diretamente
     return Array.isArray(data) ? data : (data?.items || []);
   } catch (error) {
-    console.error('Error fetching predictions:', error);
+    console.error('❌ Error fetching predictions:', error);
     return [];
   }
 }
@@ -54,11 +68,13 @@ export function PredictionsPanel() {
     
     (async () => {
       try {
+        console.log('🔍 Buscando predictions...');
         const data = await getPredictions();
+        console.log('📊 Predictions recebidas:', data?.length || 0, 'itens');
         if (!mounted) return;
         setItems(Array.isArray(data) ? data : []);
       } catch (e) {
-        console.error("Falha a carregar predictions:", e);
+        console.error("❌ Falha a carregar predictions:", e);
         if (mounted) setItems([]);
       } finally {
         if (mounted) setLoading(false);

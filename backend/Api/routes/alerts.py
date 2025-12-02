@@ -187,6 +187,14 @@ def get_predictions():
         
         log.info(f"Predictions filtradas (score >= 50): {len(filtered)}")
         
+        # Se não houver nenhuma com score >= 50, retorna todas ordenadas por score (para debug)
+        if len(filtered) == 0 and len(data) > 0:
+            log.warning(f"Nenhuma prediction com score >= 50. Total de holdings: {len(data)}")
+            # Retorna top 10 por score mesmo que < 50, para debug
+            all_sorted = sorted(data, key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+            log.info(f"Retornando top 10 holdings (mesmo com score < 50) para debug")
+            return all_sorted[:10]
+        
         # Retorna lista direta (formato esperado pelo frontend)
         return filtered
         
