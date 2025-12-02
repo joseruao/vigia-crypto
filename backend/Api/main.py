@@ -21,15 +21,26 @@ try:
         BACKEND_DIR / ".env",
         BACKEND_DIR.parent / ".env",
     ]
+    loaded = False
     for env_path in env_paths:
         if env_path.exists():
-            load_dotenv(env_path, override=False)
+            load_dotenv(env_path, override=True)  # override=True para garantir que carrega
             logging.info(f"✅ Carregado .env de: {env_path}")
+            # Verifica se as variáveis foram carregadas
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            logging.info(f"   SUPABASE_URL: {'✅' if supabase_url else '❌'} ({len(supabase_url)} chars)")
+            logging.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if supabase_key else '❌'} ({len(supabase_key)} chars)")
+            loaded = True
             break
-    else:
-        logging.warning("⚠️ Nenhum ficheiro .env encontrado")
+    if not loaded:
+        logging.warning("⚠️ Nenhum ficheiro .env encontrado nos caminhos:")
+        for env_path in env_paths:
+            logging.warning(f"   - {env_path}")
 except ImportError:
-    logging.warning("⚠️ python-dotenv não instalado. Usando apenas variáveis de ambiente do sistema.")
+    logging.warning("⚠️ python-dotenv não instalado. Instala com: pip install python-dotenv")
+except Exception as e:
+    logging.error(f"❌ Erro ao carregar .env: {e}")
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("vigia")

@@ -44,11 +44,39 @@ class AskIn(BaseModel):
 
 @router.get("/alerts/health")
 def alerts_health():
+    import logging
+    log = logging.getLogger("vigia")
+    
+    # Tenta carregar .env se ainda não foi carregado
+    try:
+        from dotenv import load_dotenv
+        from pathlib import Path
+        backend_dir = Path(__file__).resolve().parent.parent.parent
+        env_paths = [
+            backend_dir / ".env",
+            backend_dir.parent / ".env",
+        ]
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path, override=False)
+                log.info(f"✅ Health check: Carregado .env de {env_path}")
+                break
+    except ImportError:
+        pass
+    
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
+    log.info(f"🔍 Health check: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}")
+    
     return {
         "ok": True,
         "ts": int(time.time()),
-        "supabase_url": bool(os.getenv("SUPABASE_URL")),
-        "has_key": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        "supabase_url": bool(supabase_url),
+        "has_key": bool(supabase_key),
+        "supabase_url_length": len(supabase_url) if supabase_url else 0,
+        "supabase_key_length": len(supabase_key) if supabase_key else 0,
+        "supa_ok": supa.ok()
     }
 
 @router.post("/alerts/test-insert")
@@ -227,8 +255,20 @@ def ask_alerts(payload: AskIn):
     import logging
     log = logging.getLogger("vigia")
     
+    # Debug: verifica configuração do Supabase
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    log.info(f"🔍 Debug Supabase: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}")
+    
     if not supa.ok():
-        return {"ok": False, "error": "Supabase não configurado", "answer": "Supabase não configurado", "count": 0, "items": []}
+        log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}")
+        return {
+            "ok": False, 
+            "error": "Supabase não configurado", 
+            "answer": f"⚠️ Supabase não configurado. URL: {'✅' if supabase_url else '❌'}, KEY: {'✅' if supabase_key else '❌'}. Verifica o ficheiro .env e reinicia a API.", 
+            "count": 0, 
+            "items": []
+        }
 
     q = (payload.prompt or "").lower()
     log.info(f"Pergunta recebida: {payload.prompt}")
