@@ -12,6 +12,20 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+# Carrega .env antes de importar utils.supa
+try:
+    from dotenv import load_dotenv
+    env_paths = [
+        BACKEND_DIR / ".env",
+        BACKEND_DIR.parent / ".env",
+    ]
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            break
+except ImportError:
+    pass
+
 from utils import supa
 
 router = APIRouter(tags=["alerts"])

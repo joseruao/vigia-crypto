@@ -13,6 +13,24 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+# Carrega variáveis de ambiente do .env
+try:
+    from dotenv import load_dotenv
+    # Tenta carregar .env do diretório backend primeiro, depois da raiz
+    env_paths = [
+        BACKEND_DIR / ".env",
+        BACKEND_DIR.parent / ".env",
+    ]
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            logging.info(f"✅ Carregado .env de: {env_path}")
+            break
+    else:
+        logging.warning("⚠️ Nenhum ficheiro .env encontrado")
+except ImportError:
+    logging.warning("⚠️ python-dotenv não instalado. Usando apenas variáveis de ambiente do sistema.")
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("vigia")
 

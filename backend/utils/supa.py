@@ -2,6 +2,24 @@
 import os
 import requests
 
+# Tenta carregar .env se não estiver já carregado
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    # Só carrega se ainda não foi carregado (evita override)
+    if not os.getenv("SUPABASE_URL"):
+        backend_dir = Path(__file__).resolve().parent.parent
+        env_paths = [
+            backend_dir / ".env",
+            backend_dir.parent / ".env",
+        ]
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path, override=False)
+                break
+except ImportError:
+    pass  # python-dotenv não instalado, usa apenas variáveis do sistema
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
