@@ -69,10 +69,14 @@ export function ChatWindow() {
       }
     }
     
+    // Detectar perguntas sobre tokens/listings
     return (
       q.includes('token') ||
       q.includes('listado') ||
       q.includes('listing') ||
+      q.includes('vão ser') ||
+      q.includes('vao ser') ||
+      q.includes('vai ser') ||
       q.includes('exchange') ||
       q.includes('prediction') ||
       q.includes('previsão') ||
@@ -81,7 +85,8 @@ export function ChatWindow() {
       q.includes('holding') ||
       q.includes('wallet') ||
       q.includes('score') ||
-      q.includes('scoring')
+      q.includes('scoring') ||
+      q.includes('achas') && (q.includes('token') || q.includes('listado'))
     );
   }
 
@@ -124,10 +129,33 @@ export function ChatWindow() {
       }
 
       if (useAlerts) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json().catch((e) => {
+          console.error('❌ Erro ao parsear JSON:', e);
+          return {};
+        });
+        
+        console.log('📥 Resposta completa recebida:', data);
+        console.log('📥 data.answer:', data?.answer);
+        console.log('📥 data.error:', data?.error);
+        console.log('📥 data.ok:', data?.ok);
+        
+        // Tenta várias formas de obter a resposta
+        let answer = data?.answer;
+        if (!answer && data?.error) {
+          answer = `Erro: ${data.error}`;
+        }
+        if (!answer && data?.items && Array.isArray(data.items) && data.items.length > 0) {
+          // Se não há answer mas há items, formata manualmente
+          answer = `Encontrei ${data.items.length} resultado(s).`;
+        }
+        if (!answer) {
+          answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
+        }
+        
+        console.log('📤 Resposta final a mostrar:', answer);
         addMessage({
           role: 'assistant',
-          content: data?.answer ?? '⚠️ Sem resposta',
+          content: answer,
         });
       } else {
         const reader = res.body?.getReader();

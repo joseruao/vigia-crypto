@@ -208,16 +208,27 @@ def ask_alerts(payload: AskIn):
     Perguntas tipo:
     - "que tokens a binance tem em holding que ainda nao foram listados?"
     - "mostra holdings da gate.io com score > 70"
+    - "que tokens achas que vão ser listados?"
     """
+    import logging
+    log = logging.getLogger("vigia")
+    
     if not supa.ok():
-        return {"ok": False, "error": "Supabase não configurado", "count": 0, "items": []}
+        return {"ok": False, "error": "Supabase não configurado", "answer": "Supabase não configurado", "count": 0, "items": []}
 
     q = (payload.prompt or "").lower()
+    log.info(f"Pergunta recebida: {payload.prompt}")
 
     # Defaults
     ex_norm = None
     min_score = 0
     chain = None
+    
+    # Se perguntar sobre "tokens que vão ser listados" sem exchange específica, usa score mínimo
+    is_listing_question = "listados" in q or "listing" in q or "vão ser" in q or "vao ser" in q or "vai ser" in q or "achas" in q
+    if is_listing_question and not any(ex in q for ex in ["binance", "gate", "bybit", "bitget", "kraken", "okx", "mexc", "coinbase"]):
+        min_score = 50  # Score mínimo para predictions
+        log.info(f"Detectada pergunta sobre listings - aplicando score mínimo: {min_score}")
 
     # Inferência simples
     if "binance" in q: ex_norm = "Binance"
@@ -242,16 +253,22 @@ def ask_alerts(payload: AskIn):
     # Base query
     params = {
         "type": "eq.holding",
-        "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,pair_url,value_usd,liquidity,volume_24h"
+        "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,pair_url,value_usd,liquidity,volume_24h,analysis_text,ai_analysis",
+        "limit": "500",
+        "order": "score.desc"
     }
     if chain:
         params["chain"] = f"eq.{chain}"
 
-    r = supa.rest_get("transacted_tokens", params=params)
+    log.info(f"Buscando holdings com params: {params}")
+    r = supa.rest_get("transacted_tokens", params=params, timeout=8)
     if r.status_code != 200:
-        return {"ok": False, "error": r.text, "count": 0, "items": []}
+        error_msg = r.text[:200] if hasattr(r, 'text') else str(r.status_code)
+        log.error(f"Erro ao buscar holdings: HTTP {r.status_code} - {error_msg}")
+        return {"ok": False, "error": error_msg, "answer": f"Erro ao buscar dados: {error_msg}", "count": 0, "items": []}
 
     data: List[Dict[str, Any]] = r.json() or []
+    log.info(f"Recebidos {len(data)} holdings do Supabase")
 
     # Normalizar exchange → ex_norm
     def norm(ex: str) -> str:
@@ -275,8 +292,70 @@ def ask_alerts(payload: AskIn):
                 continue
 
         out.append(row)
+    
+    log.info(f"Holdings filtrados: {len(out)}")
 
     # Ordena por score desc
     out.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
 
-    return {"ok": True, "count": len(out), "items": out}
+    # Formata resposta em texto para o frontend
+    try:
+        if len(out) == 0:
+            # Mensagem mais informativa quando não há resultados
+            answer = "Não encontrei tokens que correspondam à tua pesquisa."
+            if ex_norm:
+                answer = f"Não encontrei holdings da {ex_norm} que correspondam aos critérios."
+            elif is_listing_question:
+                answer = f"Não encontrei tokens com potencial de listing (score >= {min_score})."
+                if len(data) > 0:
+                    # Mostra quantos há no total mas não passam o filtro
+                    max_score = max([float(x.get("score") or 0) for x in data] or [0])
+                    answer += f"\n\n📊 Há {len(data)} holdings no total, mas nenhum com score >= {min_score}."
+                    answer += f"\n💡 Score máximo encontrado: {max_score:.1f}%"
+            if min_score > 0:
+                answer += f"\n\n💡 Score mínimo aplicado: {min_score}%"
+            answer += "\n\n💡 Tenta reduzir os filtros ou verifica se há dados no Supabase."
+        else:
+            lines = []
+            if is_listing_question or "listados" in q or "listing" in q:
+                lines.append(f"🎯 **Encontrei {len(out)} token(s) com potencial de listing:**\n")
+            else:
+                lines.append(f"📊 **Encontrei {len(out)} holding(s):**\n")
+            
+            for i, item in enumerate(out[:10], 1):  # Limita a 10
+                token = item.get("token", "N/A")
+                exchange = item.get("exchange", "N/A")
+                score = item.get("score", 0)
+                value_usd = item.get("value_usd", 0)
+                liquidity = item.get("liquidity", 0)
+                pair_url = item.get("pair_url", "")
+                analysis = item.get("ai_analysis") or item.get("analysis_text", "")
+                
+                line = f"{i}. **{token}** ({exchange})"
+                if score:
+                    line += f" - Score: **{score:.1f}%**"
+                if value_usd:
+                    line += f" - Valor: ${value_usd:,.0f}"
+                if liquidity:
+                    line += f" - Liquidez: ${liquidity:,.0f}"
+                if pair_url:
+                    line += f" - [DexScreener]({pair_url})"
+                
+                lines.append(line)
+                
+                # Adiciona análise se existir (apenas para os primeiros 3)
+                if analysis and i <= 3:
+                    analysis_short = analysis[:150] + "..." if len(analysis) > 150 else analysis
+                    lines.append(f"   💡 {analysis_short}\n")
+            
+            if len(out) > 10:
+                lines.append(f"\n... e mais {len(out) - 10} token(s)")
+            
+            answer = "\n".join(lines)
+        
+        log.info(f"Resposta formatada: {len(answer)} caracteres")
+        return {"ok": True, "answer": answer, "count": len(out), "items": out}
+        
+    except Exception as e:
+        log.error(f"Erro ao formatar resposta: {e}", exc_info=True)
+        return {"ok": False, "error": str(e), "answer": f"Erro ao processar: {str(e)}", "count": 0, "items": []}
