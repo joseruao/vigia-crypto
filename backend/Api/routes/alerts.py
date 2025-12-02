@@ -37,40 +37,114 @@ def alerts_health():
         "has_key": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
     }
 
+@router.post("/alerts/test-insert")
+def test_insert():
+    """
+    Endpoint de teste para inserir um registo de teste na tabela.
+    Útil para verificar se a inserção funciona.
+    """
+    import logging
+    from datetime import datetime, timezone
+    
+    log = logging.getLogger("vigia")
+    
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase não configurado"}
+    
+    try:
+        from supabase import create_client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        supabase_client = create_client(supabase_url, supabase_key)
+        
+        test_data = {
+            "type": "holding",
+            "exchange": "Binance",
+            "token": "TEST",
+            "token_address": "TestAddress123",
+            "chain": "solana",
+            "score": 75.5,
+            "value_usd": 50000.0,
+            "liquidity": 1000000.0,
+            "volume_24h": 500000.0,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "pair_url": "https://dexscreener.com/test",
+            "analysis_text": "Teste de inserção via API",
+            "ai_analysis": "Este é um registo de teste inserido via endpoint /alerts/test-insert"
+        }
+        
+        log.info("Inserindo dados de teste...")
+        response = supabase_client.table("transacted_tokens").insert(test_data).execute()
+        
+        if hasattr(response, 'data') and response.data:
+            return {
+                "ok": True,
+                "message": "Dados de teste inseridos com sucesso",
+                "id": response.data[0].get('id'),
+                "data": test_data
+            }
+        else:
+            return {"ok": False, "error": "Resposta sem dados", "response": str(response)}
+            
+    except Exception as e:
+        log.error(f"Erro ao inserir dados de teste: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
 @router.get("/alerts/holdings")
 def get_holdings():
     """
     Devolve os holdings atuais (tabela transacted_tokens) — último snapshot por token/exchange.
     """
+    import logging
+    log = logging.getLogger("vigia")
+    
     if not supa.ok():
+        log.warning("Supabase não configurado")
         return {"ok": False, "error": "Supabase não configurado", "items": []}
 
-    # 1) Trazer últimas linhas por (exchange, token, chain, type='holding')
-    # Nota: se tiveres a VIEW transacted_tokens_latest, usa-a. Caso não, faz filtro simples.
-    params = {"type": "eq.holding", "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h"}
-    r = supa.rest_get("transacted_tokens", params=params)
-    if r.status_code != 200:
-        return {"ok": False, "error": r.text, "items": []}
+    try:
+        # 1) Trazer últimas linhas por (exchange, token, chain, type='holding')
+        params = {
+            "type": "eq.holding",
+            "select": "exchange,token,token_address,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h",
+            "limit": "500",
+            "order": "ts.desc"
+        }
+        
+        log.info("Buscando holdings do Supabase...")
+        r = supa.rest_get("transacted_tokens", params=params, timeout=8)
+        
+        if r.status_code != 200:
+            error_msg = r.text[:200] if hasattr(r, 'text') else str(r.status_code)
+            log.error(f"Erro ao buscar holdings: HTTP {r.status_code} - {error_msg}")
+            return {"ok": False, "error": error_msg, "items": []}
 
-    data: List[Dict[str, Any]] = r.json() or []
+        data: List[Dict[str, Any]] = r.json() or []
+        log.info(f"Recebidos {len(data)} holdings do Supabase")
 
-    # 2) Opcional: deduplicar por (exchange, token, chain) pegando o mais recente
-    latest: Dict[str, Dict[str, Any]] = {}
-    for row in data:
-        k = f"{row.get('exchange')}|{row.get('token')}|{row.get('chain')}"
-        if k not in latest:
-            latest[k] = row
-        else:
-            prev_ts = latest[k].get("ts") or ""
-            cur_ts  = row.get("ts") or ""
-            if cur_ts > prev_ts:
+        # 2) Deduplicar por (exchange, token, chain) pegando o mais recente
+        latest: Dict[str, Dict[str, Any]] = {}
+        for row in data:
+            k = f"{row.get('exchange')}|{row.get('token')}|{row.get('chain')}"
+            if k not in latest:
                 latest[k] = row
+            else:
+                prev_ts = latest[k].get("ts") or ""
+                cur_ts  = row.get("ts") or ""
+                if cur_ts > prev_ts:
+                    latest[k] = row
 
-    items = list(latest.values())
-    # Ordena por score desc depois ts desc
-    items.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+        items = list(latest.values())
+        # Ordena por score desc depois ts desc
+        items.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+        
+        log.info(f"Holdings deduplicados: {len(items)}")
 
-    return {"ok": True, "count": len(items), "items": items}
+        return {"ok": True, "count": len(items), "items": items}
+        
+    except Exception as e:
+        log.error(f"Erro ao processar holdings: {e}", exc_info=True)
+        return {"ok": False, "error": str(e), "items": []}
 
 @router.get("/alerts/predictions")
 def get_predictions():
@@ -79,23 +153,46 @@ def get_predictions():
     Busca na tabela transacted_tokens com type='holding' e filtra por score alto.
     Retorna lista direta de items (não objeto com ok/items) para compatibilidade com frontend.
     """
+    import logging
+    log = logging.getLogger("vigia")
+    
     if not supa.ok():
+        log.warning("Supabase não configurado")
         return []
 
-    # Busca holdings (que são as predictions de potencial listing)
-    params = {"type": "eq.holding", "select": "id,exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h,token_address"}
-    r = supa.rest_get("transacted_tokens", params=params)
-    if r.status_code != 200:
-        return []
+    try:
+        # Busca holdings (que são as predictions de potencial listing)
+        # Timeout reduzido para 8 segundos para evitar travamentos
+        # Limite de 500 registos para evitar queries muito lentas
+        params = {
+            "type": "eq.holding",
+            "select": "id,exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h,token_address",
+            "limit": "500",
+            "order": "ts.desc"
+        }
+        
+        log.info(f"Buscando predictions do Supabase...")
+        r = supa.rest_get("transacted_tokens", params=params, timeout=8)
+        
+        if r.status_code != 200:
+            log.error(f"Erro ao buscar predictions: HTTP {r.status_code} - {r.text[:200]}")
+            return []
 
-    data = r.json() or []
-    
-    # Filtra por score mínimo de 50 e ordena por score desc
-    filtered = [x for x in data if float(x.get("score") or 0) >= 50]
-    filtered.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
-    
-    # Retorna lista direta (formato esperado pelo frontend)
-    return filtered
+        data = r.json() or []
+        log.info(f"Recebidos {len(data)} registos do Supabase")
+        
+        # Filtra por score mínimo de 50 e ordena por score desc
+        filtered = [x for x in data if float(x.get("score") or 0) >= 50]
+        filtered.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+        
+        log.info(f"Predictions filtradas (score >= 50): {len(filtered)}")
+        
+        # Retorna lista direta (formato esperado pelo frontend)
+        return filtered
+        
+    except Exception as e:
+        log.error(f"Erro ao processar predictions: {e}", exc_info=True)
+        return []
 
 @router.post("/alerts/ask")
 def ask_alerts(payload: AskIn):
