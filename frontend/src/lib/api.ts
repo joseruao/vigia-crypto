@@ -1,6 +1,15 @@
 // frontend/src/lib/api.ts
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://vigia-crypto-1.onrender.com";
+// Em desenvolvimento, usa localhost se estiver em localhost
+const getApiBase = () => {
+  // Se estiver em localhost, sempre usa API local (ignora env var)
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:8000';
+  }
+  // Senão, usa env var ou produção
+  return process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
+};
+
+const API_BASE = getApiBase();
 
 export type Holding = {
   token: string | null;

@@ -24,7 +24,11 @@ interface Holding {
 // Função para buscar predictions (holdings com score alto)
 async function getPredictions(): Promise<Holding[]> {
   try {
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
+    // Em desenvolvimento, usa localhost se estiver em localhost
+    let API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-crypto-1.onrender.com';
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      API_BASE = 'http://localhost:8000';
+    }
     const url = `${API_BASE}/alerts/predictions`;
     console.log('🌐 Fetching from:', url);
     

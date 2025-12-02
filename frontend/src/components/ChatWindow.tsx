@@ -27,9 +27,17 @@ export function ChatWindow() {
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  const API_URL =
-    (process.env.NEXT_PUBLIC_API_URL?.trim() as string) ||
-    'https://vigia-crypto-1.onrender.com';
+  // Em desenvolvimento, usa localhost se estiver em localhost
+  const getApiUrl = () => {
+    // Se estiver em localhost, sempre usa API local (ignora env var)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:8000';
+    }
+    // Senão, usa env var ou produção
+    return process.env.NEXT_PUBLIC_API_URL?.trim() || 'https://vigia-crypto-1.onrender.com';
+  };
+  
+  const API_URL = getApiUrl();
 
   // Warm-up para evitar cold start do Render
   useEffect(() => {

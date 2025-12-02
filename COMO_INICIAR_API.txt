@@ -1,0 +1,79 @@
+========================================
+COMO INICIAR A API - PASSO A PASSO
+========================================
+
+PROBLEMA: ERR_CONNECTION_REFUSED na porta 8000
+SOLUÇÃO: Iniciar a API manualmente
+
+========================================
+OPÇÃO 1: PowerShell (Recomendado)
+========================================
+
+1. Abre PowerShell
+2. Executa estes comandos:
+
+   cd C:\Users\joser\vigia_crypto\backend\Api
+   python -m uvicorn main:app --reload --port 8000
+
+3. Deves ver:
+   INFO:     Uvicorn running on http://127.0.0.1:8000
+   INFO:     Application startup complete.
+
+4. Deixa este terminal aberto (não feches!)
+
+5. Abre outro browser/tab e testa:
+   http://localhost:8000/
+
+========================================
+OPÇÃO 2: Usar o Script Criado
+========================================
+
+1. Abre PowerShell
+2. Executa:
+   cd C:\Users\joser\vigia_crypto\backend
+   .\start_api.ps1
+
+========================================
+OPÇÃO 3: Verificar Dependências
+========================================
+
+Se aparecer erro de módulo não encontrado:
+
+   pip install fastapi uvicorn python-dotenv requests supabase
+
+========================================
+VERIFICAR SE ESTÁ A CORRER
+========================================
+
+Depois de iniciar, abre no browser:
+   http://localhost:8000/
+
+Deves ver: {"ok":true,"service":"vigia-backend"}
+
+Se aparecer isto, a API está a correr! ✅
+
+========================================
+PROBLEMA: Porta 8000 já em uso?
+========================================
+
+Se aparecer erro "Address already in use":
+
+1. Mata o processo na porta 8000:
+   netstat -ano | findstr :8000
+   taskkill /PID <numero_do_pid> /F
+
+2. Ou usa outra porta:
+   python -m uvicorn main:app --reload --port 8001
+
+3. Depois atualiza o frontend para usar porta 8001
+
+========================================
+DEPOIS DE INICIAR
+========================================
+
+1. A API deve estar a correr (deixa o terminal aberto)
+2. Recarrega o frontend
+3. O PredictionsPanel deve funcionar
+4. A análise de moedas deve funcionar
+
+========================================
