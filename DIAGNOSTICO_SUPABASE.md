@@ -137,3 +137,4 @@ Isto vai testar:
 4. **Partilha os logs** da API quando inicia
 
 Com esta informação consigo identificar exatamente onde está o problema!
+
