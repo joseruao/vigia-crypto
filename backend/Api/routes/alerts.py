@@ -246,13 +246,48 @@ def ask_alerts(payload: AskIn):
     import logging
     log = logging.getLogger("vigia")
     
-    # Debug: verifica configuração do Supabase usando supa.ok() que recarrega automaticamente
-    if not supa.ok():
-        # Tenta obter valores diretamente para debug
-        supabase_url = supa._get_url() if hasattr(supa, '_get_url') else os.getenv("SUPABASE_URL", "")
-        supabase_key = supa._get_key() if hasattr(supa, '_get_key') else os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-        log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}")
-        log.error(f"   URL length: {len(supabase_url)}, KEY length: {len(supabase_key)}")
+    # Debug: verifica configuração do Supabase
+    # Primeiro tenta obter valores usando as funções do supa
+    try:
+        if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
+            supabase_url = supa._get_url()
+            supabase_key = supa._get_key()
+        else:
+            # Fallback: usa os.getenv diretamente
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            # Se não tiver, tenta recarregar .env
+            if not supabase_url or not supabase_key:
+                try:
+                    from dotenv import load_dotenv
+                    from pathlib import Path
+                    backend_dir = Path(__file__).resolve().parent.parent.parent
+                    env_paths = [
+                        backend_dir / ".env",
+                        backend_dir.parent / ".env",
+                    ]
+                    for env_path in env_paths:
+                        if env_path.exists():
+                            load_dotenv(env_path, override=True)
+                            log.info(f"✅ Recarregado .env de {env_path}")
+                            break
+                    supabase_url = os.getenv("SUPABASE_URL", "")
+                    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+                except Exception as e:
+                    log.warning(f"Erro ao recarregar .env: {e}")
+    except Exception as e:
+        log.error(f"Erro ao obter variáveis: {e}")
+        supabase_url = os.getenv("SUPABASE_URL", "")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
+    # Verifica se está configurado usando supa.ok()
+    is_ok = supa.ok()
+    
+    log.info(f"🔍 Debug Supabase: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}, supa.ok()={is_ok}")
+    log.info(f"   URL length: {len(supabase_url)}, KEY length: {len(supabase_key)}")
+    
+    if not is_ok or not supabase_url or not supabase_key:
+        log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}, supa.ok()={is_ok}")
         return {
             "ok": False, 
             "error": "Supabase não configurado", 
