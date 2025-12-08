@@ -33,11 +33,19 @@ def _get_url():
     if not url:
         _load_env()
         url = os.getenv("SUPABASE_URL", "")
+    # Se ainda não tiver, tenta recarregar novamente
+    if not url:
+        _load_env()
+        url = os.getenv("SUPABASE_URL", "")
     return url
 
 def _get_key():
     """Obtém SUPABASE_SERVICE_ROLE_KEY, recarregando .env se necessário"""
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not key:
+        _load_env()
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    # Se ainda não tiver, tenta recarregar novamente
     if not key:
         _load_env()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")

@@ -47,27 +47,18 @@ def alerts_health():
     import logging
     log = logging.getLogger("vigia")
     
-    # Tenta carregar .env se ainda não foi carregado
-    try:
-        from dotenv import load_dotenv
-        from pathlib import Path
-        backend_dir = Path(__file__).resolve().parent.parent.parent
-        env_paths = [
-            backend_dir / ".env",
-            backend_dir.parent / ".env",
-        ]
-        for env_path in env_paths:
-            if env_path.exists():
-                load_dotenv(env_path, override=False)
-                log.info(f"✅ Health check: Carregado .env de {env_path}")
-                break
-    except ImportError:
-        pass
+    # Usa supa.ok() que recarrega automaticamente
+    is_ok = supa.ok()
     
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    # Obtém valores usando as funções do supa se disponíveis
+    if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
+        supabase_url = supa._get_url()
+        supabase_key = supa._get_key()
+    else:
+        supabase_url = os.getenv("SUPABASE_URL", "")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
-    log.info(f"🔍 Health check: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}")
+    log.info(f"🔍 Health check: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}, supa.ok()={is_ok}")
     
     return {
         "ok": True,
@@ -76,7 +67,7 @@ def alerts_health():
         "has_key": bool(supabase_key),
         "supabase_url_length": len(supabase_url) if supabase_url else 0,
         "supabase_key_length": len(supabase_key) if supabase_key else 0,
-        "supa_ok": supa.ok()
+        "supa_ok": is_ok
     }
 
 @router.post("/alerts/test-insert")
@@ -255,13 +246,13 @@ def ask_alerts(payload: AskIn):
     import logging
     log = logging.getLogger("vigia")
     
-    # Debug: verifica configuração do Supabase
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    log.info(f"🔍 Debug Supabase: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}")
-    
+    # Debug: verifica configuração do Supabase usando supa.ok() que recarrega automaticamente
     if not supa.ok():
+        # Tenta obter valores diretamente para debug
+        supabase_url = supa._get_url() if hasattr(supa, '_get_url') else os.getenv("SUPABASE_URL", "")
+        supabase_key = supa._get_key() if hasattr(supa, '_get_key') else os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}")
+        log.error(f"   URL length: {len(supabase_url)}, KEY length: {len(supabase_key)}")
         return {
             "ok": False, 
             "error": "Supabase não configurado", 
@@ -269,6 +260,8 @@ def ask_alerts(payload: AskIn):
             "count": 0, 
             "items": []
         }
+    
+    log.info(f"✅ Supabase configurado corretamente")
 
     q = (payload.prompt or "").lower()
     log.info(f"Pergunta recebida: {payload.prompt}")
