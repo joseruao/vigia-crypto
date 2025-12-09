@@ -247,18 +247,29 @@ def ask_alerts(payload: AskIn):
     """
     import sys
     import logging
+    from pathlib import Path
     
-    # FORÇA OUTPUT IMEDIATO
-    print("\n" + "="*80, flush=True)
-    print("🚀 ENDPOINT /alerts/ask CHAMADO!", flush=True)
-    print(f"📝 Pergunta recebida: {payload.question if hasattr(payload, 'question') else 'N/A'}", flush=True)
-    print("="*80 + "\n", flush=True)
-    sys.stdout.flush()
-    sys.stderr.flush()
+    # Configura logging para ficheiro também
+    log_file = Path(__file__).parent.parent.parent / "alerts_debug.log"
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
     
     log = logging.getLogger("vigia")
     # Garante que o nível está configurado
     log.setLevel(logging.INFO)
+    # Adiciona handler de ficheiro se ainda não existir
+    if not any(isinstance(h, logging.FileHandler) for h in log.handlers):
+        log.addHandler(file_handler)
+    
+    # FORÇA OUTPUT IMEDIATO
+    msg_start = f"\n{'='*80}\n🚀 ENDPOINT /alerts/ask CHAMADO!\n📝 Pergunta: {payload.prompt if hasattr(payload, 'prompt') else 'N/A'}\n{'='*80}\n"
+    print(msg_start, flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    log.info(msg_start)
+    log.info(f"Payload completo: {payload}")
     
     # Debug: verifica configuração do Supabase
     # Força recarregamento antes de verificar

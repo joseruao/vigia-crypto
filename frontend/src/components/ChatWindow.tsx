@@ -112,6 +112,10 @@ export function ChatWindow() {
         ? `${API_URL}/alerts/ask`
         : `${API_URL}/chat/stream`;
 
+      console.log('📤 Fazendo fetch para:', url);
+      console.log('📤 Payload:', { prompt: content });
+      console.log('📤 useAlerts:', useAlerts);
+      
       const res = await fetch(url, {
         method: 'POST',
         headers: {
@@ -122,6 +126,8 @@ export function ChatWindow() {
         body: JSON.stringify({ prompt: content }),
         signal: controller.signal,
       });
+      
+      console.log('📥 Resposta recebida:', res.status, res.statusText);
 
       if (!res.ok) {
         const textErr = await res.text().catch(() => '');
