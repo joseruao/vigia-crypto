@@ -34,6 +34,10 @@ def _load_env():
                 url = os.getenv("SUPABASE_URL", "")
                 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
                 
+                print(f"📁 Carregado .env de {env_path}")  # print também para garantir
+                print(f"   load_dotenv retornou: {result}")
+                print(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
+                print(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
                 log.info(f"📁 Carregado .env de {env_path}")
                 log.info(f"   load_dotenv retornou: {result}")
                 log.info(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
@@ -113,9 +117,22 @@ def _get_key():
     import logging
     log = logging.getLogger("vigia")
     
+    # Guarda valor atual antes de recarregar
+    current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if current_key:
+        print(f"   _get_key(): Valor atual antes de recarregar: {len(current_key)} chars")
+    
     # Sempre recarrega para garantir que está atualizado
     _load_env()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
+    # Se foi sobrescrito para vazio, restaura o valor anterior
+    if current_key and not key:
+        print(f"   ⚠️ PROBLEMA: KEY foi sobrescrito de {len(current_key)} para {len(key)} chars!")
+        print(f"   Restaurando valor anterior...")
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = current_key
+        key = current_key
+        print(f"   ✅ Valor restaurado: {len(key)} chars")
     
     # Se ainda não tiver, tenta variantes do nome
     if not key:
@@ -130,20 +147,28 @@ def _get_key():
                 log.info(f"   ✅ Encontrado em {var_name}!")
                 break
         
-        # Se ainda não tiver, recarrega novamente
+        # Se ainda não tiver, recarrega novamente mas SEM sobrescrever se já tiver valor
         if not key:
             log.warning("⚠️ Tentando recarregar .env novamente...")
+            saved_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
             _load_env()
             key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            # Se ficou vazio mas tinha valor antes, restaura
+            if saved_key and not key:
+                os.environ["SUPABASE_SERVICE_ROLE_KEY"] = saved_key
+                key = saved_key
     
     if key:
-        log.info(f"✅ _get_key() retornou: {len(key)} chars")
+        msg = f"✅ _get_key() retornou: {len(key)} chars"
+        print(msg)  # print também
+        log.info(msg)
     else:
-        log.error("❌ _get_key() retornou VAZIO após múltiplas tentativas")
+        msg = "❌ _get_key() retornou VAZIO após múltiplas tentativas"
+        print(msg)  # print também
+        log.error(msg)
         # Debug: verifica todas as variáveis de ambiente que começam com SUPABASE
         all_supabase_vars = {k: (v[:20] + "..." if len(v) > 20 else v) if v else "VAZIO" for k, v in os.environ.items() if k.startswith("SUPABASE")}
         log.error(f"   Variáveis SUPABASE no ambiente: {all_supabase_vars}")
-        # Lista todas as variáveis de ambiente para debug
         log.error(f"   Total de variáveis de ambiente: {len(os.environ)}")
     
     return key

@@ -247,9 +247,12 @@ def ask_alerts(payload: AskIn):
     """
     import logging
     log = logging.getLogger("vigia")
+    # Garante que o nível está configurado
+    log.setLevel(logging.INFO)
     
     # Debug: verifica configuração do Supabase
     # Força recarregamento antes de verificar
+    print("="*60)  # print também para garantir que aparece
     log.info("="*60)
     log.info("🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask")
     log.info("="*60)
@@ -264,17 +267,41 @@ def ask_alerts(payload: AskIn):
             backend_dir.parent / ".env",
         ]
         
+        print("📁 Tentando carregar .env manualmente...")  # print também
         log.info("📁 Tentando carregar .env manualmente...")
+        
+        # Guarda valores ANTES de carregar
+        url_before = os.getenv("SUPABASE_URL", "")
+        key_before = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        print(f"   ANTES de carregar: URL={len(url_before)} chars, KEY={len(key_before)} chars")
+        
+        # Inicializa variáveis (serão atualizadas durante o carregamento)
+        supabase_url = ""
+        supabase_key = ""
+        
         for env_path in env_paths:
             if env_path.exists():
                 result = load_dotenv(env_path, override=True)
+                print(f"   ✅ Carregado de: {env_path}")  # print também
+                print(f"   load_dotenv retornou: {result}")
                 log.info(f"   ✅ Carregado de: {env_path}")
                 log.info(f"   load_dotenv retornou: {result}")
                 
                 # Verifica imediatamente após carregar
                 test_url = os.getenv("SUPABASE_URL", "")
                 test_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-                log.info(f"   Após carregar: URL={'✅' if test_url else '❌'} ({len(test_url)} chars), KEY={'✅' if test_key else '❌'} ({len(test_key)} chars)")
+                msg = f"   Após carregar: URL={'✅' if test_url else '❌'} ({len(test_url)} chars), KEY={'✅' if test_key else '❌'} ({len(test_key)} chars)"
+                print(msg)  # print também
+                log.info(msg)
+                
+                # Verifica se foi sobrescrito
+                if key_before and not test_key:
+                    print(f"   ⚠️ PROBLEMA: KEY foi sobrescrito de {len(key_before)} para {len(test_key)} chars!")
+                    print(f"   Algo está a sobrescrever o valor após carregar {env_path}")
+                    # Restaura o valor anterior
+                    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = key_before
+                    test_key = key_before
+                    print(f"   ✅ Valor restaurado: {len(test_key)} chars")
                 
                 # Verifica conteúdo do ficheiro
                 try:
@@ -285,27 +312,82 @@ def ask_alerts(payload: AskIn):
                                 if 'SUPABASE_SERVICE_ROLE_KEY' in line and '=' in line:
                                     parts = line.split('=', 1)
                                     value = parts[1].strip().strip('"').strip("'")
-                                    log.info(f"   No ficheiro: KEY={'✅' if value else '❌'} ({len(value)} chars)")
+                                    msg = f"   No ficheiro: KEY={'✅' if value else '❌'} ({len(value)} chars)"
+                                    print(msg)  # print também
+                                    log.info(msg)
+                                    
+                                    # Se o ficheiro tem valor mas não foi carregado
+                                    if value and not test_key:
+                                        print(f"   ❌ PROBLEMA CRÍTICO: Ficheiro tem {len(value)} chars mas não foi carregado!")
+                                        print(f"   Tentando definir manualmente...")
+                                        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = value
+                                        test_key = value
+                                        print(f"   ✅ Definido manualmente: {len(test_key)} chars")
                                     break
                 except Exception as e:
                     log.warning(f"   Erro ao ler ficheiro: {e}")
                 
+                # Atualiza variáveis para usar o valor correto
+                supabase_url = test_url
+                supabase_key = test_key
                 break
+        
+        # Verifica se há .env.local que pode estar a sobrescrever
+        env_local_paths = [
+            backend_dir / ".env.local",
+            backend_dir.parent / ".env.local",
+        ]
+        for env_local_path in env_local_paths:
+            if env_local_path.exists():
+                print(f"   ⚠️ ATENÇÃO: .env.local encontrado em {env_local_path}")
+                print(f"   Isto pode estar a sobrescrever o .env!")
+                try:
+                    with open(env_local_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'SUPABASE_SERVICE_ROLE_KEY' in content:
+                            for line in content.split('\n'):
+                                if 'SUPABASE_SERVICE_ROLE_KEY' in line and '=' in line:
+                                    parts = line.split('=', 1)
+                                    value = parts[1].strip().strip('"').strip("'")
+                                    if not value:
+                                        print(f"   ❌ PROBLEMA: .env.local tem KEY VAZIO! Isto está a sobrescrever!")
+                                    break
+                except Exception as e:
+                    print(f"   Erro ao ler .env.local: {e}")
     except Exception as e:
         log.error(f"❌ Erro ao recarregar .env: {e}")
         import traceback
         log.error(traceback.format_exc())
     
-    # Agora usa as funções do supa
-    log.info("📡 Chamando supa._get_url() e supa._get_key()...")
-    if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
-        supabase_url = supa._get_url()
-        supabase_key = supa._get_key()
-        log.info(f"   Resultado: URL={len(supabase_url)} chars, KEY={len(supabase_key)} chars")
+    # Se já temos valores corretos do carregamento manual, usa-os
+    # Caso contrário, tenta usar as funções do supa
+    if not supabase_key:
+        # Verifica valores atuais antes de chamar supa
+        current_url = os.getenv("SUPABASE_URL", "")
+        current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        print(f"   Valores atuais antes de chamar supa: URL={len(current_url)} chars, KEY={len(current_key)} chars")
+        
+        # Agora usa as funções do supa
+        print("📡 Chamando supa._get_url() e supa._get_key()...")  # print também
+        log.info("📡 Chamando supa._get_url() e supa._get_key()...")
+        if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
+            supabase_url = supa._get_url()
+            supabase_key = supa._get_key()
+            msg = f"   Resultado: URL={len(supabase_url)} chars, KEY={len(supabase_key)} chars"
+            print(msg)  # print também
+            log.info(msg)
+            
+            # Se ainda estiver vazio, tenta usar os valores atuais do ambiente
+            if not supabase_key and current_key:
+                print(f"   ⚠️ supa._get_key() retornou vazio, usando valor do ambiente: {len(current_key)} chars")
+                supabase_key = current_key
+                os.environ["SUPABASE_SERVICE_ROLE_KEY"] = current_key
+        else:
+            log.warning("   ⚠️ Funções _get_url/_get_key não disponíveis, usando os.getenv")
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     else:
-        log.warning("   ⚠️ Funções _get_url/_get_key não disponíveis, usando os.getenv")
-        supabase_url = os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        print(f"   ✅ Usando valores do carregamento manual: URL={len(supabase_url)} chars, KEY={len(supabase_key)} chars")
     
     # Verifica se está configurado usando supa.ok()
     log.info("🔍 Chamando supa.ok()...")
