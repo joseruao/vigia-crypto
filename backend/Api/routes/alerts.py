@@ -250,35 +250,67 @@ def ask_alerts(payload: AskIn):
     
     # Debug: verifica configuração do Supabase
     # Força recarregamento antes de verificar
-    log.info("🔍 Verificando configuração Supabase no /alerts/ask...")
+    log.info("="*60)
+    log.info("🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask")
+    log.info("="*60)
     
-    # Usa as funções do supa que sempre recarregam
+    # Primeiro, recarrega manualmente para garantir
+    try:
+        from dotenv import load_dotenv
+        from pathlib import Path
+        backend_dir = Path(__file__).resolve().parent.parent.parent
+        env_paths = [
+            backend_dir / ".env",
+            backend_dir.parent / ".env",
+        ]
+        
+        log.info("📁 Tentando carregar .env manualmente...")
+        for env_path in env_paths:
+            if env_path.exists():
+                result = load_dotenv(env_path, override=True)
+                log.info(f"   ✅ Carregado de: {env_path}")
+                log.info(f"   load_dotenv retornou: {result}")
+                
+                # Verifica imediatamente após carregar
+                test_url = os.getenv("SUPABASE_URL", "")
+                test_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+                log.info(f"   Após carregar: URL={'✅' if test_url else '❌'} ({len(test_url)} chars), KEY={'✅' if test_key else '❌'} ({len(test_key)} chars)")
+                
+                # Verifica conteúdo do ficheiro
+                try:
+                    with open(env_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'SUPABASE_SERVICE_ROLE_KEY' in content:
+                            for line in content.split('\n'):
+                                if 'SUPABASE_SERVICE_ROLE_KEY' in line and '=' in line:
+                                    parts = line.split('=', 1)
+                                    value = parts[1].strip().strip('"').strip("'")
+                                    log.info(f"   No ficheiro: KEY={'✅' if value else '❌'} ({len(value)} chars)")
+                                    break
+                except Exception as e:
+                    log.warning(f"   Erro ao ler ficheiro: {e}")
+                
+                break
+    except Exception as e:
+        log.error(f"❌ Erro ao recarregar .env: {e}")
+        import traceback
+        log.error(traceback.format_exc())
+    
+    # Agora usa as funções do supa
+    log.info("📡 Chamando supa._get_url() e supa._get_key()...")
     if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
         supabase_url = supa._get_url()
         supabase_key = supa._get_key()
+        log.info(f"   Resultado: URL={len(supabase_url)} chars, KEY={len(supabase_key)} chars")
     else:
-        # Fallback: recarrega manualmente
-        try:
-            from dotenv import load_dotenv
-            from pathlib import Path
-            backend_dir = Path(__file__).resolve().parent.parent.parent
-            env_paths = [
-                backend_dir / ".env",
-                backend_dir.parent / ".env",
-            ]
-            for env_path in env_paths:
-                if env_path.exists():
-                    load_dotenv(env_path, override=True)
-                    log.info(f"✅ Recarregado .env de {env_path}")
-                    break
-        except Exception as e:
-            log.warning(f"Erro ao recarregar .env: {e}")
-        
+        log.warning("   ⚠️ Funções _get_url/_get_key não disponíveis, usando os.getenv")
         supabase_url = os.getenv("SUPABASE_URL", "")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
     # Verifica se está configurado usando supa.ok()
+    log.info("🔍 Chamando supa.ok()...")
     is_ok = supa.ok()
+    log.info(f"   supa.ok() retornou: {is_ok}")
     
     log.info(f"🔍 Debug Supabase no /alerts/ask:")
     log.info(f"   URL: {'✅' if supabase_url else '❌'} ({len(supabase_url)} chars)")
