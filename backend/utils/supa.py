@@ -12,12 +12,20 @@ def _load_env():
         from dotenv import load_dotenv
         from pathlib import Path
         backend_dir = Path(__file__).resolve().parent.parent
+        # IMPORTANTE: Ordem de carregamento - .env primeiro, depois .env.local
+        # Se .env.local for carregado depois, pode sobrescrever com valores vazios!
         env_paths = [
-            backend_dir / ".env",
-            backend_dir.parent / ".env",
+            backend_dir / ".env",  # .env do backend primeiro
+            backend_dir.parent / ".env",  # .env da raiz
+            # NÃO carregamos .env.local porque pode sobrescrever com valores vazios
+            # Se precisares de .env.local, adiciona-o mas garante que tem valores corretos
         ]
         
         loaded = False
+        # Guarda valores antes de carregar para verificar se foram sobrescritos
+        url_before = os.getenv("SUPABASE_URL", "")
+        key_before = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        
         for env_path in env_paths:
             if env_path.exists():
                 # Carrega o .env
@@ -30,6 +38,11 @@ def _load_env():
                 log.info(f"   load_dotenv retornou: {result}")
                 log.info(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
                 log.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
+                
+                # Verifica se foi sobrescrito por outro ficheiro
+                if key_before and not key:
+                    log.warning(f"   ⚠️ ATENÇÃO: KEY foi sobrescrito! Tinha {len(key_before)} chars, agora tem {len(key)} chars")
+                    log.warning(f"   Pode haver um .env.local ou outro ficheiro a sobrescrever!")
                 
                 # Verifica se a linha existe no ficheiro
                 try:
@@ -69,7 +82,8 @@ def _load_env():
         log.error(traceback.format_exc())
         return False
 
-# Carrega .env imediatamente
+# Carrega .env imediatamente (mas não confia apenas nisto)
+# As funções _get_url() e _get_key() sempre recarregam
 _load_env()
 
 # Função para obter variáveis (sempre atualizadas)
@@ -103,18 +117,34 @@ def _get_key():
     _load_env()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
+    # Se ainda não tiver, tenta variantes do nome
     if not key:
-        log.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY vazio após carregar .env, tentando novamente...")
-        _load_env()
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        log.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY vazio, tentando variantes...")
+        # Tenta variantes comuns
+        for var_name in ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY", "SUPABASE_API_KEY"]:
+            test_key = os.getenv(var_name, "")
+            if test_key:
+                log.info(f"   Tentando {var_name}: {'✅' if test_key else '❌'}")
+            if test_key:
+                key = test_key
+                log.info(f"   ✅ Encontrado em {var_name}!")
+                break
+        
+        # Se ainda não tiver, recarrega novamente
+        if not key:
+            log.warning("⚠️ Tentando recarregar .env novamente...")
+            _load_env()
+            key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
     if key:
-        log.debug(f"✅ _get_key() retornou: {len(key)} chars")
+        log.info(f"✅ _get_key() retornou: {len(key)} chars")
     else:
         log.error("❌ _get_key() retornou VAZIO após múltiplas tentativas")
         # Debug: verifica todas as variáveis de ambiente que começam com SUPABASE
-        all_supabase_vars = {k: v[:20] + "..." if len(v) > 20 else v for k, v in os.environ.items() if k.startswith("SUPABASE")}
-        log.error(f"   Variáveis SUPABASE no ambiente: {list(all_supabase_vars.keys())}")
+        all_supabase_vars = {k: (v[:20] + "..." if len(v) > 20 else v) if v else "VAZIO" for k, v in os.environ.items() if k.startswith("SUPABASE")}
+        log.error(f"   Variáveis SUPABASE no ambiente: {all_supabase_vars}")
+        # Lista todas as variáveis de ambiente para debug
+        log.error(f"   Total de variáveis de ambiente: {len(os.environ)}")
     
     return key
 

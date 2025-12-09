@@ -17,9 +17,11 @@ if str(BACKEND_DIR) not in sys.path:
 try:
     from dotenv import load_dotenv
     # Tenta carregar .env do diretório backend primeiro, depois da raiz
+    # IMPORTANTE: NÃO carregamos .env.local porque pode sobrescrever com valores vazios
     env_paths = [
         BACKEND_DIR / ".env",
         BACKEND_DIR.parent / ".env",
+        # NÃO incluir .env.local aqui - pode ter valores vazios que sobrescrevem
     ]
     loaded = False
     for env_path in env_paths:

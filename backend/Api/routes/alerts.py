@@ -26,7 +26,9 @@ try:
 except ImportError:
     pass
 
+# Importa supa
 from utils import supa
+import os
 
 router = APIRouter(tags=["alerts"])
 
@@ -247,36 +249,31 @@ def ask_alerts(payload: AskIn):
     log = logging.getLogger("vigia")
     
     # Debug: verifica configuração do Supabase
-    # Primeiro tenta obter valores usando as funções do supa
-    try:
-        if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
-            supabase_url = supa._get_url()
-            supabase_key = supa._get_key()
-        else:
-            # Fallback: usa os.getenv diretamente
-            supabase_url = os.getenv("SUPABASE_URL", "")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-            # Se não tiver, tenta recarregar .env
-            if not supabase_url or not supabase_key:
-                try:
-                    from dotenv import load_dotenv
-                    from pathlib import Path
-                    backend_dir = Path(__file__).resolve().parent.parent.parent
-                    env_paths = [
-                        backend_dir / ".env",
-                        backend_dir.parent / ".env",
-                    ]
-                    for env_path in env_paths:
-                        if env_path.exists():
-                            load_dotenv(env_path, override=True)
-                            log.info(f"✅ Recarregado .env de {env_path}")
-                            break
-                    supabase_url = os.getenv("SUPABASE_URL", "")
-                    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-                except Exception as e:
-                    log.warning(f"Erro ao recarregar .env: {e}")
-    except Exception as e:
-        log.error(f"Erro ao obter variáveis: {e}")
+    # Força recarregamento antes de verificar
+    log.info("🔍 Verificando configuração Supabase no /alerts/ask...")
+    
+    # Usa as funções do supa que sempre recarregam
+    if hasattr(supa, '_get_url') and hasattr(supa, '_get_key'):
+        supabase_url = supa._get_url()
+        supabase_key = supa._get_key()
+    else:
+        # Fallback: recarrega manualmente
+        try:
+            from dotenv import load_dotenv
+            from pathlib import Path
+            backend_dir = Path(__file__).resolve().parent.parent.parent
+            env_paths = [
+                backend_dir / ".env",
+                backend_dir.parent / ".env",
+            ]
+            for env_path in env_paths:
+                if env_path.exists():
+                    load_dotenv(env_path, override=True)
+                    log.info(f"✅ Recarregado .env de {env_path}")
+                    break
+        except Exception as e:
+            log.warning(f"Erro ao recarregar .env: {e}")
+        
         supabase_url = os.getenv("SUPABASE_URL", "")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     
