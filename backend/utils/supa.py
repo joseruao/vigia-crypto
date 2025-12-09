@@ -30,9 +30,9 @@ def _load_env():
             if env_path.exists():
                 # Carrega o .env
                 result = load_dotenv(env_path, override=True)
-                # Verifica se carregou corretamente
+                # Verifica se carregou corretamente (tenta ambos os nomes para compatibilidade)
                 url = os.getenv("SUPABASE_URL", "")
-                key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+                key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
                 
                 print(f"📁 Carregado .env de {env_path}")  # print também para garantir
                 print(f"   load_dotenv retornou: {result}")
@@ -118,13 +118,13 @@ def _get_key():
     log = logging.getLogger("vigia")
     
     # Guarda valor atual antes de recarregar
-    current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
     if current_key:
         print(f"   _get_key(): Valor atual antes de recarregar: {len(current_key)} chars")
     
     # Sempre recarrega para garantir que está atualizado
     _load_env()
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
     
     # Se foi sobrescrito para vazio, restaura o valor anterior
     if current_key and not key:
@@ -137,14 +137,17 @@ def _get_key():
     # Se ainda não tiver, tenta variantes do nome
     if not key:
         log.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY vazio, tentando variantes...")
-        # Tenta variantes comuns
-        for var_name in ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY", "SUPABASE_API_KEY"]:
+        # Tenta variantes comuns (incluindo SUPABASE_SERVICE_ROLE para compatibilidade com Render)
+        for var_name in ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE", "SUPABASE_KEY", "SUPABASE_API_KEY"]:
             test_key = os.getenv(var_name, "")
             if test_key:
                 log.info(f"   Tentando {var_name}: {'✅' if test_key else '❌'}")
             if test_key:
                 key = test_key
                 log.info(f"   ✅ Encontrado em {var_name}!")
+                # Normaliza para SUPABASE_SERVICE_ROLE_KEY para consistência
+                if var_name != "SUPABASE_SERVICE_ROLE_KEY":
+                    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = test_key
                 break
         
         # Se ainda não tiver, recarrega novamente mas SEM sobrescrever se já tiver valor

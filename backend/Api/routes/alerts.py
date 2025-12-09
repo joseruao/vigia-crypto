@@ -58,7 +58,7 @@ def alerts_health():
         supabase_key = supa._get_key()
     else:
         supabase_url = os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
     
     log.info(f"🔍 Health check: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}, supa.ok()={is_ok}")
     
@@ -89,7 +89,7 @@ def test_insert():
     try:
         from supabase import create_client
         supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE")
         supabase_client = create_client(supabase_url, supabase_key)
         
         test_data = {
@@ -316,7 +316,7 @@ def ask_alerts(payload: AskIn):
                 
                 # Verifica imediatamente após carregar
                 test_url = os.getenv("SUPABASE_URL", "")
-                test_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+                test_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
                 msg = f"   Após carregar: URL={'✅' if test_url else '❌'} ({len(test_url)} chars), KEY={'✅' if test_key else '❌'} ({len(test_key)} chars)"
                 print(msg, flush=True)  # print também
                 sys.stdout.flush()
@@ -400,7 +400,7 @@ def ask_alerts(payload: AskIn):
     if not supabase_key:
         # Verifica valores atuais antes de chamar supa
         current_url = os.getenv("SUPABASE_URL", "")
-        current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
         print(f"   Valores atuais antes de chamar supa: URL={len(current_url)} chars, KEY={len(current_key)} chars", flush=True)
         sys.stdout.flush()
         
@@ -425,7 +425,7 @@ def ask_alerts(payload: AskIn):
         else:
             log.warning("   ⚠️ Funções _get_url/_get_key não disponíveis, usando os.getenv")
             supabase_url = os.getenv("SUPABASE_URL", "")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
     else:
         print(f"   ✅ Usando valores do carregamento manual: URL={len(supabase_url)} chars, KEY={len(supabase_key)} chars", flush=True)
         sys.stdout.flush()

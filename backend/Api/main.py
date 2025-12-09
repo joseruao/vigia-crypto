@@ -28,9 +28,9 @@ try:
         if env_path.exists():
             load_dotenv(env_path, override=True)  # override=True para garantir que carrega
             logging.info(f"✅ Carregado .env de: {env_path}")
-            # Verifica se as variáveis foram carregadas
+            # Verifica se as variáveis foram carregadas (tenta ambos os nomes para compatibilidade)
             supabase_url = os.getenv("SUPABASE_URL", "")
-            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
             logging.info(f"   SUPABASE_URL: {'✅' if supabase_url else '❌'} ({len(supabase_url)} chars)")
             logging.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if supabase_key else '❌'} ({len(supabase_key)} chars)")
             loaded = True
