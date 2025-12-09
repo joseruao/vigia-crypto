@@ -5,6 +5,9 @@ import requests
 # Função para carregar .env
 def _load_env():
     """Carrega o .env de forma robusta"""
+    import logging
+    log = logging.getLogger("vigia")
+    
     try:
         from dotenv import load_dotenv
         from pathlib import Path
@@ -13,14 +16,57 @@ def _load_env():
             backend_dir / ".env",
             backend_dir.parent / ".env",
         ]
+        
+        loaded = False
         for env_path in env_paths:
             if env_path.exists():
-                load_dotenv(env_path, override=True)
-                return True
-        return False
+                # Carrega o .env
+                result = load_dotenv(env_path, override=True)
+                # Verifica se carregou corretamente
+                url = os.getenv("SUPABASE_URL", "")
+                key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+                
+                log.info(f"📁 Carregado .env de {env_path}")
+                log.info(f"   load_dotenv retornou: {result}")
+                log.info(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
+                log.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
+                
+                # Verifica se a linha existe no ficheiro
+                try:
+                    with open(env_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'SUPABASE_SERVICE_ROLE_KEY' in content:
+                            # Verifica se tem valor
+                            for line in content.split('\n'):
+                                if 'SUPABASE_SERVICE_ROLE_KEY' in line and '=' in line:
+                                    parts = line.split('=', 1)
+                                    value = parts[1].strip().strip('"').strip("'")
+                                    if value:
+                                        log.info(f"   ✅ Linha encontrada no .env com {len(value)} chars")
+                                    else:
+                                        log.error(f"   ❌ Linha encontrada mas valor VAZIO!")
+                                    break
+                        else:
+                            log.error(f"   ❌ SUPABASE_SERVICE_ROLE_KEY não encontrado no .env!")
+                except Exception as e:
+                    log.warning(f"   ⚠️ Erro ao ler .env: {e}")
+                
+                loaded = True
+                break
+        
+        if not loaded:
+            log.warning("⚠️ Nenhum .env encontrado nos caminhos:")
+            for env_path in env_paths:
+                log.warning(f"   - {env_path} (existe: {env_path.exists()})")
+        
+        return loaded
     except ImportError:
+        log.error("❌ python-dotenv não instalado")
         return False
-    except Exception:
+    except Exception as e:
+        log.error(f"❌ Erro ao carregar .env: {e}")
+        import traceback
+        log.error(traceback.format_exc())
         return False
 
 # Carrega .env imediatamente
@@ -29,34 +75,68 @@ _load_env()
 # Função para obter variáveis (sempre atualizadas)
 def _get_url():
     """Obtém SUPABASE_URL, recarregando .env se necessário"""
+    import logging
+    log = logging.getLogger("vigia")
+    
+    # Sempre recarrega para garantir que está atualizado
+    _load_env()
     url = os.getenv("SUPABASE_URL", "")
+    
     if not url:
+        log.warning("⚠️ SUPABASE_URL vazio após carregar .env, tentando novamente...")
         _load_env()
         url = os.getenv("SUPABASE_URL", "")
-    # Se ainda não tiver, tenta recarregar novamente
-    if not url:
-        _load_env()
-        url = os.getenv("SUPABASE_URL", "")
+    
+    if url:
+        log.debug(f"✅ _get_url() retornou: {len(url)} chars")
+    else:
+        log.error("❌ _get_url() retornou VAZIO após múltiplas tentativas")
+    
     return url
 
 def _get_key():
     """Obtém SUPABASE_SERVICE_ROLE_KEY, recarregando .env se necessário"""
+    import logging
+    log = logging.getLogger("vigia")
+    
+    # Sempre recarrega para garantir que está atualizado
+    _load_env()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
     if not key:
+        log.warning("⚠️ SUPABASE_SERVICE_ROLE_KEY vazio após carregar .env, tentando novamente...")
         _load_env()
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    # Se ainda não tiver, tenta recarregar novamente
-    if not key:
-        _load_env()
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
+    if key:
+        log.debug(f"✅ _get_key() retornou: {len(key)} chars")
+    else:
+        log.error("❌ _get_key() retornou VAZIO após múltiplas tentativas")
+        # Debug: verifica todas as variáveis de ambiente que começam com SUPABASE
+        all_supabase_vars = {k: v[:20] + "..." if len(v) > 20 else v for k, v in os.environ.items() if k.startswith("SUPABASE")}
+        log.error(f"   Variáveis SUPABASE no ambiente: {list(all_supabase_vars.keys())}")
+    
     return key
 
-# Variáveis globais (para compatibilidade)
-SUPABASE_URL = _get_url()
-SUPABASE_SERVICE_ROLE_KEY = _get_key()
+# Variáveis globais (para compatibilidade) - serão atualizadas quando necessário
+SUPABASE_URL = ""
+SUPABASE_SERVICE_ROLE_KEY = ""
+
+# Função para atualizar variáveis globais
+def _update_globals():
+    """Atualiza as variáveis globais"""
+    global SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+    SUPABASE_URL = _get_url()
+    SUPABASE_SERVICE_ROLE_KEY = _get_key()
+
+# Atualiza na inicialização
+_update_globals()
 
 def headers():
     """Retorna headers HTTP com autenticação Supabase"""
+    # Atualiza variáveis globais primeiro
+    _update_globals()
+    # Depois obtém key atualizada
     key = _get_key()
     if not key:
         # Evita meter "Bearer " vazio
@@ -69,6 +149,9 @@ def headers():
 
 def ok():
     """Verifica se as variáveis estão configuradas, recarregando se necessário"""
+    # Atualiza variáveis globais primeiro
+    _update_globals()
+    # Depois obtém valores atualizados
     url = _get_url()
     key = _get_key()
     return bool(url) and bool(key)
