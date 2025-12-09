@@ -283,17 +283,55 @@ def ask_alerts(payload: AskIn):
     # Verifica se está configurado usando supa.ok()
     is_ok = supa.ok()
     
-    log.info(f"🔍 Debug Supabase: URL={'✅' if supabase_url else '❌'}, KEY={'✅' if supabase_key else '❌'}, supa.ok()={is_ok}")
-    log.info(f"   URL length: {len(supabase_url)}, KEY length: {len(supabase_key)}")
+    log.info(f"🔍 Debug Supabase no /alerts/ask:")
+    log.info(f"   URL: {'✅' if supabase_url else '❌'} ({len(supabase_url)} chars)")
+    log.info(f"   KEY: {'✅' if supabase_key else '❌'} ({len(supabase_key)} chars)")
+    log.info(f"   supa.ok(): {is_ok}")
+    log.info(f"   has _get_url: {hasattr(supa, '_get_url')}")
+    log.info(f"   has _get_key: {hasattr(supa, '_get_key')}")
+    if supabase_url:
+        log.info(f"   URL preview: {supabase_url[:30]}...")
+    if supabase_key:
+        log.info(f"   KEY preview: {supabase_key[:20]}...")
     
     if not is_ok or not supabase_url or not supabase_key:
-        log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}, supa.ok()={is_ok}")
+        # Mensagem detalhada para debug
+        url_status = "✅" if supabase_url else "❌"
+        key_status = "✅" if supabase_key else "❌"
+        url_len = len(supabase_url) if supabase_url else 0
+        key_len = len(supabase_key) if supabase_key else 0
+        
+        error_msg = (
+            f"⚠️ Supabase não configurado.\n\n"
+            f"📊 Detalhes:\n"
+            f"- URL: {url_status} ({url_len} chars)\n"
+            f"- KEY: {key_status} ({key_len} chars)\n"
+            f"- supa.ok(): {is_ok}\n"
+            f"- URL value: {supabase_url[:30] + '...' if supabase_url else 'VAZIO'}\n"
+            f"- KEY value: {supabase_key[:20] + '...' if supabase_key else 'VAZIO'}\n\n"
+            f"💡 Verifica:\n"
+            f"1. Ficheiro .env em backend/.env ou raiz\n"
+            f"2. Variável SUPABASE_SERVICE_ROLE_KEY=... (sem espaços)\n"
+            f"3. API foi reiniciada após alterar .env\n"
+            f"4. Logs da API quando inicia"
+        )
+        
+        log.error(f"❌ Supabase não configurado! URL: {bool(supabase_url)} ({url_len} chars), KEY: {bool(supabase_key)} ({key_len} chars), supa.ok()={is_ok}")
         return {
             "ok": False, 
             "error": "Supabase não configurado", 
-            "answer": f"⚠️ Supabase não configurado. URL: {'✅' if supabase_url else '❌'}, KEY: {'✅' if supabase_key else '❌'}. Verifica o ficheiro .env e reinicia a API.", 
+            "answer": error_msg,
             "count": 0, 
-            "items": []
+            "items": [],
+            "debug": {
+                "url_exists": bool(supabase_url),
+                "url_length": url_len,
+                "key_exists": bool(supabase_key),
+                "key_length": key_len,
+                "supa_ok": is_ok,
+                "has_get_url": hasattr(supa, '_get_url'),
+                "has_get_key": hasattr(supa, '_get_key'),
+            }
         }
     
     log.info(f"✅ Supabase configurado corretamente")

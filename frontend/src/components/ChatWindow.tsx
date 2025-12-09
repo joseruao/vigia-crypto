@@ -138,6 +138,7 @@ export function ChatWindow() {
         console.log('📥 data.answer:', data?.answer);
         console.log('📥 data.error:', data?.error);
         console.log('📥 data.ok:', data?.ok);
+        console.log('📥 data.debug:', data?.debug);
         
         // Tenta várias formas de obter a resposta
         let answer = data?.answer;
@@ -149,7 +150,13 @@ export function ChatWindow() {
           answer = `Encontrei ${data.items.length} resultado(s).`;
         }
         if (!answer) {
-          answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
+          // Mostra informações de debug se disponíveis
+          const debugInfo = data?.debug;
+          if (debugInfo) {
+            answer = `⚠️ Sem resposta do servidor.\n\n📊 Debug:\n- URL existe: ${debugInfo.url_exists} (${debugInfo.url_length} chars)\n- KEY existe: ${debugInfo.key_exists} (${debugInfo.key_length} chars)\n- supa.ok(): ${debugInfo.supa_ok}\n- has_get_url: ${debugInfo.has_get_url}\n- has_get_key: ${debugInfo.has_get_key}`;
+          } else {
+            answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
+          }
         }
         
         console.log('📤 Resposta final a mostrar:', answer);
