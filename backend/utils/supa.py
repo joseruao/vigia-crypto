@@ -72,9 +72,14 @@ def _load_env():
                 break
         
         if not loaded:
-            log.warning("⚠️ Nenhum .env encontrado nos caminhos:")
-            for env_path in env_paths:
-                log.warning(f"   - {env_path} (existe: {env_path.exists()})")
+            # No Render/produção, variáveis vêm do ambiente, não de ficheiros .env
+            # Só mostra warning se estiver em desenvolvimento local
+            if os.getenv("RENDER") is None:  # Não está no Render
+                log.warning("⚠️ Nenhum .env encontrado nos caminhos:")
+                for env_path in env_paths:
+                    log.warning(f"   - {env_path} (existe: {env_path.exists()})")
+            else:
+                log.info("ℹ️ Em produção (Render) - usando variáveis de ambiente diretamente")
         
         return loaded
     except ImportError:
@@ -266,3 +271,45 @@ def rest_upsert(table: str, data: dict, on_conflict: str, timeout=20):
     h["Prefer"] = "resolution=merge-duplicates"
     r = requests.post(url, headers=h, json=data, timeout=timeout)
     return r
+
+def rest_delete(table: str, params=None, timeout=15):
+    """
+    Faz DELETE request ao Supabase REST API.
+    Retorna objeto Response do requests.
+    """
+    import logging
+    log = logging.getLogger("vigia")
+    
+    url_base = _get_url()
+    if not url_base:
+        log.error("SUPABASE_URL não configurado")
+        class ErrorResponse:
+            status_code = 500
+            text = "SUPABASE_URL not configured"
+            def json(self):
+                return []
+        return ErrorResponse()
+    
+    url = f"{url_base}/rest/v1/{table}"
+    
+    try:
+        log.debug(f"DELETE {url} com params: {params}")
+        r = requests.delete(url, headers=headers(), params=params or {}, timeout=timeout)
+        log.debug(f"Resposta: {r.status_code}")
+        return r
+    except requests.exceptions.Timeout:
+        log.error(f"Timeout ao deletar {table} (>{timeout}s)")
+        class TimeoutResponse:
+            status_code = 504
+            text = "Request timeout"
+            def json(self):
+                return []
+        return TimeoutResponse()
+    except requests.exceptions.RequestException as e:
+        log.error(f"Erro de conexão ao Supabase: {e}")
+        class ErrorResponse:
+            status_code = 500
+            text = str(e)
+            def json(self):
+                return []
+        return ErrorResponse()

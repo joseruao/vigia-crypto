@@ -36,9 +36,14 @@ try:
             loaded = True
             break
     if not loaded:
-        logging.warning("⚠️ Nenhum ficheiro .env encontrado nos caminhos:")
-        for env_path in env_paths:
-            logging.warning(f"   - {env_path}")
+        # No Render/produção, variáveis vêm do ambiente, não de ficheiros .env
+        # Só mostra warning se estiver em desenvolvimento local
+        if os.getenv("RENDER") is None:  # Não está no Render
+            logging.warning("⚠️ Nenhum ficheiro .env encontrado nos caminhos:")
+            for env_path in env_paths:
+                logging.warning(f"   - {env_path}")
+        else:
+            logging.info("ℹ️ Em produção (Render) - usando variáveis de ambiente diretamente")
 except ImportError:
     logging.warning("⚠️ python-dotenv não instalado. Instala com: pip install python-dotenv")
 except Exception as e:
@@ -195,13 +200,18 @@ async def chat_stream(req: ChatRequest):
                                 coin = next_word
                                 break
                 
-                # Último recurso: procura qualquer palavra em maiúsculas que pareça um símbolo de moeda
+                # Último recurso: procura qualquer palavra que pareça um símbolo de moeda (maiúsculas ou minúsculas)
                 if not coin:
                     for word in req.prompt.split():
                         word_upper = word.upper().strip(".,!?")
-                        if len(word_upper) >= 2 and len(word_upper) <= 5 and word_upper.isalpha():
-                            coin = word_upper
-                            break
+                        # Aceita palavras de 2-10 caracteres (para capturar moedas como TURBO, DOGWIFHAT, etc.)
+                        if len(word_upper) >= 2 and len(word_upper) <= 10 and word_upper.isalpha():
+                            # Ignora palavras comuns que não são moedas
+                            common_words = {"ANALISA", "ME", "A", "MOEDA", "GRAFICAMENTE", "GRAFICO", "GRAFICA", 
+                                          "TECNICA", "ANALISE", "CRIPTOMOEDA", "COIN", "TOKEN", "CRYPTOCURRENCY"}
+                            if word_upper not in common_words:
+                                coin = word_upper
+                                break
                 
                 if coin:
                     openai_key = os.getenv("OPENAI_API_KEY")

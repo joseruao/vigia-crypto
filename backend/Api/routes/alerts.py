@@ -614,8 +614,22 @@ def ask_alerts(payload: AskIn):
                     line += f" - Valor: ${value_usd:,.0f}"
                 if liquidity:
                     line += f" - Liquidez: ${liquidity:,.0f}"
+                
+                # Links formatados
+                links = []
                 if pair_url:
-                    line += f" - [DexScreener]({pair_url})"
+                    links.append(f"**[DexScreener]({pair_url})**")
+                
+                # Adiciona link CoinGecko se tiver token_address ou token name
+                token_address = item.get("token_address", "")
+                token_lower = token.lower()
+                if token_address or token_lower:
+                    # CoinGecko usa o nome do token em minúsculas na URL
+                    coingecko_url = f"https://www.coingecko.com/en/coins/{token_lower}"
+                    links.append(f"[CoinGecko]({coingecko_url})")
+                
+                if links:
+                    line += f" - {' | '.join(links)}"
                 
                 lines.append(line)
                 
