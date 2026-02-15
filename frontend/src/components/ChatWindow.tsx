@@ -229,9 +229,6 @@ export function ChatWindow() {
         {!hasMessages && !loading ? (
           <div className="h-full flex flex-col items-center justify-center px-4">
             <img src="/logo_full.png" alt="José Ruão.io" className="h-28 mb-6 opacity-90" />
-            <div className="text-sm text-gray-600 mb-4">
-              Que tokens achas que vão ser listados?
-            </div>
             <div className="w-full max-w-2xl">
               <Suggestions
                 visible={!hasMessages}
@@ -320,7 +317,7 @@ export function ChatWindow() {
           </div>
 
           <div className="text-[11px] text-gray-500 text-center mt-2">
-            Vigia Crypto pode cometer erros. Verifica informações importantes.
+            Pode cometer erros. Verifica informações importantes.
           </div>
         </div>
       </div>
