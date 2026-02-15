@@ -191,6 +191,11 @@ export function ChatWindow() {
           if (!gotFirstChunk && acc.length > 0) setGotFirstChunk(true);
           updateLastAssistantMessage(acc);
         }
+
+        // Se o stream terminou sem conteúdo, mostrar mensagem de fallback
+        if (!acc.trim()) {
+          updateLastAssistantMessage('⚠️ Sem resposta do servidor. Pode ser cold start do Render — tenta novamente em alguns segundos.');
+        }
       }
     } catch (e: any) {
       if (!abortedRef.current) {

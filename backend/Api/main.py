@@ -394,8 +394,15 @@ async def chat_stream(req: ChatRequest):
                     
                     return StreamingResponse(ask_for_coin(), media_type="text/plain")
             except Exception as e:
-                log.warning(f"Erro ao tentar análise gráfica: {e}")
-                # Continua com o fluxo normal
+                log.warning(f"Erro ao tentar análise gráfica: {e}", exc_info=True)
+                # Retorna erro claro em vez de cair no fluxo genérico
+                def analysis_error_response():
+                    yield f"⚠️ Erro ao analisar a moeda: {str(e)}\n\n"
+                    yield "Possíveis causas:\n"
+                    yield "- Moeda não disponível no Yahoo Finance (ex: tokens Solana)\n"
+                    yield "- Cold start do servidor (tenta novamente em 10-20 segundos)\n"
+                    yield "- Símbolo incorreto (usa BTC, ETH, SOL, TURBO, etc.)\n"
+                return StreamingResponse(analysis_error_response(), media_type="text/plain")
         
         # Tenta usar OpenAI se disponível
         openai_key = os.getenv("OPENAI_API_KEY")

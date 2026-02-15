@@ -1,0 +1,15 @@
+# Render Blueprint - Cron Job para vigia_solana_pro_supabase
+# https://render.com/docs/blueprint-spec
+#
+# IMPORTANTE: rootDir: backend faz com que o build corra na pasta backend,
+# onde está o requirements.txt. Sem isto, o pip não encontra o ficheiro.
+
+services:
+  - type: cron
+    name: vigia-solana-pro-cron
+    runtime: python
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker/vigia_solana_pro_supabase.py
+    schedule: "0 8 * * *"
