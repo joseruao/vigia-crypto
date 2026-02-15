@@ -33,7 +33,9 @@ def req_env(name: str) -> str:
         raise RuntimeError(f"Missing required env var: {name}")
     return v
 
-HELIUS_API_KEY = req_env("HELIUS_API_KEY")
+HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY") or os.environ.get("HELIUS_KEYS") or ""
+if not HELIUS_API_KEY:
+    raise RuntimeError("Missing required env var: HELIUS_API_KEY or HELIUS_KEYS")
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 
 SUPABASE_URL = req_env("SUPABASE_URL")
