@@ -18,7 +18,8 @@ export async function GET() {
     }
 
     const data = await res.json();
-    const items = data?.items || [];
+    // Backend retorna array diretamente; aceita também { items: [...] }
+    const items = Array.isArray(data) ? data : (data?.items || []);
     
     console.log(`📊 API Holdings: ${items.length} holdings encontrados`);
     return NextResponse.json(items);
