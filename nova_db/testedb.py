@@ -265,7 +265,6 @@ def main():
             print(f"   ✅ {len(tokens)} tokens encontrados ({elapsed:.1f}s)")
             
             # Inserir tokens (limitar a 1000 por exchange para não sobrecarregar)
-            tokens = tokens[:1000]
             for i, token in enumerate(tokens):
                 send_to_supabase(name, token)
                 if i % 50 == 0:  # Pequena pausa a cada 50 tokens
