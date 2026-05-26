@@ -33,7 +33,9 @@ def req_env(name: str) -> str:
         raise RuntimeError(f"Missing required env var: {name}")
     return v
 
-HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY") or os.environ.get("HELIUS_KEYS") or ""
+_raw = (os.environ.get("HELIUS_API_KEY") or os.environ.get("HELIUS_KEYS") or "").strip()
+# Se for lista separada por vírgula (ex: HELIUS_KEYS), usa o primeiro
+HELIUS_API_KEY = _raw.split(",")[0].strip() if _raw else ""
 if not HELIUS_API_KEY:
     raise RuntimeError("Missing required env var: HELIUS_API_KEY or HELIUS_KEYS")
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
@@ -143,6 +145,81 @@ def get_listed_exchanges(token_symbol: str, exclude_exchange: Optional[str] = No
                 break
     return exchanges
 
+def _fetch_json(url: str) -> Any:
+    r = HTTP.get(url, timeout=REQUEST_TIMEOUT)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+def fetch_exchange_tokens() -> Dict[str, List[str]]:
+    """Recolhe tokens spot listados para alimentar exchange_tokens no mesmo cron."""
+    def binance():
+        data = _fetch_json("https://api.binance.com/api/v3/exchangeInfo") or {}
+        return {s.get("baseAsset", "").upper() for s in data.get("symbols", []) if s.get("status") == "TRADING"}
+    def coinbase():
+        data = _fetch_json("https://api.exchange.coinbase.com/products") or []
+        return {(p.get("base_currency") or "").upper() for p in data if p.get("status") == "online"}
+    def kucoin():
+        data = _fetch_json("https://api.kucoin.com/api/v1/symbols") or {}
+        return {(s.get("baseCurrency") or "").upper() for s in data.get("data", []) if s.get("enableTrading")}
+    def okx():
+        data = _fetch_json("https://www.okx.com/api/v5/public/instruments?instType=SPOT") or {}
+        return {(s.get("baseCcy") or "").upper() for s in data.get("data", []) if s.get("state") == "live"}
+    def mexc():
+        data = _fetch_json("https://www.mexc.com/open/api/v2/market/symbols") or {}
+        return {(i.get("base_currency") or "").upper() for i in data.get("data", []) if i.get("base_currency")}
+    def gateio():
+        data = _fetch_json("https://api.gateio.ws/api/v4/spot/currency_pairs") or []
+        return {(i.get("base") or "").upper() for i in data if i.get("trade_status") == "tradable"}
+    def bitget():
+        data = _fetch_json("https://api.bitget.com/api/v2/spot/public/symbols") or {}
+        return {(i.get("baseCoin") or "").upper() for i in data.get("data", []) if i.get("status") == "online"}
+    def bybit():
+        data = _fetch_json("https://api.bybit.com/v5/market/instruments-info?category=spot") or {}
+        return {(i.get("baseCoin") or "").upper() for i in data.get("result", {}).get("list", []) if i.get("status") == "Trading"}
+    def kraken():
+        data = _fetch_json("https://api.kraken.com/0/public/AssetPairs") or {}
+        tokens = set()
+        for pair in data.get("result", {}).values():
+            base = (pair.get("base") or "").replace("^", "")
+            if base.startswith(("X", "Z")) and len(base) > 3:
+                base = "".join(c for c in base if c.isalpha())
+            if 1 < len(base) <= 10:
+                tokens.add(base.upper())
+        return tokens
+
+    fetchers = {
+        "Binance": binance, "Coinbase": coinbase, "KuCoin": kucoin,
+        "OKX": okx, "MEXC": mexc, "Gate.io": gateio,
+        "Bitget": bitget, "Bybit": bybit, "Kraken": kraken,
+    }
+    results: Dict[str, List[str]] = {}
+    for exchange, fetcher in fetchers.items():
+        try:
+            tokens = sorted(t for t in fetcher() if t and 1 <= len(t) <= 15)
+            results[exchange] = tokens[:1000]
+            logger.info("📊 %s: %s tokens listados", exchange, len(results[exchange]))
+        except Exception as e:
+            logger.warning("Erro ao atualizar tokens de %s: %s", exchange, e)
+    return results
+
+def update_exchange_tokens() -> int:
+    rows = [
+        {"exchange": exchange, "token": token}
+        for exchange, tokens in fetch_exchange_tokens().items()
+        for token in tokens
+    ]
+    if not rows:
+        logger.warning("Nenhum token listado recolhido; mantendo exchange_tokens existente")
+        return 0
+    try:
+        supabase.table("exchange_tokens").upsert(rows, on_conflict="exchange,token").execute()
+        logger.info("✅ exchange_tokens atualizado: %s pares exchange/token", len(rows))
+        return len(rows)
+    except Exception as e:
+        logger.warning("Erro ao gravar exchange_tokens: %s", e)
+        return 0
+
 # ===========================
 # HELIUS HELPERS (com paginação)
 # ===========================
@@ -165,7 +242,10 @@ def get_recent_signatures(wallet_address: str, hours: int = 24, limit_per_page: 
         try:
             r = HTTP.post(HELIUS_URL, json=payload, timeout=REQUEST_TIMEOUT)
             if r.status_code != 200:
-                logger.warning(f"Helius {r.status_code} para {wallet_address}")
+                msg = f"Helius {r.status_code} para {wallet_address}"
+                if r.status_code == 401:
+                    msg += " — API key inválida ou expirada. Verifica HELIUS_API_KEY/HELIUS_KEYS no Render."
+                logger.warning(msg)
                 break
             result = r.json().get("result") or []
             if not result:
@@ -628,7 +708,8 @@ def main():
     try:
         logger.info("🚀 Iniciando Vigia Solana Pro Supabase Worker...")
         
-        # Carrega tokens listados
+        # Atualiza e carrega tokens listados antes de analisar wallets.
+        update_exchange_tokens()
         load_listed_tokens_from_supabase(force=True)
         
         # Inicializa ML analyzer

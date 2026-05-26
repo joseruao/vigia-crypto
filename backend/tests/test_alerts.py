@@ -2,6 +2,7 @@
 import os
 from fastapi.testclient import TestClient
 from Api.main import app
+from Api.routes import alerts
 
 def test_health_env_flags(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://dummy.supabase.co")
@@ -16,8 +17,7 @@ def test_health_env_flags(monkeypatch):
 
 def test_holdings_does_not_500(monkeypatch):
     # Sem key → deve devolver ok=False, não 500
-    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
-    monkeypatch.setenv("SUPABASE_URL", "https://dummy.supabase.co")
+    monkeypatch.setattr(alerts.supa, "ok", lambda: False)
     client = TestClient(app)
     r = client.get("/alerts/holdings")
     assert r.status_code == 200
@@ -25,8 +25,7 @@ def test_holdings_does_not_500(monkeypatch):
 
 def test_ask_basic(monkeypatch):
     # Sem key → ok False, sem 500
-    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
-    monkeypatch.setenv("SUPABASE_URL", "https://dummy.supabase.co")
+    monkeypatch.setattr(alerts.supa, "ok", lambda: False)
     client = TestClient(app)
     r = client.post("/alerts/ask", json={"prompt": "que tokens a binance tem em holding"})
     assert r.status_code == 200
