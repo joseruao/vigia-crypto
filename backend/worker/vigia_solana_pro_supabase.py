@@ -197,7 +197,7 @@ def fetch_exchange_tokens() -> Dict[str, List[str]]:
     for exchange, fetcher in fetchers.items():
         try:
             tokens = sorted(t for t in fetcher() if t and 1 <= len(t) <= 15)
-            results[exchange] = tokens[:1000]
+            results[exchange] = tokens
             logger.info("📊 %s: %s tokens listados", exchange, len(results[exchange]))
         except Exception as e:
             logger.warning("Erro ao atualizar tokens de %s: %s", exchange, e)

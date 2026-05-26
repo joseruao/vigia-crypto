@@ -396,8 +396,9 @@ async def chat_stream(req: ChatRequest):
             except Exception as e:
                 log.warning(f"Erro ao tentar análise gráfica: {e}", exc_info=True)
                 # Retorna erro claro em vez de cair no fluxo genérico
+                error_text = str(e)
                 def analysis_error_response():
-                    yield f"⚠️ Erro ao analisar a moeda: {str(e)}\n\n"
+                    yield f"⚠️ Erro ao analisar a moeda: {error_text}\n\n"
                     yield "Possíveis causas:\n"
                     yield "- Moeda não disponível no Yahoo Finance (ex: tokens Solana)\n"
                     yield "- Cold start do servidor (tenta novamente em 10-20 segundos)\n"
@@ -443,6 +444,7 @@ async def chat_stream(req: ChatRequest):
             return StreamingResponse(generate_fallback(), media_type="text/plain")
     except Exception as e:
         log.error(f"Erro em /chat/stream: {e}")
+        error_text = str(e)
         def error_response():
-            yield f"⚠️ Erro ao processar a mensagem: {str(e)}"
+            yield f"⚠️ Erro ao processar a mensagem: {error_text}"
         return StreamingResponse(error_response(), media_type="text/plain")

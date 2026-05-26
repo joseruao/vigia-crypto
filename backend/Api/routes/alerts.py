@@ -693,6 +693,26 @@ def ask_alerts(payload: AskIn):
     # Ordena por score desc
     out = _dedupe_latest_predictions(out)
 
+    if len(out) == 0 and is_listing_question:
+        fallback_params = params.copy()
+        fallback_params.pop("ts", None)
+        log.info(f"Sem resultados recentes; buscando fallback historico com params: {fallback_params}")
+        fallback_r = supa.rest_get("transacted_tokens", params=fallback_params, timeout=8)
+        if fallback_r.status_code == 200:
+            fallback_out: List[Dict[str, Any]] = []
+            for row in fallback_r.json() or []:
+                if _is_test_token(row):
+                    continue
+                if _is_listed_on_own_exchange(row, listed_tokens):
+                    continue
+                if ex_norm and norm(row.get("exchange", "")) != ex_norm:
+                    continue
+                if _score(row) < min_score:
+                    continue
+                fallback_out.append(row)
+            out = _dedupe_latest_predictions(fallback_out)
+            log.info(f"Fallback historico filtrado no ask: {len(out)}")
+
     # Formata resposta em texto para o frontend
     try:
         if len(out) == 0:
