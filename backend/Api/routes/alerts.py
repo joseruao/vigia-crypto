@@ -732,12 +732,13 @@ def ask_alerts(payload: AskIn):
             answer += "\n\n💡 Tenta reduzir os filtros ou verifica se há dados no Supabase."
         else:
             lines = []
+            shown = out[:10]
             if is_listing_question or "listados" in q or "listing" in q:
-                lines.append(f"🎯 **Encontrei {len(out)} token(s) com potencial de listing:**\n")
+                lines.append(f"🎯 **Top {len(shown)} token(s) com potencial de listing:**\n")
             else:
-                lines.append(f"📊 **Encontrei {len(out)} holding(s):**\n")
+                lines.append(f"📊 **Top {len(shown)} holding(s):**\n")
             
-            for i, item in enumerate(out[:10], 1):  # Limita a 10
+            for i, item in enumerate(shown, 1):  # Limita a 10
                 token = item.get("token", "N/A")
                 exchange = item.get("exchange", "N/A")
                 score = item.get("score", 0)
@@ -778,7 +779,7 @@ def ask_alerts(payload: AskIn):
                     lines.append(f"   💡 {analysis_short}\n")
             
             if len(out) > 10:
-                lines.append(f"\n... e mais {len(out) - 10} token(s)")
+                lines.append(f"\n... e mais {len(out) - len(shown)} candidato(s) filtrados")
             
             answer = "\n".join(lines)
         

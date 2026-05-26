@@ -156,7 +156,6 @@ async def chat_stream(req: ChatRequest):
         if _should_use_coin_analysis(req.prompt):
             try:
                 from analisegrafica.coin_analysis import AdvancedCoinAnalyzer
-                import os
                 
                 # Extrai nome da moeda do prompt
                 coin = None
