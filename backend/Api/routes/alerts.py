@@ -1,6 +1,7 @@
 # backend/Api/routes/alerts.py
 from __future__ import annotations
 import os, time
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -40,6 +41,101 @@ EXCHANGE_NORMALIZE = {
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
     "OKX": "OKX", "MEXC": "MEXC"
 }
+
+TEST_TOKENS = {"TEST", "FOO", "PNUT"}
+DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 36
+PREDICTIONS_LIMIT = 10
+
+def _prediction_max_age_hours() -> int:
+    try:
+        value = int(os.getenv("PREDICTIONS_MAX_AGE_HOURS", DEFAULT_PREDICTIONS_MAX_AGE_HOURS))
+        return max(value, 1)
+    except (TypeError, ValueError):
+        return DEFAULT_PREDICTIONS_MAX_AGE_HOURS
+
+def _prediction_since_iso() -> str:
+    since = datetime.now(timezone.utc) - timedelta(hours=_prediction_max_age_hours())
+    return since.isoformat()
+
+def _is_test_token(row: Dict[str, Any]) -> bool:
+    token = str(row.get("token") or "").strip().upper()
+    token_address = str(row.get("token_address") or "").strip().lower()
+    pair_url = str(row.get("pair_url") or "").strip().lower()
+    analysis = " ".join(
+        str(row.get(field) or "").lower()
+        for field in ("analysis", "analysis_text", "ai_analysis")
+    )
+    return (
+        token in TEST_TOKENS
+        or token_address.startswith("test")
+        or "/test" in pair_url
+        or "registo de teste" in analysis
+        or "registro de teste" in analysis
+    )
+
+def _score(row: Dict[str, Any]) -> float:
+    try:
+        return float(row.get("score") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+def _dedupe_latest_predictions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    latest: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        key = "|".join([
+            str(row.get("exchange") or ""),
+            str(row.get("token_address") or row.get("token") or ""),
+            str(row.get("chain") or ""),
+        ]).lower()
+        if key not in latest or str(row.get("ts") or "") > str(latest[key].get("ts") or ""):
+            latest[key] = row
+
+    items = list(latest.values())
+    items.sort(key=lambda x: (_score(x), str(x.get("ts") or "")), reverse=True)
+    return items
+
+def _load_listed_tokens_map(log=None) -> Dict[str, set]:
+    params = {
+        "select": "exchange,token",
+        "limit": "20000",
+    }
+    try:
+        r = supa.rest_get("exchange_tokens", params=params, timeout=8)
+        if r.status_code != 200:
+            if log:
+                log.warning("Nao foi possivel carregar exchange_tokens: HTTP %s", r.status_code)
+            return {}
+        listed: Dict[str, set] = {}
+        for row in r.json() or []:
+            exchange = str(row.get("exchange") or "").strip()
+            token = str(row.get("token") or "").strip().upper()
+            if exchange and token:
+                listed.setdefault(exchange, set()).add(token)
+        return listed
+    except Exception as e:
+        if log:
+            log.warning("Erro ao carregar exchange_tokens: %s", e)
+        return {}
+
+def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set]) -> bool:
+    exchange = EXCHANGE_NORMALIZE.get(str(row.get("exchange") or ""), str(row.get("exchange") or ""))
+    token = str(row.get("token") or "").strip().upper()
+    if not exchange or not token:
+        return False
+    return token in listed_tokens.get(exchange, set())
+
+def _filter_prediction_rows(
+    rows: List[Dict[str, Any]],
+    listed_tokens: Dict[str, set],
+    min_score: float = 50,
+) -> List[Dict[str, Any]]:
+    filtered = [
+        row for row in rows
+        if _score(row) >= min_score
+        and not _is_test_token(row)
+        and not _is_listed_on_own_exchange(row, listed_tokens)
+    ]
+    return _dedupe_latest_predictions(filtered)
 
 class AskIn(BaseModel):
     prompt: str
@@ -196,14 +292,17 @@ def get_predictions():
         return []
 
     try:
+        listed_tokens = _load_listed_tokens_map(log)
+        base_select = "id,exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h,token_address"
         # Busca holdings (que são as predictions de potencial listing)
         # Timeout reduzido para 8 segundos para evitar travamentos
         # Limite de 500 registos para evitar queries muito lentas
         params = {
             "type": "eq.holding",
-            "select": "id,exchange,token,chain,score,ts,listed_exchanges,analysis_text,ai_analysis,pair_url,value_usd,liquidity,volume_24h,token_address",
+            "select": base_select,
             "limit": "500",
-            "order": "ts.desc"
+            "order": "ts.desc",
+            "ts": f"gte.{_prediction_since_iso()}"
         }
         
         log.info(f"Buscando predictions do Supabase...")
@@ -217,21 +316,32 @@ def get_predictions():
         log.info(f"Recebidos {len(data)} registos do Supabase")
         
         # Filtra por score mínimo de 50 e ordena por score desc
-        filtered = [x for x in data if float(x.get("score") or 0) >= 50]
-        filtered.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+        filtered = _filter_prediction_rows(data, listed_tokens)
         
-        log.info(f"Predictions filtradas (score >= 50): {len(filtered)}")
+        log.info(
+            "Predictions filtradas (score >= 50, ultimas %sh): %s",
+            _prediction_max_age_hours(),
+            len(filtered),
+        )
         
         # Se não houver nenhuma com score >= 50, retorna todas ordenadas por score (para debug)
-        if len(filtered) == 0 and len(data) > 0:
-            log.warning(f"Nenhuma prediction com score >= 50. Total de holdings: {len(data)}")
-            # Retorna top 10 por score mesmo que < 50, para debug
-            all_sorted = sorted(data, key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
-            log.info(f"Retornando top 10 holdings (mesmo com score < 50) para debug")
-            return all_sorted[:10]
+        if len(filtered) == 0:
+            log.warning("Nenhuma prediction recente. A procurar fallback historico nao listado.")
+            fallback_params = {
+                "type": "eq.holding",
+                "select": base_select,
+                "limit": "500",
+                "order": "score.desc",
+            }
+            fallback_r = supa.rest_get("transacted_tokens", params=fallback_params, timeout=8)
+            if fallback_r.status_code != 200:
+                log.error(f"Erro ao buscar fallback predictions: HTTP {fallback_r.status_code} - {fallback_r.text[:200]}")
+                return []
+            filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens)
+            log.info("Fallback historico filtrado: %s", len(filtered))
         
         # Retorna lista direta (formato esperado pelo frontend)
-        return filtered
+        return filtered[:PREDICTIONS_LIMIT]
         
     except Exception as e:
         log.error(f"Erro ao processar predictions: {e}", exc_info=True)
@@ -526,6 +636,9 @@ def ask_alerts(payload: AskIn):
     elif "score" in q and ("alto" in q or "elevado" in q):
         min_score = 70
 
+    filter_unlisted = is_listing_question or "nao foram listados" in q or "nÃ£o foram listados" in q or "unlisted" in q
+    listed_tokens = _load_listed_tokens_map(log) if filter_unlisted else {}
+
     # Base query
     params = {
         "type": "eq.holding",
@@ -535,6 +648,8 @@ def ask_alerts(payload: AskIn):
     }
     if chain:
         params["chain"] = f"eq.{chain}"
+    if is_listing_question:
+        params["ts"] = f"gte.{_prediction_since_iso()}"
 
     log.info(f"Buscando holdings com params: {params}")
     r = supa.rest_get("transacted_tokens", params=params, timeout=8)
@@ -553,9 +668,13 @@ def ask_alerts(payload: AskIn):
     # Filtrar
     out: List[Dict[str, Any]] = []
     for row in data:
+        if _is_test_token(row):
+            continue
+        if filter_unlisted and _is_listed_on_own_exchange(row, listed_tokens):
+            continue
         if ex_norm and norm(row.get("exchange", "")) != ex_norm:
             continue
-        if float(row.get("score") or 0) < min_score:
+        if _score(row) < min_score:
             continue
 
         # “ainda não foram listados” → listed_exchanges não contém ex_norm
@@ -572,7 +691,7 @@ def ask_alerts(payload: AskIn):
     log.info(f"Holdings filtrados: {len(out)}")
 
     # Ordena por score desc
-    out.sort(key=lambda x: (float(x.get("score") or 0), str(x.get("ts") or "")), reverse=True)
+    out = _dedupe_latest_predictions(out)
 
     # Formata resposta em texto para o frontend
     try:
