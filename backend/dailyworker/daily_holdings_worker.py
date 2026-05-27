@@ -648,9 +648,76 @@ async def update_listed_tokens():
             return []
         return []
 
+    def fetch_kucoin_tokens():
+        try:
+            r = requests.get("https://api.kucoin.com/api/v1/symbols", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return list({(s.get('baseCurrency') or "").upper() for s in data.get('data', []) if s.get('enableTrading')})
+        except:
+            return []
+        return []
+
+    def fetch_okx_tokens():
+        try:
+            r = requests.get("https://www.okx.com/api/v5/public/instruments?instType=SPOT", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return list({(s.get('baseCcy') or "").upper() for s in data.get('data', []) if s.get('state') == 'live'})
+        except:
+            return []
+        return []
+
+    def fetch_mexc_tokens():
+        try:
+            r = requests.get("https://www.mexc.com/open/api/v2/market/symbols", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return list({(i.get('base_currency') or "").upper() for i in data.get('data', []) if i.get('base_currency')})
+        except:
+            return []
+        return []
+
+    def fetch_gateio_tokens():
+        try:
+            r = requests.get("https://api.gateio.ws/api/v4/spot/currency_pairs", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return list({(i.get('base') or "").upper() for i in data if i.get('trade_status') == 'tradable'})
+        except:
+            return []
+        return []
+
+    def fetch_bitget_tokens():
+        try:
+            r = requests.get("https://api.bitget.com/api/v2/spot/public/symbols", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                return list({(i.get('baseCoin') or "").upper() for i in data.get('data', []) if i.get('status') == 'online'})
+        except:
+            return []
+        return []
+
+    def fetch_bybit_tokens():
+        try:
+            r = requests.get("https://api.bybit.com/v5/market/instruments-info?category=spot", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get('result', {}).get('list', [])
+                return list({(i.get('baseCoin') or "").upper() for i in items if i.get('status') == 'Trading'})
+        except:
+            return []
+        return []
+
     exchanges = [
         ("Binance", fetch_binance_tokens),
         ("Coinbase", fetch_coinbase_tokens),
+        ("KuCoin", fetch_kucoin_tokens),
+        ("OKX", fetch_okx_tokens),
+        ("MEXC", fetch_mexc_tokens),
+        ("Gate.io", fetch_gateio_tokens),
+        ("Bitget", fetch_bitget_tokens),
+        ("Bybit", fetch_bybit_tokens),
     ]
 
     total_tokens = 0
@@ -659,7 +726,7 @@ async def update_listed_tokens():
         tokens = func()
         print(f"   ✅ {len(tokens)} tokens encontrados")
         
-        for token in tokens[:500]:  # Limitar para não sobrecarregar
+        for token in tokens:
             data = {"exchange": name, "token": token.upper()}
             supabase_upsert("exchange_tokens", data, ["exchange", "token"])
         

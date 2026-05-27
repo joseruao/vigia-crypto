@@ -95,18 +95,28 @@ def _dedupe_latest_predictions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any
     return items
 
 def _load_listed_tokens_map(log=None) -> Dict[str, set]:
-    params = {
-        "select": "exchange,token",
-        "limit": "20000",
-    }
     try:
-        r = supa.rest_get("exchange_tokens", params=params, timeout=8)
-        if r.status_code != 200:
-            if log:
-                log.warning("Nao foi possivel carregar exchange_tokens: HTTP %s", r.status_code)
-            return {}
+        rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            params = {
+                "select": "exchange,token",
+                "limit": str(page_size),
+                "offset": str(offset),
+            }
+            r = supa.rest_get("exchange_tokens", params=params, timeout=8)
+            if r.status_code != 200:
+                if log:
+                    log.warning("Nao foi possivel carregar exchange_tokens: HTTP %s", r.status_code)
+                return {}
+            page = r.json() or []
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
         listed: Dict[str, set] = {}
-        for row in r.json() or []:
+        for row in rows:
             exchange = str(row.get("exchange") or "").strip()
             token = str(row.get("token") or "").strip().upper()
             if exchange and token:

@@ -109,8 +109,21 @@ def load_listed_tokens_from_supabase(force: bool = False) -> Dict[str, List[str]
     if not force and (now - _LISTED_CACHE_TS) < CACHE_TTL and LISTED_TOKENS:
         return LISTED_TOKENS
     try:
-        resp = supabase.table("exchange_tokens").select("exchange,token").execute()
-        data = getattr(resp, "data", None) or []
+        data = []
+        page_size = 1000
+        offset = 0
+        while True:
+            resp = (
+                supabase.table("exchange_tokens")
+                .select("exchange,token")
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            page = getattr(resp, "data", None) or []
+            data.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
         temp: Dict[str, List[str]] = {}
         for row in data:
             ex = (row.get("exchange") or "").strip()
@@ -213,7 +226,8 @@ def update_exchange_tokens() -> int:
         logger.warning("Nenhum token listado recolhido; mantendo exchange_tokens existente")
         return 0
     try:
-        supabase.table("exchange_tokens").upsert(rows, on_conflict="exchange,token").execute()
+        for i in range(0, len(rows), 1000):
+            supabase.table("exchange_tokens").upsert(rows[i:i + 1000], on_conflict="exchange,token").execute()
         logger.info("✅ exchange_tokens atualizado: %s pares exchange/token", len(rows))
         return len(rows)
     except Exception as e:
