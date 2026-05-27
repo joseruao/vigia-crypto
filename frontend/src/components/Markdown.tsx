@@ -2,7 +2,7 @@
 import React from 'react';
 
 export default function Markdown({ text }: { text: string }) {
-  let html = text
+  const html = text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/^\s*-\s+/gm, '• ')
     .replace(/\n/g, '<br/>');

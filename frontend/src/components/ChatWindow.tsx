@@ -197,9 +197,9 @@ export function ChatWindow() {
           updateLastAssistantMessage('⚠️ Sem resposta do servidor. Pode ser cold start do Render — tenta novamente em alguns segundos.');
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (!abortedRef.current) {
-        const msg = e?.message ?? '⚠️ Erro ao comunicar com a API';
+        const msg = e instanceof Error ? e.message : '⚠️ Erro ao comunicar com a API';
         console.error(e);
         addMessage({ role: 'assistant', content: msg });
       }
@@ -237,10 +237,7 @@ export function ChatWindow() {
             <div className="w-full max-w-2xl">
               <Suggestions
                 visible={!hasMessages}
-                onSelect={(t) => {
-                  setInput(t);
-                  setTimeout(() => sendMessage(t), 80);
-                }}
+                onSelect={(t) => sendMessage(t)}
               />
             </div>
           </div>

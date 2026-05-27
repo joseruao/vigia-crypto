@@ -13,6 +13,10 @@ export type Conversation = {
 
 const STORAGE_KEY = 'chat_history';
 
+type StoredConversation = Partial<Omit<Conversation, 'messages'>> & {
+  messages?: Message[];
+};
+
 export function useChatHistory() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -22,7 +26,7 @@ export function useChatHistory() {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     if (!raw) return;
     try {
-      const parsed = JSON.parse(raw) as any[];
+      const parsed = JSON.parse(raw) as StoredConversation[];
       const migrated: Conversation[] = parsed.map((c) => ({
         id: c.id ?? uuidv4(),
         title: c.title ?? 'Nova conversa',

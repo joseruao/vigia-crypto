@@ -6,11 +6,11 @@ type Props = { visible: boolean; onSelect: (text: string) => void };
 const SUGGESTIONS: Record<'pt' | 'en', string[]> = {
   pt: [
     'Que tokens achas que vão ser listados?',
-    'Analisa-me uma criptomoeda',
+    'Analise BTC',
   ],
   en: [
     'Which tokens look close to a major exchange listing?',
-    'Analyze a cryptocurrency for me',
+    'Analyze BTC',
   ],
 };
 
