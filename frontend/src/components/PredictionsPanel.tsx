@@ -34,6 +34,19 @@ function metric(label: string, value?: number) {
   return formatted ? { label, value: `$${formatted}` } : null;
 }
 
+function displayExchange(exchange: string) {
+  const map: Record<string, string> = {
+    'Binance 1': 'Binance',
+    'Binance 2': 'Binance',
+    'Binance 3': 'Binance',
+    'Coinbase 1': 'Coinbase',
+    'Coinbase Hot': 'Coinbase',
+    'Kraken Cold 1': 'Kraken',
+    'Kraken Cold 2': 'Kraken',
+  };
+  return map[exchange] || exchange;
+}
+
 function scoreTone(score?: number) {
   if ((score ?? 0) >= 80) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if ((score ?? 0) >= 65) return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -120,6 +133,7 @@ export function PredictionsPanel() {
           ) : (
             items.map((h) => {
               const updatedAt = shortDate(h.ts);
+              const exchange = displayExchange(h.exchange);
               const metrics = [
                 metric('Valor', h.value_usd),
                 metric('Liquidez', h.liquidity),
@@ -135,7 +149,7 @@ export function PredictionsPanel() {
                     <div className="min-w-0">
                       <div className="truncate font-semibold text-zinc-900">{h.token}</div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-500">
-                        <span>{h.exchange}</span>
+                        <span>{exchange}</span>
                         {updatedAt ? <span>{updatedAt}</span> : null}
                       </div>
                     </div>
@@ -146,12 +160,6 @@ export function PredictionsPanel() {
                       </div>
                     ) : null}
                   </div>
-
-                  {(h.analysis || h.analysis_text || h.ai_analysis) && (
-                    <div className="mt-2 line-clamp-3 text-[11px] leading-4 text-zinc-600">
-                      {h.analysis || h.analysis_text || h.ai_analysis}
-                    </div>
-                  )}
 
                   {metrics.length > 0 && (
                     <div className="mt-2 grid grid-cols-3 gap-1.5">

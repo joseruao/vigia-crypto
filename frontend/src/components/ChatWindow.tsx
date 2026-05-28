@@ -240,7 +240,7 @@ export function ChatWindow() {
             />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.10),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.86))]" />
             <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
-              <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-28 w-auto max-w-[82vw] object-contain opacity-95 sm:h-36" />
+              <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
               <div className="mb-6 max-w-2xl text-sm leading-6 text-zinc-600 sm:text-base">
                 Monitoriza wallets de exchanges, previsões de listings e análise de mercado num só chat.
               </div>
