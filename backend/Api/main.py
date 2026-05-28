@@ -144,6 +144,105 @@ def _should_use_coin_analysis(prompt: str) -> bool:
     
     return False
 
+def _fmt_price(value) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if number >= 1000:
+        return f"${number:,.0f}"
+    if number >= 1:
+        return f"${number:,.2f}"
+    return f"${number:.6f}"
+
+def _fmt_percent(value) -> str:
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "N/A"
+
+def _human_zone(zone: str) -> str:
+    zones = {
+        "ZONA_DE_COMPRA": "zona de compra",
+        "ZONA_DE_VENDA": "zona de venda",
+        "ZONA_NEUTRA": "zona neutra",
+    }
+    return zones.get(str(zone or ""), str(zone or "N/A").replace("_", " ").lower())
+
+def _format_coin_analysis(coin: str, result: dict):
+    analysis = result.get("analysis", {}) or {}
+    zones = result.get("trading_zones", {}) or {}
+    recs = result.get("recommendations", {}) or {}
+    strategy = recs.get("estrategia_trading", {}) or {}
+    sr = analysis.get("support_resistance", {}) or {}
+    ma = analysis.get("moving_averages", {}) or {}
+    trend = analysis.get("trend", {}) or {}
+    volume = analysis.get("volume", {}) or {}
+
+    action = recs.get("acao_principal", "AGUARDAR")
+    confidence = recs.get("confianca", "N/A")
+    score = recs.get("score", "N/A")
+    current_zone = _human_zone(zones.get("posicao_atual"))
+
+    yield f"# Analise tecnica de {coin}\n\n"
+    yield f"**Resumo:** {action} com confianca {confidence}"
+    if score != "N/A":
+        yield f" (score {score}/100)"
+    yield f". O preco esta em **{current_zone}**.\n\n"
+
+    yield "## Leitura rapida\n\n"
+    yield f"- Preco atual: **{_fmt_price(result.get('current_price'))}**\n"
+    yield f"- RSI 14: **{analysis.get('rsi', 'N/A')}**\n"
+    yield f"- Tendencia: **{trend.get('direction', 'N/A')}**"
+    if trend.get("strength") is not None:
+        yield f" ({_fmt_percent(trend.get('strength'))})"
+    yield "\n"
+    yield f"- Volatilidade: **{_fmt_percent(analysis.get('volatility'))}**\n"
+    if volume:
+        yield f"- Volume: **{volume.get('trend', 'N/A')}**, {volume.get('ratio_20d', 'N/A')}x vs media 20d\n"
+    yield "\n"
+
+    if sr:
+        yield "## Zonas principais\n\n"
+        yield f"- Suporte dinamico: **{_fmt_price(sr.get('dynamic_support'))}**\n"
+        yield f"- Resistencia dinamica: **{_fmt_price(sr.get('dynamic_resistance'))}**\n"
+        if sr.get("current_position") is not None:
+            yield f"- Posicao no range: **{sr.get('current_position')}%** entre suporte e resistencia\n"
+        yield "\n"
+
+    if ma:
+        yield "## Medias moveis\n\n"
+        yield f"- SMA 20: {_fmt_price(ma.get('sma_20'))}\n"
+        yield f"- SMA 50: {_fmt_price(ma.get('sma_50'))}\n"
+        yield f"- SMA 200: {_fmt_price(ma.get('sma_200'))}\n\n"
+
+    if strategy:
+        yield "## Plano\n\n"
+        yield f"- Estrategia: **{strategy.get('estrategia', 'N/A')}**\n"
+        yield f"- Acao: {strategy.get('plano') or strategy.get('acao') or 'Aguardar confirmacao'}\n"
+        if strategy.get("stop_loss"):
+            yield f"- Stop loss: {_fmt_price(strategy.get('stop_loss'))}\n"
+        targets = strategy.get("targets") or []
+        if targets:
+            yield "- Targets:\n"
+            for target in targets[:3]:
+                yield f"  - {target}\n"
+        if strategy.get("recompra"):
+            yield f"- Recompra: {strategy.get('recompra')}\n"
+        yield "\n"
+
+    actions = recs.get("acoes_recomendadas") or []
+    if actions:
+        yield "## Sinais detectados\n\n"
+        for action_item in actions[:4]:
+            yield f"- {action_item}\n"
+        yield "\n"
+
+    risk = recs.get("alerta_risco")
+    if risk:
+        yield f"**Risco:** {risk}\n\n"
+    yield "_Isto e analise informativa, nao aconselhamento financeiro._"
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     """
@@ -219,6 +318,8 @@ async def chat_stream(req: ChatRequest):
                     
                     if "error" not in analysis_result:
                         def generate_analysis():
+                            yield from _format_coin_analysis(coin, analysis_result)
+                            return
                             # Preço atual
                             current_price = analysis_result.get("current_price", "N/A")
                             yield f"# 📊 Análise Técnica de {coin}\n\n"
