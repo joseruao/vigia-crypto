@@ -91,13 +91,13 @@ export function PredictionsPanel() {
   if (hidden) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-30 w-80">
+    <div className="fixed inset-x-3 top-3 z-30 sm:inset-x-auto sm:right-4 sm:top-4 sm:w-80">
       <div className="border border-zinc-200 rounded-xl bg-white shadow-md overflow-hidden">
         <div className="px-3 py-2 border-b border-zinc-100">
           <div className="text-xs uppercase tracking-wide text-zinc-500">Previsões de Listing</div>
         </div>
 
-        <div className="max-h-80 overflow-auto p-3 space-y-2">
+        <div className="max-h-56 overflow-auto p-3 space-y-2 sm:max-h-80">
           {loading ? (
             <div className="text-xs text-zinc-500">A carregar…</div>
           ) : items.length === 0 ? (

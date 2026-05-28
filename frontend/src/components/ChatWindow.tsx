@@ -228,21 +228,32 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-white">
       {/* Área das mensagens */}
       <div className="flex-1 overflow-y-auto">
         {!hasMessages && !loading ? (
-          <div className="h-full flex flex-col items-center justify-center px-4">
-            <img src="/logo_full.png" alt="José Ruão.io" className="h-28 mb-6 opacity-90" />
+          <div className="relative min-h-[calc(100vh-104px)] overflow-hidden px-4 py-10 sm:py-14">
+            <div
+              className="absolute inset-0 bg-cover bg-center opacity-70"
+              style={{ backgroundImage: "url('/hero-bg.png')" }}
+              aria-hidden="true"
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.14),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.84),rgba(255,255,255,0.96))]" />
+            <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
+              <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-28 w-auto max-w-[82vw] object-contain opacity-95 sm:h-36" />
+              <div className="mb-6 max-w-2xl text-sm leading-6 text-zinc-600 sm:text-base">
+                Monitoriza wallets de exchanges, previsões de listings e análise de mercado num só chat.
+              </div>
             <div className="w-full max-w-2xl">
               <Suggestions
                 visible={!hasMessages}
                 onSelect={(t) => sendMessage(t)}
               />
             </div>
+            </div>
           </div>
         ) : (
-          <div className="px-4 py-6">
+          <div className="px-3 py-4 sm:px-4 sm:py-6">
             <div className="max-w-3xl mx-auto space-y-4">
               {active?.messages.map((m, i) => (
                 <div
@@ -250,7 +261,7 @@ export function ChatWindow() {
                   className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm ${
+                    className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm sm:max-w-[85%] ${
                       m.role === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-50 text-gray-800 border border-gray-200'
@@ -265,7 +276,7 @@ export function ChatWindow() {
 
               {loading && !gotFirstChunk && (
                 <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600 border border-gray-200">
+                  <div className="max-w-[92%] rounded-2xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600 border border-gray-200 sm:max-w-[85%]">
                     <span className="animate-pulse">● ● ●</span>
                   </div>
                 </div>
@@ -279,7 +290,7 @@ export function ChatWindow() {
 
       {/* Input fixo */}
       <div className="border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-        <div className="max-w-5xl mx-auto p-4">
+        <div className="max-w-5xl mx-auto p-3 sm:p-4">
           <div className="relative flex items-end gap-2">
             {loading && (
               <button

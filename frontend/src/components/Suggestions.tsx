@@ -29,7 +29,7 @@ export function Suggestions({ visible, onSelect }: Props) {
         <button
           key={i}
           onClick={() => onSelect(s)}
-          className="rounded-2xl border border-zinc-800 px-4 py-3 text-left hover:bg-zinc-100"
+          className="rounded-xl border border-zinc-300 bg-white/85 px-4 py-3 text-left text-sm shadow-sm backdrop-blur transition hover:border-zinc-500 hover:bg-white sm:text-base"
         >
           {s}
         </button>
