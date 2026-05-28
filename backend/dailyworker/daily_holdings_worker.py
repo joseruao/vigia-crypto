@@ -13,6 +13,24 @@ HELIUS_API_KEY = "0fd1b496-c250-459e-ba21-fa5a33caf055"
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 ETHERSCAN_API_KEY = "Y14X9JDHZY5QM3RV51GE2V8M6XSTWBNTYW"
 
+EXCHANGE_NORMALIZE = {
+    "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
+    "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
+    "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
+}
+
+def token_candidates(token_symbol):
+    base = (token_symbol or "").strip().upper().lstrip("$")
+    if not base:
+        return set()
+    candidates = {base, f"1000{base}", f"10000{base}", f"1000000{base}", f"1M{base}"}
+    for prefix in ("1000000", "10000", "1000", "1M"):
+        if base.startswith(prefix) and len(base) > len(prefix):
+            candidates.add(base[len(prefix):])
+    if base == "BABYDOGE":
+        candidates.update({"1MBABYDOGE", "1000000BABYDOGE"})
+    return candidates
+
 # Headers para Supabase REST API
 SUPABASE_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -236,9 +254,13 @@ def get_token_data_dexscreener(token_address, chain=None):
 def is_token_listed_on_exchange(token_symbol, exchange_name):
     """Verifica se o token já está listado na exchange"""
     try:
+        exchange = EXCHANGE_NORMALIZE.get(exchange_name, exchange_name)
+        candidates = sorted(token_candidates(token_symbol))
+        if not exchange or not candidates:
+            return False
         query_params = {
-            "exchange": f"eq.{exchange_name}",
-            "token": f"eq.{token_symbol.upper()}"
+            "exchange": f"eq.{exchange}",
+            "token": f"in.({','.join(candidates)})"
         }
         result = supabase_query("exchange_tokens", query_params)
         return len(result) > 0

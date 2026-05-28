@@ -79,6 +79,23 @@ def _score(row: Dict[str, Any]) -> float:
     except (TypeError, ValueError):
         return 0.0
 
+def _normalize_exchange(exchange: str) -> str:
+    exchange = str(exchange or "").strip()
+    return EXCHANGE_NORMALIZE.get(exchange, exchange)
+
+def _token_candidates(token: str) -> set:
+    base = str(token or "").strip().upper().lstrip("$")
+    if not base:
+        return set()
+    candidates = {base}
+    candidates.update({f"1000{base}", f"10000{base}", f"1000000{base}", f"1M{base}"})
+    for prefix in ("1000000", "10000", "1000", "1M"):
+        if base.startswith(prefix) and len(base) > len(prefix):
+            candidates.add(base[len(prefix):])
+    if base == "BABYDOGE":
+        candidates.update({"1MBABYDOGE", "1000000BABYDOGE"})
+    return candidates
+
 def _dedupe_latest_predictions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     latest: Dict[str, Dict[str, Any]] = {}
     for row in rows:
@@ -117,10 +134,10 @@ def _load_listed_tokens_map(log=None) -> Dict[str, set]:
             offset += page_size
         listed: Dict[str, set] = {}
         for row in rows:
-            exchange = str(row.get("exchange") or "").strip()
+            exchange = _normalize_exchange(str(row.get("exchange") or "").strip())
             token = str(row.get("token") or "").strip().upper()
             if exchange and token:
-                listed.setdefault(exchange, set()).add(token)
+                listed.setdefault(exchange, set()).update(_token_candidates(token))
         return listed
     except Exception as e:
         if log:
@@ -128,11 +145,12 @@ def _load_listed_tokens_map(log=None) -> Dict[str, set]:
         return {}
 
 def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set]) -> bool:
-    exchange = EXCHANGE_NORMALIZE.get(str(row.get("exchange") or ""), str(row.get("exchange") or ""))
-    token = str(row.get("token") or "").strip().upper()
-    if not exchange or not token:
+    exchange = _normalize_exchange(str(row.get("exchange") or ""))
+    candidates = _token_candidates(str(row.get("token") or ""))
+    if not exchange or not candidates:
         return False
-    return token in listed_tokens.get(exchange, set())
+    listed = listed_tokens.get(exchange, set())
+    return any(token in listed for token in candidates)
 
 def _filter_prediction_rows(
     rows: List[Dict[str, Any]],

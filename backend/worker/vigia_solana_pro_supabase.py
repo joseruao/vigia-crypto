@@ -97,6 +97,19 @@ EXCHANGE_NORMALIZE = {
     "OKX": "OKX", "MEXC": "MEXC"
 }
 
+def token_candidates(token_symbol: str) -> set[str]:
+    base = (token_symbol or "").strip().upper().lstrip("$")
+    if not base:
+        return set()
+    candidates = {base}
+    candidates.update({f"1000{base}", f"10000{base}", f"1000000{base}", f"1M{base}"})
+    for prefix in ("1000000", "10000", "1000", "1M"):
+        if base.startswith(prefix) and len(base) > len(prefix):
+            candidates.add(base[len(prefix):])
+    if base == "BABYDOGE":
+        candidates.update({"1MBABYDOGE", "1000000BABYDOGE"})
+    return candidates
+
 # ===========================
 # CACHE: exchange_tokens
 # ===========================
@@ -126,11 +139,11 @@ def load_listed_tokens_from_supabase(force: bool = False) -> Dict[str, List[str]
             offset += page_size
         temp: Dict[str, List[str]] = {}
         for row in data:
-            ex = (row.get("exchange") or "").strip()
+            ex = EXCHANGE_NORMALIZE.get((row.get("exchange") or "").strip(), (row.get("exchange") or "").strip())
             tok = (row.get("token") or "").strip()
             if not ex or not tok:
                 continue
-            temp.setdefault(ex, []).append(tok)
+            temp.setdefault(ex, []).extend(token_candidates(tok))
         LISTED_TOKENS = temp
         _LISTED_CACHE_TS = now
         logger.info(f"✅ Tokens carregados do Supabase: {sum(len(v) for v in temp.values())} tokens em {len(temp)} exchanges")
@@ -143,17 +156,17 @@ def load_listed_tokens_from_supabase(force: bool = False) -> Dict[str, List[str]
 
 def is_token_listed_on_exchange(token_symbol: str, exchange_name: str) -> bool:
     ex = EXCHANGE_NORMALIZE.get(exchange_name, exchange_name)
-    tokens = LISTED_TOKENS.get(ex, [])
-    return token_symbol.upper() in {t.upper() for t in tokens}
+    tokens = {t.upper() for t in LISTED_TOKENS.get(ex, [])}
+    return any(candidate in tokens for candidate in token_candidates(token_symbol))
 
 def get_listed_exchanges(token_symbol: str, exclude_exchange: Optional[str] = None) -> List[str]:
-    token_upper = token_symbol.upper()
+    candidates = token_candidates(token_symbol)
     exchanges: List[str] = []
     for ex, tokens in LISTED_TOKENS.items():
         if exclude_exchange and ex.lower() == exclude_exchange.lower():
             continue
         for t in tokens:
-            if t and t.upper() == token_upper:
+            if t and t.upper() in candidates:
                 exchanges.append(ex)
                 break
     return exchanges

@@ -52,7 +52,14 @@ export function Sidebar() {
     <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200 bg-white text-black">
       {/* logo topo */}
       <div className="p-4 border-b border-zinc-200">
-        <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
+        <button
+          onClick={newConversation}
+          className="rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300"
+          title="Voltar ao início"
+          aria-label="Voltar ao início"
+        >
+          <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
+        </button>
       </div>
 
       {/* botão novo chat */}

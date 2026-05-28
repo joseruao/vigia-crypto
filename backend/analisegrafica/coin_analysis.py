@@ -38,6 +38,26 @@ COINGECKO_IDS = {
     "BONK": "bonk",
 }
 
+BINANCE_SYMBOLS = {
+    "BTC": "BTCUSDT",
+    "ETH": "ETHUSDT",
+    "SOL": "SOLUSDT",
+    "BNB": "BNBUSDT",
+    "XRP": "XRPUSDT",
+    "ADA": "ADAUSDT",
+    "DOGE": "DOGEUSDT",
+    "AVAX": "AVAXUSDT",
+    "LINK": "LINKUSDT",
+    "DOT": "DOTUSDT",
+    "LTC": "LTCUSDT",
+    "BCH": "BCHUSDT",
+    "NEAR": "NEARUSDT",
+    "APT": "APTUSDT",
+    "ARB": "ARBUSDT",
+    "OP": "OPUSDT",
+    "SUI": "SUIUSDT",
+}
+
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
         self.supported_indicators = ['RSI', 'Moving_Averages', 'Support_Resistance', 'Volume', 'Fibonacci', 'Trend']
@@ -84,13 +104,49 @@ class AdvancedCoinAnalyzer:
             
             if hist.empty:
                 print(f"❌ Nenhum dado encontrado para {coin}")
-                return self._fetch_coingecko_data(coin, period)
+                return self._fetch_binance_data(coin, period) or self._fetch_coingecko_data(coin, period)
                 
             print(f"✅ Dados obtidos: {len(hist)} candles para {coin}")
             return hist
         except Exception as e:
             print(f"❌ Erro ao buscar dados para {coin}: {e}")
-            return self._fetch_coingecko_data(coin, period)
+            return self._fetch_binance_data(coin, period) or self._fetch_coingecko_data(coin, period)
+
+    def _fetch_binance_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        """Fallback sem chave para moedas grandes quando Yahoo/CoinGecko limitam."""
+        symbol = BINANCE_SYMBOLS.get(coin.upper())
+        if not symbol:
+            return None
+
+        try:
+            limit = min(max(self._period_to_days(period), 2), 1000)
+            response = requests.get(
+                "https://api.binance.com/api/v3/klines",
+                params={"symbol": symbol, "interval": "1d", "limit": limit},
+                timeout=15,
+            )
+            response.raise_for_status()
+            rows = []
+            for item in response.json() or []:
+                open_time, open_price, high, low, close, volume = item[:6]
+                rows.append({
+                    "Date": datetime.fromtimestamp(open_time / 1000),
+                    "Open": float(open_price),
+                    "High": float(high),
+                    "Low": float(low),
+                    "Close": float(close),
+                    "Volume": float(volume),
+                })
+
+            if len(rows) < 2:
+                return None
+
+            hist = pd.DataFrame(rows).set_index("Date")
+            print(f"Dados obtidos via Binance: {len(hist)} candles para {coin}")
+            return hist
+        except Exception as e:
+            print(f"Erro Binance para {coin}: {e}")
+            return None
 
     def _fetch_coingecko_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback gratuito para quando o Yahoo Finance falha no Render."""
