@@ -297,11 +297,11 @@ export function ChatWindow() {
       {/* Input fixo */}
       <div className="border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="max-w-5xl mx-auto p-3 sm:p-4">
-          <div className="relative flex items-end gap-2">
+          <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">
             {loading && (
               <button
                 onClick={stopStreaming}
-                className="absolute left-3 bottom-3 p-1 rounded hover:bg-gray-100 text-gray-500"
+                className="mb-1 rounded p-1 text-gray-500 hover:bg-gray-100"
                 title="Parar geração"
               >
                 <CircleStop className="h-5 w-5" />
@@ -310,9 +310,7 @@ export function ChatWindow() {
 
             <textarea
               ref={inputRef}
-              className={`flex-1 resize-none bg-gray-50 text-gray-900 rounded-2xl px-4 py-3 pr-12 outline-none border border-gray-200 focus:border-blue-500 transition-colors ${
-                loading ? 'pl-10' : ''
-              }`}
+              className="max-h-32 flex-1 resize-none bg-transparent px-1 py-1.5 text-gray-900 outline-none placeholder:text-gray-400"
               rows={1}
               placeholder={copy.placeholder}
               value={input}
@@ -324,7 +322,7 @@ export function ChatWindow() {
             {input.trim() && !loading ? (
               <button
                 onClick={() => sendMessage()}
-                className="absolute right-2 bottom-2 rounded-full bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
+                className="mb-0.5 rounded-full bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
                 title="Enviar mensagem"
               >
                 <Send className="h-4 w-4" />
