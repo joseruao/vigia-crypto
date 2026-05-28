@@ -321,18 +321,15 @@ export function ChatWindow() {
               disabled={loading}
             />
 
-            <button
-              onClick={() => sendMessage()}
-              disabled={loading || !input.trim()}
-              className={`absolute right-2 bottom-2 p-2 rounded-full transition-colors ${
-                input.trim() && !loading
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
-              title="Enviar mensagem"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            {input.trim() && !loading ? (
+              <button
+                onClick={() => sendMessage()}
+                className="absolute right-2 bottom-2 rounded-full bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
+                title="Enviar mensagem"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
 
           <div className="text-[11px] text-gray-500 text-center mt-2">

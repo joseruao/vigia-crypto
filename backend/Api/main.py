@@ -262,7 +262,13 @@ def _format_coin_analysis(coin: str, result: dict):
             yield f"- Recompra: {strategy.get('recompra')}\n"
         yield "\n"
 
-    actions = recs.get("acoes_recomendadas") or []
+    raw_actions = recs.get("acoes_recomendadas") or []
+    actions = []
+    for action_item in raw_actions:
+        text = str(action_item)
+        if action.startswith("AGUARDAR") and "FAVOR" in text.upper() and "COMPRA" in text.upper():
+            text = "TENDENCIA DE ALTA - CONTEXTO POSITIVO, MAS AGUARDAR PULLBACK"
+        actions.append(text)
     if actions:
         yield "## Sinais detectados\n\n"
         for action_item in actions[:4]:

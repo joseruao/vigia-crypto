@@ -123,7 +123,7 @@ export function PredictionsPanel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed inset-x-3 top-3 z-30 sm:inset-x-auto sm:right-4 sm:top-4 sm:w-80">
+    <div className="fixed right-4 top-4 z-30 hidden w-80 sm:block">
       <div aria-label={title} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md">
         <div className="border-b border-zinc-100 px-3 py-2">
           <div className="text-xs uppercase tracking-wide text-zinc-500">{title}</div>
