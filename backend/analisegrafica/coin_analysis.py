@@ -36,6 +36,14 @@ COINGECKO_IDS = {
     "WIF": "dogwifcoin",
     "BONK": "bonk",
     "HYPE": "hyperliquid",
+    "PEPE": "pepe",
+    "SHIB": "shiba-inu",
+    "FLOKI": "floki",
+    "WLD": "worldcoin-wld",
+    "UNI": "uniswap",
+    "AAVE": "aave",
+    "ONDO": "ondo-finance",
+    "FET": "fetch-ai",
 }
 
 BINANCE_SYMBOLS = {
@@ -56,6 +64,13 @@ BINANCE_SYMBOLS = {
     "ARB": "ARBUSDT",
     "OP": "OPUSDT",
     "SUI": "SUIUSDT",
+    "PEPE": "PEPEUSDT",
+    "SHIB": "SHIBUSDT",
+    "FLOKI": "FLOKIUSDT",
+    "WLD": "WLDUSDT",
+    "UNI": "UNIUSDT",
+    "AAVE": "AAVEUSDT",
+    "FET": "FETUSDT",
 }
 
 COINBASE_PRODUCTS = {
@@ -75,12 +90,30 @@ COINBASE_PRODUCTS = {
     "ARB": "ARB-USD",
     "OP": "OP-USD",
     "SUI": "SUI-USD",
+    "PEPE": "PEPE-USD",
+    "SHIB": "SHIB-USD",
+    "WLD": "WLD-USD",
+    "UNI": "UNI-USD",
+    "AAVE": "AAVE-USD",
 }
 
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
         self.supported_indicators = ['RSI', 'Moving_Averages', 'Support_Resistance', 'Volume', 'Fibonacci', 'Trend']
         self.openai_api_key = openai_api_key
+
+    def _round_price(self, value: float) -> float:
+        value = float(value)
+        if abs(value) >= 1:
+            return round(value, 2)
+        if abs(value) >= 0.01:
+            return round(value, 6)
+        return round(value, 10)
+
+    def _format_price_range(self, low: float, high: float | None = None) -> str:
+        if high is None:
+            return f"{self._round_price(low):g} +"
+        return f"{self._round_price(low):g} - {self._round_price(high):g}"
     
     async def analyze_coin(self, coin: str, period: str = "60d") -> Dict:
         """Analisa uma moeda com zonas de compra/venda detalhadas"""
@@ -328,12 +361,12 @@ class AdvancedCoinAnalyzer:
         volume_analysis = self._analyze_volume(data)
         
         return {
-            'current_price': round(current_price, 2),
+            'current_price': self._round_price(current_price),
             'rsi': round(rsi, 2),
             'moving_averages': {
-                'sma_20': round(float(sma_20.iloc[-1]), 2),
-                'sma_50': round(float(sma_50.iloc[-1]), 2),
-                'sma_200': round(float(sma_200.iloc[-1]), 2) if not pd.isna(sma_200.iloc[-1]) else current_price,
+                'sma_20': self._round_price(float(sma_20.iloc[-1])),
+                'sma_50': self._round_price(float(sma_50.iloc[-1])),
+                'sma_200': self._round_price(float(sma_200.iloc[-1])) if not pd.isna(sma_200.iloc[-1]) else self._round_price(current_price),
             },
             'trend': trend_strength,
             'volatility': volatility,
@@ -393,14 +426,14 @@ class AdvancedCoinAnalyzer:
         diff = high - low
         
         return {
-            'high': round(high, 2),
-            'low': round(low, 2),
+            'high': self._round_price(high),
+            'low': self._round_price(low),
             'levels': {
-                '0.236': round(high - diff * 0.236, 2),
-                '0.382': round(high - diff * 0.382, 2),
-                '0.5': round(high - diff * 0.5, 2),
-                '0.618': round(high - diff * 0.618, 2),
-                '0.786': round(high - diff * 0.786, 2)
+                '0.236': self._round_price(high - diff * 0.236),
+                '0.382': self._round_price(high - diff * 0.382),
+                '0.5': self._round_price(high - diff * 0.5),
+                '0.618': self._round_price(high - diff * 0.618),
+                '0.786': self._round_price(high - diff * 0.786)
             }
         }
     
@@ -432,10 +465,10 @@ class AdvancedCoinAnalyzer:
         position_pct = round(((current - dynamic_support) / (dynamic_resistance - dynamic_support)) * 100, 1) if dynamic_resistance != dynamic_support else 50
         
         return {
-            'static_support': round(support, 2),
-            'static_resistance': round(resistance, 2),
-            'dynamic_support': round(dynamic_support, 2),
-            'dynamic_resistance': round(dynamic_resistance, 2),
+            'static_support': self._round_price(support),
+            'static_resistance': self._round_price(resistance),
+            'dynamic_support': self._round_price(dynamic_support),
+            'dynamic_resistance': self._round_price(dynamic_resistance),
             'current_position': position_pct
         }
     
@@ -448,19 +481,19 @@ class AdvancedCoinAnalyzer:
         # ZONAS DE COMPRA
         buy_zones = {
             "zona_compra_agressiva": {
-                "range": f"{support * 0.95:.2f} - {support:.2f}",
+                "range": self._format_price_range(support * 0.95, support),
                 "descricao": "COMPRA FORTE - Preço perto do suporte principal",
                 "confianca": "ALTA",
                 "alvo_stop_loss": support * 0.92
             },
             "zona_compra_otima": {
-                "range": f"{support:.2f} - {support * 1.02:.2f}",
+                "range": self._format_price_range(support, support * 1.02),
                 "descricao": "COMPRA ÓTIMA - Entrada após teste de suporte",
                 "confianca": "MUITO ALTA", 
                 "alvo_stop_loss": support * 0.95
             },
             "zona_compra_conservadora": {
-                "range": f"{support * 1.02:.2f} - {current_price:.2f}",
+                "range": self._format_price_range(support * 1.02, current_price),
                 "descricao": "COMPRA CONSERVADORA - Esperar confirmação",
                 "confianca": "MÉDIA",
                 "alvo_stop_loss": support * 0.98
@@ -470,19 +503,19 @@ class AdvancedCoinAnalyzer:
         # ZONAS DE VENDA
         sell_zones = {
             "zona_venda_parcial": {
-                "range": f"{resistance * 0.98:.2f} - {resistance:.2f}",
+                "range": self._format_price_range(resistance * 0.98, resistance),
                 "descricao": "VENDA PARCIAL - Primeiro alvo de lucro",
                 "confianca": "ALTA",
                 "percentual_vender": "30%"
             },
             "zona_venda_principal": {
-                "range": f"{resistance:.2f} - {resistance * 1.05:.2f}",
+                "range": self._format_price_range(resistance, resistance * 1.05),
                 "descricao": "VENDA PRINCIPAL - Alvo máximo",
                 "confianca": "MUITO ALTA",
                 "percentual_vender": "50%"
             },
             "zona_venda_agressiva": {
-                "range": f"{resistance * 1.05:.2f} +",
+                "range": self._format_price_range(resistance * 1.05),
                 "descricao": "VENDA AGRESSIVA - Momento FOMO",
                 "confianca": "MÉDIA", 
                 "percentual_vender": "20%"
@@ -491,7 +524,7 @@ class AdvancedCoinAnalyzer:
         
         # ZONA NEUTRA
         neutral_zone = {
-            "range": f"{current_price:.2f} - {resistance * 0.98:.2f}",
+            "range": self._format_price_range(current_price, resistance * 0.98),
             "descricao": "ZONA DE OBSERVAÇÃO - Aguardar confirmação",
             "acao": "AGUARDAR",
             "motivo": "Preço entre suporte e resistência sem clara direção"

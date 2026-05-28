@@ -129,7 +129,7 @@ def _should_use_coin_analysis(prompt: str) -> bool:
     """Verifica se o prompt pede análise gráfica de moeda"""
     prompt_lower = prompt.lower()
     analysis_keywords = ["analisa", "analise", "analyze", "análise", "análise gráfica", "gráfico", "gráfica", "técnica", "rsi", "médias móveis", "analisa-me"]
-    coin_keywords = ["moeda", "coin", "token", "criptomoeda", "cryptocurrency", "btc", "eth", "sol", "usdt", "ada", "bnb", "xrp", "doge", "dot", "matic", "avax", "link", "ltc", "bch", "xlm", "etc", "trx", "xmr", "eos", "atom", "algo", "vet", "icp", "fil", "near", "apt", "arb", "op", "sui", "inj", "sei", "tia", "wif", "bonk", "hype"]
+    coin_keywords = ["moeda", "coin", "token", "criptomoeda", "cryptocurrency", "btc", "eth", "sol", "usdt", "ada", "bnb", "xrp", "doge", "dot", "matic", "avax", "link", "ltc", "bch", "xlm", "etc", "trx", "xmr", "eos", "atom", "algo", "vet", "icp", "fil", "near", "apt", "arb", "op", "sui", "inj", "sei", "tia", "wif", "bonk", "hype", "pepe", "shib", "floki", "wld", "uni", "aave", "ondo", "fet"]
     
     has_analysis = any(kw in prompt_lower for kw in analysis_keywords)
     has_coin = any(kw in prompt_lower for kw in coin_keywords)
@@ -299,7 +299,7 @@ async def chat_stream(req: ChatRequest):
                 
                 # Lista de moedas conhecidas (ordem por tamanho decrescente para evitar matches parciais)
                 known_coins = ["BITCOIN", "ETHEREUM", "SOLANA", "CARDANO", "POLKADOT", "POLYGON", "AVALANCHE", "CHAINLINK", "LITECOIN", "BITCOIN CASH", "STELLAR", "ETHEREUM CLASSIC", "TRON", "MONERO", "EOS", "COSMOS", "ALGORAND", "VECHAIN", "INTERNET COMPUTER", "FILECOIN", "NEAR", "APTOS", "ARBITRUM", "OPTIMISM", "SUI", "INJECTIVE", "SEI", "CELESTIA", "DOGWIFHAT", "BONK"]
-                coin_symbols = ["BTC", "ETH", "SOL", "ADA", "DOT", "MATIC", "AVAX", "LINK", "LTC", "BCH", "XLM", "ETC", "TRX", "XMR", "EOS", "ATOM", "ALGO", "VET", "ICP", "FIL", "NEAR", "APT", "ARB", "OP", "SUI", "INJ", "SEI", "TIA", "WIF", "BONK", "HYPE", "BNB", "XRP", "DOGE", "USDT", "USDC"]
+                coin_symbols = ["BTC", "ETH", "SOL", "ADA", "DOT", "MATIC", "AVAX", "LINK", "LTC", "BCH", "XLM", "ETC", "TRX", "XMR", "EOS", "ATOM", "ALGO", "VET", "ICP", "FIL", "NEAR", "APT", "ARB", "OP", "SUI", "INJ", "SEI", "TIA", "WIF", "BONK", "HYPE", "PEPE", "SHIB", "FLOKI", "WLD", "UNI", "AAVE", "ONDO", "FET", "BNB", "XRP", "DOGE", "USDT", "USDC"]
                 
                 # Primeiro tenta encontrar por nome completo
                 for coin_name in known_coins:
