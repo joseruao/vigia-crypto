@@ -234,12 +234,10 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
   const copy = lang === 'pt'
     ? {
-        tagline: 'Monitoriza wallets de exchanges, previsões de listings e análise de mercado num só chat.',
         placeholder: 'Escreve a tua mensagem...',
         disclaimer: 'Pode cometer erros. Verifica informações importantes.',
       }
     : {
-        tagline: 'Track exchange wallets, listing predictions, and market analysis in one chat.',
         placeholder: 'Ask anything about crypto markets...',
         disclaimer: 'May make mistakes. Check important information.',
       };
@@ -250,17 +248,8 @@ export function ChatWindow() {
       <div className="flex-1 overflow-y-auto">
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100vh-104px)] overflow-hidden px-4 py-10 sm:py-14">
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-95"
-              style={{ backgroundImage: "url('/hero-bg.png')" }}
-              aria-hidden="true"
-            />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.10),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.86))]" />
             <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
-              <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
-              <div className="mb-6 max-w-2xl text-sm leading-6 text-zinc-600 sm:text-base">
-                {copy.tagline}
-              </div>
+              <img src="/logo_full.png" alt="José Ruão.com" className="mb-8 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
             <div className="w-full max-w-2xl">
               <Suggestions
                 visible={!hasMessages}

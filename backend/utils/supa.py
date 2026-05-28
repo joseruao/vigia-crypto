@@ -40,10 +40,10 @@ def _load_env():
                 url = os.getenv("SUPABASE_URL", "")
                 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
                 
-                print(f"📁 Carregado .env de {env_path}")  # print também para garantir
+                _debug_print(f"Carregado .env de {env_path}")
                 _debug_print(f"   load_dotenv retornou: {result}")
-                print(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
-                print(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
+                _debug_print(f"   SUPABASE_URL: {'ok' if url else 'missing'} ({len(url)} chars)")
+                _debug_print(f"   SUPABASE_SERVICE_ROLE_KEY: {'ok' if key else 'missing'} ({len(key)} chars)")
                 log.info(f"📁 Carregado .env de {env_path}")
                 log.debug(f"   load_dotenv retornou: {result}")
                 log.info(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
@@ -139,11 +139,11 @@ def _get_key():
     
     # Se foi sobrescrito para vazio, restaura o valor anterior
     if current_key and not key:
-        print(f"   ⚠️ PROBLEMA: KEY foi sobrescrito de {len(current_key)} para {len(key)} chars!")
+        log.warning(f"KEY foi sobrescrito de {len(current_key)} para {len(key)} chars")
         log.warning(f"   Restaurando valor anterior...")
         os.environ["SUPABASE_SERVICE_ROLE_KEY"] = current_key
         key = current_key
-        print(f"   ✅ Valor restaurado: {len(key)} chars")
+        log.warning(f"Valor restaurado: {len(key)} chars")
     
     # Se ainda não tiver, tenta variantes do nome
     if not key:
@@ -178,11 +178,11 @@ def _get_key():
 
     if key:
         msg = f"✅ _get_key() retornou: {len(key)} chars"
-        print(msg)  # print também
+        _debug_print(msg)
         log.debug(msg)
     else:
         msg = "❌ _get_key() retornou VAZIO após múltiplas tentativas"
-        print(msg)  # print também
+        print(msg)
         log.error(msg)
         # Debug: verifica todas as variáveis de ambiente que começam com SUPABASE
         all_supabase_vars = {k: (v[:20] + "..." if len(v) > 20 else v) if v else "VAZIO" for k, v in os.environ.items() if k.startswith("SUPABASE")}

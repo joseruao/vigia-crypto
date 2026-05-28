@@ -169,6 +169,38 @@ def _human_zone(zone: str) -> str:
     }
     return zones.get(str(zone or ""), str(zone or "N/A").replace("_", " ").lower())
 
+def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]:
+    rsi = float(analysis.get("rsi") or 50)
+    position = float((analysis.get("support_resistance") or {}).get("current_position") or 50)
+    zone = zones.get("posicao_atual")
+    trend = (analysis.get("trend") or {}).get("direction", "")
+    score = recs.get("score", "N/A")
+
+    if rsi >= 70 and position >= 80:
+        return (
+            f"AGUARDAR / COMPRA SO EM PULLBACK",
+            f"RSI alto e preco perto da resistencia; tendencia ainda positiva, mas a entrada ideal ja nao e aqui. Score tecnico {score}/100."
+        )
+    if zone == "ZONA_DE_COMPRA" and rsi < 65:
+        return (
+            recs.get("acao_principal", "COMPRA CONTROLADA"),
+            f"Preco em zona de compra com RSI ainda controlado. Score tecnico {score}/100."
+        )
+    if zone == "ZONA_DE_VENDA":
+        return (
+            "REALIZAR / AGUARDAR",
+            f"Preco em zona de venda; melhor proteger lucro do que perseguir entrada. Score tecnico {score}/100."
+        )
+    if trend == "UPTREND":
+        return (
+            "AGUARDAR CONFIRMACAO",
+            f"Tendencia positiva, mas sem zona de entrada clara. Score tecnico {score}/100."
+        )
+    return (
+        recs.get("acao_principal", "AGUARDAR"),
+        f"Sinais mistos; esperar melhor relacao risco/retorno. Score tecnico {score}/100."
+    )
+
 def _format_coin_analysis(coin: str, result: dict):
     analysis = result.get("analysis", {}) or {}
     zones = result.get("trading_zones", {}) or {}
@@ -179,16 +211,12 @@ def _format_coin_analysis(coin: str, result: dict):
     trend = analysis.get("trend", {}) or {}
     volume = analysis.get("volume", {}) or {}
 
-    action = recs.get("acao_principal", "AGUARDAR")
+    action, summary = _analysis_stance(analysis, zones, recs)
     confidence = recs.get("confianca", "N/A")
-    score = recs.get("score", "N/A")
     current_zone = _human_zone(zones.get("posicao_atual"))
 
     yield f"# Analise tecnica de {coin}\n\n"
-    yield f"**Resumo:** {action} com confianca {confidence}"
-    if score != "N/A":
-        yield f" (score {score}/100)"
-    yield f". O preco esta em **{current_zone}**.\n\n"
+    yield f"**Resumo:** {action} com confianca {confidence}. {summary} O preco esta em **{current_zone}**.\n\n"
 
     yield "## Leitura rapida\n\n"
     yield f"- Preco atual: **{_fmt_price(result.get('current_price'))}**\n"
@@ -219,7 +247,10 @@ def _format_coin_analysis(coin: str, result: dict):
     if strategy:
         yield "## Plano\n\n"
         yield f"- Estrategia: **{strategy.get('estrategia', 'N/A')}**\n"
-        yield f"- Acao: {strategy.get('plano') or strategy.get('acao') or 'Aguardar confirmacao'}\n"
+        if action.startswith("AGUARDAR"):
+            yield "- Acao: esperar pullback ou confirmacao antes de nova entrada\n"
+        else:
+            yield f"- Acao: {strategy.get('plano') or strategy.get('acao') or 'Aguardar confirmacao'}\n"
         if strategy.get("stop_loss"):
             yield f"- Stop loss: {_fmt_price(strategy.get('stop_loss'))}\n"
         targets = strategy.get("targets") or []

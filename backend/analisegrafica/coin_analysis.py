@@ -551,6 +551,18 @@ class AdvancedCoinAnalyzer:
         
         # Análise de Posição
         current_zone = trading_zones['posicao_atual']
+        current_position = analysis.get('support_resistance', {}).get('current_position', 50)
+        if current_zone == "ZONA_DE_COMPRA" and (rsi >= 70 or current_position >= 80):
+            actions.append("PRECO ESTICADO DENTRO DO RANGE - MELHOR AGUARDAR PULLBACK")
+            strategy = self._generate_trading_strategy(analysis, trading_zones)
+            return {
+                'acao_principal': "AGUARDAR PULLBACK",
+                'confianca': self._get_confidence(score),
+                'score': min(max(score, 0), 100),
+                'acoes_recomendadas': actions,
+                'estrategia_trading': strategy,
+                'alerta_risco': self._get_risk_alert(analysis)
+            }
         if current_zone == "ZONA_DE_COMPRA":
             actions.append("💰 PREÇO NA ZONA DE COMPRA - MOMENTO ESTRATÉGICO")
             score += 15
