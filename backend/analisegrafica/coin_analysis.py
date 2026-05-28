@@ -97,6 +97,8 @@ COINBASE_PRODUCTS = {
     "AAVE": "AAVE-USD",
 }
 
+COINGECKO_SYMBOL_CACHE: Dict[str, str] = {}
+
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
         self.supported_indicators = ['RSI', 'Moving_Averages', 'Support_Resistance', 'Volume', 'Fibonacci', 'Trend']
@@ -149,19 +151,7 @@ class AdvancedCoinAnalyzer:
     
     async def _fetch_coin_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Busca dados históricos da moeda"""
-        try:
-            return self._fetch_fallback_data(coin, period)
-            hist = pd.DataFrame()
-            
-            if hist.empty:
-                print(f"Nenhum dado encontrado para {coin}")
-                return self._fetch_fallback_data(coin, period)
-                
-            print(f"Dados obtidos: {len(hist)} candles para {coin}")
-            return hist
-        except Exception as e:
-            print(f"Erro ao buscar dados para {coin}: {e}")
-            return self._fetch_fallback_data(coin, period)
+        return self._fetch_fallback_data(coin, period)
 
     def _fetch_fallback_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         for fetcher in (self._fetch_coinbase_data, self._fetch_gateio_data, self._fetch_binance_data, self._fetch_coingecko_data):
@@ -205,9 +195,7 @@ class AdvancedCoinAnalyzer:
 
     def _fetch_coinbase_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback sem chave pela Coinbase Exchange public API."""
-        product = COINBASE_PRODUCTS.get(coin.upper())
-        if not product:
-            return None
+        product = COINBASE_PRODUCTS.get(coin.upper(), f"{coin.upper()}-USD")
 
         try:
             days = min(max(self._period_to_days(period), 2), 300)
@@ -247,9 +235,7 @@ class AdvancedCoinAnalyzer:
 
     def _fetch_binance_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback sem chave para moedas grandes quando Yahoo/CoinGecko limitam."""
-        symbol = BINANCE_SYMBOLS.get(coin.upper())
-        if not symbol:
-            return None
+        symbol = BINANCE_SYMBOLS.get(coin.upper(), f"{coin.upper()}USDT")
 
         try:
             limit = min(max(self._period_to_days(period), 2), 1000)
@@ -283,7 +269,7 @@ class AdvancedCoinAnalyzer:
 
     def _fetch_coingecko_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback gratuito para quando o Yahoo Finance falha no Render."""
-        coin_id = COINGECKO_IDS.get(coin.upper())
+        coin_id = self._resolve_coingecko_id(coin)
         if not coin_id:
             print(f"Sem fallback CoinGecko configurado para {coin}")
             return None
@@ -323,6 +309,54 @@ class AdvancedCoinAnalyzer:
         except Exception as e:
             print(f"Erro CoinGecko para {coin}: {e}")
             return None
+
+    def _resolve_coingecko_id(self, coin: str) -> Optional[str]:
+        symbol = (coin or "").strip().upper()
+        if not symbol:
+            return None
+        if symbol in COINGECKO_IDS:
+            return COINGECKO_IDS[symbol]
+        if symbol in COINGECKO_SYMBOL_CACHE:
+            return COINGECKO_SYMBOL_CACHE[symbol]
+
+        try:
+            markets = requests.get(
+                "https://api.coingecko.com/api/v3/coins/markets",
+                params={
+                    "vs_currency": "usd",
+                    "order": "market_cap_desc",
+                    "per_page": 250,
+                    "page": 1,
+                    "sparkline": "false",
+                },
+                timeout=12,
+            )
+            if markets.status_code == 200:
+                for item in markets.json() or []:
+                    if (item.get("symbol") or "").upper() == symbol:
+                        coin_id = item.get("id")
+                        if coin_id:
+                            COINGECKO_SYMBOL_CACHE[symbol] = coin_id
+                            return coin_id
+        except Exception as e:
+            print(f"Erro ao resolver CoinGecko markets para {coin}: {e}")
+
+        try:
+            search = requests.get(
+                "https://api.coingecko.com/api/v3/search",
+                params={"query": symbol},
+                timeout=12,
+            )
+            if search.status_code == 200:
+                matches = search.json().get("coins") or []
+                exact = [item for item in matches if (item.get("symbol") or "").upper() == symbol]
+                chosen = exact[0] if exact else (matches[0] if matches else None)
+                if chosen and chosen.get("id"):
+                    COINGECKO_SYMBOL_CACHE[symbol] = chosen["id"]
+                    return chosen["id"]
+        except Exception as e:
+            print(f"Erro ao resolver CoinGecko search para {coin}: {e}")
+        return None
 
     def _period_to_days(self, period: str) -> int:
         try:

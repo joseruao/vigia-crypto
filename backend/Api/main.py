@@ -136,6 +136,7 @@ def _should_use_coin_analysis(prompt: str) -> bool:
     
     # Se tem análise E (moeda OU é pedido genérico "analisa-me uma criptomoeda")
     if has_analysis:
+        return True
         if has_coin:
             return True
         # Também aceita pedidos genéricos como "analisa-me uma criptomoeda"
@@ -350,8 +351,12 @@ async def chat_stream(req: ChatRequest):
                 
                 if coin:
                     openai_key = os.getenv("OPENAI_API_KEY")
-                    analyzer = AdvancedCoinAnalyzer(openai_api_key=openai_key)
-                    analysis_result = await analyzer.analyze_coin(coin)
+                    try:
+                        from Api.services.crypto_tools import analyze_coin_tool
+                        analysis_result = await analyze_coin_tool(coin)
+                    except Exception:
+                        analyzer = AdvancedCoinAnalyzer(openai_api_key=openai_key)
+                        analysis_result = await analyzer.analyze_coin(coin)
                     
                     if "error" not in analysis_result:
                         def generate_analysis():
