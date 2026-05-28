@@ -58,6 +58,25 @@ BINANCE_SYMBOLS = {
     "SUI": "SUIUSDT",
 }
 
+COINBASE_PRODUCTS = {
+    "BTC": "BTC-USD",
+    "ETH": "ETH-USD",
+    "SOL": "SOL-USD",
+    "XRP": "XRP-USD",
+    "ADA": "ADA-USD",
+    "DOGE": "DOGE-USD",
+    "AVAX": "AVAX-USD",
+    "LINK": "LINK-USD",
+    "DOT": "DOT-USD",
+    "LTC": "LTC-USD",
+    "BCH": "BCH-USD",
+    "NEAR": "NEAR-USD",
+    "APT": "APT-USD",
+    "ARB": "ARB-USD",
+    "OP": "OP-USD",
+    "SUI": "SUI-USD",
+}
+
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
         self.supported_indicators = ['RSI', 'Moving_Averages', 'Support_Resistance', 'Volume', 'Fibonacci', 'Trend']
@@ -104,13 +123,62 @@ class AdvancedCoinAnalyzer:
             
             if hist.empty:
                 print(f"❌ Nenhum dado encontrado para {coin}")
-                return self._fetch_binance_data(coin, period) or self._fetch_coingecko_data(coin, period)
+                return self._fetch_fallback_data(coin, period)
                 
             print(f"✅ Dados obtidos: {len(hist)} candles para {coin}")
             return hist
         except Exception as e:
             print(f"❌ Erro ao buscar dados para {coin}: {e}")
-            return self._fetch_binance_data(coin, period) or self._fetch_coingecko_data(coin, period)
+            return self._fetch_fallback_data(coin, period)
+
+    def _fetch_fallback_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        for fetcher in (self._fetch_coinbase_data, self._fetch_binance_data, self._fetch_coingecko_data):
+            data = fetcher(coin, period)
+            if data is not None:
+                return data
+        return None
+
+    def _fetch_coinbase_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        """Fallback sem chave pela Coinbase Exchange public API."""
+        product = COINBASE_PRODUCTS.get(coin.upper())
+        if not product:
+            return None
+
+        try:
+            days = min(max(self._period_to_days(period), 2), 300)
+            end = datetime.utcnow()
+            start = end - timedelta(days=days)
+            response = requests.get(
+                f"https://api.exchange.coinbase.com/products/{product}/candles",
+                params={
+                    "granularity": 86400,
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
+                },
+                timeout=15,
+            )
+            response.raise_for_status()
+            rows = []
+            for item in response.json() or []:
+                timestamp, low, high, open_price, close, volume = item[:6]
+                rows.append({
+                    "Date": datetime.fromtimestamp(timestamp),
+                    "Open": float(open_price),
+                    "High": float(high),
+                    "Low": float(low),
+                    "Close": float(close),
+                    "Volume": float(volume),
+                })
+
+            if len(rows) < 2:
+                return None
+
+            hist = pd.DataFrame(rows).sort_values("Date").set_index("Date")
+            print(f"Dados obtidos via Coinbase: {len(hist)} candles para {coin}")
+            return hist
+        except Exception as e:
+            print(f"Erro Coinbase para {coin}: {e}")
+            return None
 
     def _fetch_binance_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback sem chave para moedas grandes quando Yahoo/CoinGecko limitam."""
