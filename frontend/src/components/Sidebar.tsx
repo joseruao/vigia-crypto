@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider'
-import { Trash2, Plus, Save } from 'lucide-react'
+import { Trash2, Plus } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 
 function formatDate(ts: number) {
@@ -48,20 +48,8 @@ export function Sidebar() {
     setEditingId(null)
   }
 
-  function exportConversations() {
-    const blob = new Blob([JSON.stringify(conversations, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'conversas.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
-    <aside className="hidden md:flex w-64 flex-col border-r border-zinc-300 bg-white text-black">
+    <aside className="hidden md:flex w-64 flex-col border-r border-zinc-200 bg-white text-black">
       {/* logo topo */}
       <div className="p-4 border-b border-zinc-200">
         <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
@@ -71,7 +59,7 @@ export function Sidebar() {
       <div className="px-3 mt-3 mb-2">
         <button
           onClick={newConversation}
-          className="w-full flex items-center justify-center gap-2 rounded-lg border border-black px-3 py-2 text-sm hover:bg-black hover:text-white transition"
+          className="w-full flex items-center justify-center gap-2 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:border-zinc-900 hover:bg-zinc-950 hover:text-white transition"
         >
           <Plus size={16} />
           <span>Novo chat</span>
@@ -87,9 +75,9 @@ export function Sidebar() {
         {conversations.map((c) => (
           <div
             key={c.id}
-            className={`group flex items-center justify-between rounded px-2 py-1 cursor-pointer ${
+            className={`group flex items-center justify-between rounded-lg px-2 py-2 cursor-pointer ${
               c.id === activeId
-                ? 'bg-zinc-200 font-semibold'
+                ? 'bg-zinc-100 font-semibold'
                 : 'hover:bg-zinc-100'
             }`}
             onClick={() => selectConversation(c.id)}
@@ -135,25 +123,17 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* exportar + limpar */}
-      <div className="p-3 mt-2 border-t border-zinc-200 flex gap-2">
-        <button
-          onClick={exportConversations}
-          className="flex-1 text-xs text-blue-600 hover:underline flex items-center justify-center gap-1"
-        >
-          <Save size={12} /> Exportar
-        </button>
+      <div className="p-3 mt-2 border-t border-zinc-200">
         <button
           onClick={clearAll}
-          className="flex-1 text-xs text-red-600 hover:underline"
+          className="w-full rounded-lg px-3 py-2 text-xs text-zinc-500 hover:bg-red-50 hover:text-red-600"
         >
           Limpar tudo
         </button>
       </div>
 
-      {/* sem login: placeholder simples */}
       <div className="border-t border-zinc-200 p-4 text-center text-xs text-zinc-500 bg-zinc-50">
-        Histórico local • Sem sessão
+        Vigia Crypto · beta
       </div>
     </aside>
   )
