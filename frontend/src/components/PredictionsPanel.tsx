@@ -18,6 +18,7 @@ interface Holding {
   analysis_text?: string;
   ai_analysis?: string;
   chain?: string;
+  ts?: string;
 }
 
 function compactUsd(value?: number) {
@@ -37,6 +38,24 @@ function scoreTone(score?: number) {
   if ((score ?? 0) >= 80) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if ((score ?? 0) >= 65) return 'bg-blue-50 text-blue-700 border-blue-200';
   return 'bg-zinc-50 text-zinc-600 border-zinc-200';
+}
+
+function scoreLabel(score?: number) {
+  if ((score ?? 0) >= 80) return 'Forte';
+  if ((score ?? 0) >= 65) return 'Boa';
+  return 'Observação';
+}
+
+function shortDate(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 async function getPredictions(): Promise<Holding[]> {
@@ -100,6 +119,7 @@ export function PredictionsPanel() {
             <div className="text-xs text-zinc-500">Sem holdings detetados.</div>
           ) : (
             items.map((h) => {
+              const updatedAt = shortDate(h.ts);
               const metrics = [
                 metric('Valor', h.value_usd),
                 metric('Liquidez', h.liquidity),
@@ -114,11 +134,15 @@ export function PredictionsPanel() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate font-semibold text-zinc-900">{h.token}</div>
-                      <div className="text-[10px] text-zinc-500">{h.exchange}</div>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-500">
+                        <span>{h.exchange}</span>
+                        {updatedAt ? <span>{updatedAt}</span> : null}
+                      </div>
                     </div>
                     {h.score ? (
-                      <div className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${scoreTone(h.score)}`}>
-                        {h.score.toFixed(0)}
+                      <div className={`shrink-0 rounded-md border px-2 py-1 text-right ${scoreTone(h.score)}`}>
+                        <div className="text-[10px] font-semibold leading-none">{h.score.toFixed(0)}/100</div>
+                        <div className="mt-0.5 text-[9px] font-medium leading-none opacity-75">{scoreLabel(h.score)}</div>
                       </div>
                     ) : null}
                   </div>

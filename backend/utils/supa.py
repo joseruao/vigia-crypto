@@ -2,6 +2,12 @@
 import os
 import requests
 
+SUPABASE_DEBUG = os.getenv("SUPABASE_DEBUG", "").lower() in {"1", "true", "yes"}
+
+def _debug_print(message: str):
+    if SUPABASE_DEBUG:
+        print(message)
+
 # Função para carregar .env
 def _load_env():
     """Carrega o .env de forma robusta"""
@@ -35,11 +41,11 @@ def _load_env():
                 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
                 
                 print(f"📁 Carregado .env de {env_path}")  # print também para garantir
-                print(f"   load_dotenv retornou: {result}")
+                _debug_print(f"   load_dotenv retornou: {result}")
                 print(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
                 print(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
                 log.info(f"📁 Carregado .env de {env_path}")
-                log.info(f"   load_dotenv retornou: {result}")
+                log.debug(f"   load_dotenv retornou: {result}")
                 log.info(f"   SUPABASE_URL: {'✅' if url else '❌'} ({len(url)} chars)")
                 log.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅' if key else '❌'} ({len(key)} chars)")
                 
@@ -79,7 +85,7 @@ def _load_env():
                 for env_path in env_paths:
                     log.warning(f"   - {env_path} (existe: {env_path.exists()})")
             else:
-                log.info("ℹ️ Em produção (Render) - usando variáveis de ambiente diretamente")
+                log.debug("ℹ️ Em produção (Render) - usando variáveis de ambiente diretamente")
         
         return loaded
     except ImportError:
@@ -125,7 +131,7 @@ def _get_key():
     # Guarda valor atual antes de recarregar
     current_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE", "")
     if current_key:
-        print(f"   _get_key(): Valor atual antes de recarregar: {len(current_key)} chars")
+        log.debug(f"   _get_key(): Valor atual antes de recarregar: {len(current_key)} chars")
     
     # Sempre recarrega para garantir que está atualizado
     _load_env()
@@ -134,7 +140,7 @@ def _get_key():
     # Se foi sobrescrito para vazio, restaura o valor anterior
     if current_key and not key:
         print(f"   ⚠️ PROBLEMA: KEY foi sobrescrito de {len(current_key)} para {len(key)} chars!")
-        print(f"   Restaurando valor anterior...")
+        log.warning(f"   Restaurando valor anterior...")
         os.environ["SUPABASE_SERVICE_ROLE_KEY"] = current_key
         key = current_key
         print(f"   ✅ Valor restaurado: {len(key)} chars")
@@ -166,10 +172,14 @@ def _get_key():
                 os.environ["SUPABASE_SERVICE_ROLE_KEY"] = saved_key
                 key = saved_key
     
+    if key and not SUPABASE_DEBUG:
+        log.debug(f"_get_key() retornou: {len(key)} chars")
+        return key
+
     if key:
         msg = f"✅ _get_key() retornou: {len(key)} chars"
         print(msg)  # print também
-        log.info(msg)
+        log.debug(msg)
     else:
         msg = "❌ _get_key() retornou VAZIO após múltiplas tentativas"
         print(msg)  # print também
