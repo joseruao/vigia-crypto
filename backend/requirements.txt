@@ -18,8 +18,8 @@ numpy==2.1.1
 joblib==1.4.2
 
 # --- Análise gráfica (coin analysis) ---
-yfinance>=0.2.40
-websockets>=13.0
+yfinance==0.2.40
+websockets>=11,<13
 pandas>=2.0.0
 
 # --- OpenAI (se usas) ---
