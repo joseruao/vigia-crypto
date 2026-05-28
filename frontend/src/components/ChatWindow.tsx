@@ -234,11 +234,11 @@ export function ChatWindow() {
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100vh-104px)] overflow-hidden px-4 py-10 sm:py-14">
             <div
-              className="absolute inset-0 bg-cover bg-center opacity-70"
+              className="absolute inset-0 bg-cover bg-center opacity-95"
               style={{ backgroundImage: "url('/hero-bg.png')" }}
               aria-hidden="true"
             />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.14),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.84),rgba(255,255,255,0.96))]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.10),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.86))]" />
             <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
               <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-28 w-auto max-w-[82vw] object-contain opacity-95 sm:h-36" />
               <div className="mb-6 max-w-2xl text-sm leading-6 text-zinc-600 sm:text-base">

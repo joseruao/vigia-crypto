@@ -8,6 +8,36 @@ import yfinance as yf
 from typing import Dict, List, Optional
 import traceback
 
+COINGECKO_IDS = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "XRP": "ripple",
+    "ADA": "cardano",
+    "DOGE": "dogecoin",
+    "AVAX": "avalanche-2",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "POL": "polygon-ecosystem-token",
+    "DOT": "polkadot",
+    "LTC": "litecoin",
+    "BCH": "bitcoin-cash",
+    "XLM": "stellar",
+    "ETC": "ethereum-classic",
+    "ATOM": "cosmos",
+    "NEAR": "near",
+    "APT": "aptos",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "SUI": "sui",
+    "INJ": "injective-protocol",
+    "SEI": "sei-network",
+    "TIA": "celestia",
+    "WIF": "dogwifcoin",
+    "BONK": "bonk",
+}
+
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
         self.supported_indicators = ['RSI', 'Moving_Averages', 'Support_Resistance', 'Volume', 'Fibonacci', 'Trend']
@@ -48,19 +78,74 @@ class AdvancedCoinAnalyzer:
     async def _fetch_coin_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Busca dados históricos da moeda"""
         try:
-            symbol = f"{coin}-USD" if coin.upper() != "BTC" else "BTC-USD"
+            symbol = f"{coin.upper()}-USD"
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period=period)
             
             if hist.empty:
                 print(f"❌ Nenhum dado encontrado para {coin}")
-                return None
+                return self._fetch_coingecko_data(coin, period)
                 
             print(f"✅ Dados obtidos: {len(hist)} candles para {coin}")
             return hist
         except Exception as e:
             print(f"❌ Erro ao buscar dados para {coin}: {e}")
+            return self._fetch_coingecko_data(coin, period)
+
+    def _fetch_coingecko_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        """Fallback gratuito para quando o Yahoo Finance falha no Render."""
+        coin_id = COINGECKO_IDS.get(coin.upper())
+        if not coin_id:
+            print(f"Sem fallback CoinGecko configurado para {coin}")
             return None
+
+        try:
+            days = self._period_to_days(period)
+            response = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+                params={"vs_currency": "usd", "days": days, "interval": "daily"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            prices = payload.get("prices") or []
+            volumes = payload.get("total_volumes") or []
+
+            rows = []
+            for index, item in enumerate(prices):
+                timestamp_ms, price = item
+                volume = volumes[index][1] if index < len(volumes) else 0
+                rows.append({
+                    "Date": datetime.fromtimestamp(timestamp_ms / 1000),
+                    "Open": price,
+                    "High": price,
+                    "Low": price,
+                    "Close": price,
+                    "Volume": volume,
+                })
+
+            if len(rows) < 2:
+                print(f"CoinGecko sem dados suficientes para {coin}")
+                return None
+
+            hist = pd.DataFrame(rows).set_index("Date")
+            print(f"Dados obtidos via CoinGecko: {len(hist)} candles para {coin}")
+            return hist
+        except Exception as e:
+            print(f"Erro CoinGecko para {coin}: {e}")
+            return None
+
+    def _period_to_days(self, period: str) -> int:
+        try:
+            if period.endswith("d"):
+                return max(1, int(period[:-1]))
+            if period.endswith("mo"):
+                return max(1, int(period[:-2]) * 30)
+            if period.endswith("y"):
+                return max(1, int(period[:-1]) * 365)
+        except Exception:
+            pass
+        return 60
     
     async def _calculate_advanced_indicators(self, data: pd.DataFrame, coin: str) -> Dict:
         """Calcula indicadores avançados"""
