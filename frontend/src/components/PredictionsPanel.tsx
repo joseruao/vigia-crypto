@@ -96,12 +96,16 @@ async function getPredictions(): Promise<Holding[]> {
 export function PredictionsPanel() {
   const [items, setItems] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<'pt' | 'en'>('pt');
   const { active } = useChatHistoryContext();
 
   const hasMessages = (active?.messages?.length ?? 0) > 0;
+  const title = lang === 'pt' ? 'Previsões de Listing' : 'Listing Predictions';
 
   useEffect(() => {
     let mounted = true;
+    const browserLang = navigator.language.toLowerCase();
+    setLang(browserLang.startsWith('pt') ? 'pt' : 'en');
 
     (async () => {
       const data = await getPredictions();
@@ -120,9 +124,9 @@ export function PredictionsPanel() {
 
   return (
     <div className="fixed inset-x-3 top-3 z-30 sm:inset-x-auto sm:right-4 sm:top-4 sm:w-80">
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md">
+      <div aria-label={title} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md">
         <div className="border-b border-zinc-100 px-3 py-2">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Previsões de Listing</div>
+          <div className="text-xs uppercase tracking-wide text-zinc-500">{title}</div>
         </div>
 
         <div className="max-h-56 space-y-2 overflow-auto p-3 sm:max-h-80">

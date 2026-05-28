@@ -4,7 +4,6 @@ import json
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import yfinance as yf
 from typing import Dict, List, Optional
 import traceback
 
@@ -36,6 +35,7 @@ COINGECKO_IDS = {
     "TIA": "celestia",
     "WIF": "dogwifcoin",
     "BONK": "bonk",
+    "HYPE": "hyperliquid",
 }
 
 BINANCE_SYMBOLS = {
@@ -85,7 +85,7 @@ class AdvancedCoinAnalyzer:
     async def analyze_coin(self, coin: str, period: str = "60d") -> Dict:
         """Analisa uma moeda com zonas de compra/venda detalhadas"""
         try:
-            print(f"🔍 Analisando {coin}...")
+            print(f"Analisando {coin}...")
             
             # 1. Buscar dados históricos (período maior para melhor análise)
             data = await self._fetch_coin_data(coin, period)
@@ -117,26 +117,58 @@ class AdvancedCoinAnalyzer:
     async def _fetch_coin_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Busca dados históricos da moeda"""
         try:
-            symbol = f"{coin.upper()}-USD"
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=period)
+            return self._fetch_fallback_data(coin, period)
+            hist = pd.DataFrame()
             
             if hist.empty:
-                print(f"❌ Nenhum dado encontrado para {coin}")
+                print(f"Nenhum dado encontrado para {coin}")
                 return self._fetch_fallback_data(coin, period)
                 
-            print(f"✅ Dados obtidos: {len(hist)} candles para {coin}")
+            print(f"Dados obtidos: {len(hist)} candles para {coin}")
             return hist
         except Exception as e:
-            print(f"❌ Erro ao buscar dados para {coin}: {e}")
+            print(f"Erro ao buscar dados para {coin}: {e}")
             return self._fetch_fallback_data(coin, period)
 
     def _fetch_fallback_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
-        for fetcher in (self._fetch_coinbase_data, self._fetch_binance_data, self._fetch_coingecko_data):
+        for fetcher in (self._fetch_coinbase_data, self._fetch_gateio_data, self._fetch_binance_data, self._fetch_coingecko_data):
             data = fetcher(coin, period)
             if data is not None:
                 return data
         return None
+
+    def _fetch_gateio_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
+        """Fallback sem chave para tokens listados na Gate.io, como HYPE."""
+        pair = f"{coin.upper()}_USDT"
+        try:
+            limit = min(max(self._period_to_days(period), 2), 1000)
+            response = requests.get(
+                "https://api.gateio.ws/api/v4/spot/candlesticks",
+                params={"currency_pair": pair, "interval": "1d", "limit": limit},
+                timeout=15,
+            )
+            response.raise_for_status()
+            rows = []
+            for item in response.json() or []:
+                timestamp, volume, close, high, low, open_price = item[:6]
+                rows.append({
+                    "Date": datetime.fromtimestamp(int(timestamp)),
+                    "Open": float(open_price),
+                    "High": float(high),
+                    "Low": float(low),
+                    "Close": float(close),
+                    "Volume": float(volume),
+                })
+
+            if len(rows) < 2:
+                return None
+
+            hist = pd.DataFrame(rows).sort_values("Date").set_index("Date")
+            print(f"Dados obtidos via Gate.io: {len(hist)} candles para {coin}")
+            return hist
+        except Exception as e:
+            print(f"Erro Gate.io para {coin}: {e}")
+            return None
 
     def _fetch_coinbase_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback sem chave pela Coinbase Exchange public API."""

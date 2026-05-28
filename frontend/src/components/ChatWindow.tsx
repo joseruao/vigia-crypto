@@ -20,12 +20,18 @@ export function ChatWindow() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [gotFirstChunk, setGotFirstChunk] = useState(false);
+  const [lang, setLang] = useState<'pt' | 'en'>('pt');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
+
+  useEffect(() => {
+    const browserLang = navigator.language.toLowerCase();
+    setLang(browserLang.startsWith('pt') ? 'pt' : 'en');
+  }, []);
 
   // Em desenvolvimento, usa localhost se estiver em localhost
   const getApiUrl = () => {
@@ -226,6 +232,17 @@ export function ChatWindow() {
   }
 
   const hasMessages = (active?.messages.length ?? 0) > 0;
+  const copy = lang === 'pt'
+    ? {
+        tagline: 'Monitoriza wallets de exchanges, previsões de listings e análise de mercado num só chat.',
+        placeholder: 'Escreve a tua mensagem...',
+        disclaimer: 'Pode cometer erros. Verifica informações importantes.',
+      }
+    : {
+        tagline: 'Track exchange wallets, listing predictions, and market analysis in one chat.',
+        placeholder: 'Ask anything about crypto markets...',
+        disclaimer: 'May make mistakes. Check important information.',
+      };
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -242,7 +259,7 @@ export function ChatWindow() {
             <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
               <img src="/logo_full.png" alt="José Ruão.io" className="mb-6 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
               <div className="mb-6 max-w-2xl text-sm leading-6 text-zinc-600 sm:text-base">
-                Monitoriza wallets de exchanges, previsões de listings e análise de mercado num só chat.
+                {copy.tagline}
               </div>
             <div className="w-full max-w-2xl">
               <Suggestions
@@ -308,7 +325,7 @@ export function ChatWindow() {
                 loading ? 'pl-10' : ''
               }`}
               rows={1}
-              placeholder="Escreve a tua mensagem..."
+              placeholder={copy.placeholder}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
@@ -321,7 +338,7 @@ export function ChatWindow() {
               className={`absolute right-2 bottom-2 p-2 rounded-full transition-colors ${
                 input.trim() && !loading
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'text-gray-400 cursor-not-allowed'
               }`}
               title="Enviar mensagem"
             >
@@ -330,7 +347,7 @@ export function ChatWindow() {
           </div>
 
           <div className="text-[11px] text-gray-500 text-center mt-2">
-            Pode cometer erros. Verifica informações importantes.
+            {copy.disclaimer}
           </div>
         </div>
       </div>

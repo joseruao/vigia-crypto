@@ -17,7 +17,6 @@ numpy==2.1.1
 joblib==1.4.2
 
 # --- Análise gráfica (coin analysis) ---
-yfinance>=0.2.40
 pandas>=2.0.0
 
 # --- OpenAI (se usas) ---

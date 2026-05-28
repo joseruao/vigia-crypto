@@ -31,7 +31,7 @@ async def analyze_coin(req: AnalyzeRequest):
     if not AdvancedCoinAnalyzer:
         raise HTTPException(
             status_code=503,
-            detail="Módulo de análise gráfica não disponível. Verifique se yfinance está instalado."
+            detail="Módulo de análise gráfica não disponível. Verifique as dependências de análise."
         )
     
     try:
