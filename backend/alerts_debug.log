@@ -1,0 +1,598 @@
+2026-05-26 17:27:15,054 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-26 17:27:15,055 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-26 17:27:15,055 - vigia - INFO - ============================================================
+2026-05-26 17:27:15,055 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-26 17:27:15,055 - vigia - INFO - ============================================================
+2026-05-26 17:27:15,055 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-26 17:27:15,056 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-26 17:27:15,057 - vigia - INFO -    load_dotenv retornou: True
+2026-05-26 17:27:15,057 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-26 17:27:15,057 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-26 17:27:15,057 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-26 17:27:15,057 - vigia - INFO -    supa.ok() retornou: False
+2026-05-26 17:27:15,058 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-26 17:27:15,058 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-26 17:27:15,058 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-26 17:27:15,058 - vigia - INFO -    supa.ok(): False
+2026-05-26 17:27:15,058 - vigia - INFO -    has _get_url: True
+2026-05-26 17:27:15,058 - vigia - INFO -    has _get_key: True
+2026-05-26 17:27:15,058 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-26 17:27:15,058 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-26 17:27:15,059 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-26 17:42:53,653 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-26 17:42:53,653 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-26 17:42:53,653 - vigia - INFO - ============================================================
+2026-05-26 17:42:53,654 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-26 17:42:53,654 - vigia - INFO - ============================================================
+2026-05-26 17:42:53,654 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-26 17:42:53,656 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-26 17:42:53,656 - vigia - INFO -    load_dotenv retornou: True
+2026-05-26 17:42:53,656 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-26 17:42:53,656 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-26 17:42:53,657 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-26 17:42:53,657 - vigia - INFO -    supa.ok() retornou: False
+2026-05-26 17:42:53,657 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-26 17:42:53,657 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-26 17:42:53,657 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-26 17:42:53,657 - vigia - INFO -    supa.ok(): False
+2026-05-26 17:42:53,657 - vigia - INFO -    has _get_url: True
+2026-05-26 17:42:53,657 - vigia - INFO -    has _get_key: True
+2026-05-26 17:42:53,657 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-26 17:42:53,657 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-26 17:42:53,657 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-26 17:43:12,913 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-26 17:43:12,913 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-26 17:43:12,913 - vigia - INFO - ============================================================
+2026-05-26 17:43:12,913 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-26 17:43:12,913 - vigia - INFO - ============================================================
+2026-05-26 17:43:12,914 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-26 17:43:12,915 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-26 17:43:12,915 - vigia - INFO -    load_dotenv retornou: True
+2026-05-26 17:43:12,915 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-26 17:43:12,916 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-26 17:43:12,916 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-26 17:43:12,916 - vigia - INFO -    supa.ok() retornou: False
+2026-05-26 17:43:12,916 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-26 17:43:12,917 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-26 17:43:12,917 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-26 17:43:12,917 - vigia - INFO -    supa.ok(): False
+2026-05-26 17:43:12,917 - vigia - INFO -    has _get_url: True
+2026-05-26 17:43:12,918 - vigia - INFO -    has _get_key: True
+2026-05-26 17:43:12,919 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-26 17:43:12,919 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-26 17:43:12,919 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-27 21:37:37,225 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-27 21:37:37,225 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-27 21:37:37,225 - vigia - INFO - ============================================================
+2026-05-27 21:37:37,225 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-27 21:37:37,225 - vigia - INFO - ============================================================
+2026-05-27 21:37:37,226 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-27 21:37:37,227 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-27 21:37:37,227 - vigia - INFO -    load_dotenv retornou: True
+2026-05-27 21:37:37,227 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-27 21:37:37,227 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-27 21:37:37,227 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-27 21:37:37,228 - vigia - INFO -    supa.ok() retornou: False
+2026-05-27 21:37:37,228 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-27 21:37:37,228 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-27 21:37:37,228 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-27 21:37:37,228 - vigia - INFO -    supa.ok(): False
+2026-05-27 21:37:37,228 - vigia - INFO -    has _get_url: True
+2026-05-27 21:37:37,228 - vigia - INFO -    has _get_key: True
+2026-05-27 21:37:37,228 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-27 21:37:37,228 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-27 21:37:37,228 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-27 21:50:45,071 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-27 21:50:45,071 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-27 21:50:45,071 - vigia - INFO - ============================================================
+2026-05-27 21:50:45,071 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-27 21:50:45,071 - vigia - INFO - ============================================================
+2026-05-27 21:50:45,072 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-27 21:50:45,073 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-27 21:50:45,074 - vigia - INFO -    load_dotenv retornou: True
+2026-05-27 21:50:45,074 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-27 21:50:45,074 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-27 21:50:45,074 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-27 21:50:45,074 - vigia - INFO -    supa.ok() retornou: False
+2026-05-27 21:50:45,074 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-27 21:50:45,074 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-27 21:50:45,074 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-27 21:50:45,075 - vigia - INFO -    supa.ok(): False
+2026-05-27 21:50:45,075 - vigia - INFO -    has _get_url: True
+2026-05-27 21:50:45,075 - vigia - INFO -    has _get_key: True
+2026-05-27 21:50:45,075 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-27 21:50:45,075 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-27 21:50:45,075 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-27 21:52:57,800 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-27 21:52:57,800 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-27 21:52:57,800 - vigia - INFO - ============================================================
+2026-05-27 21:52:57,800 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-27 21:52:57,801 - vigia - INFO - ============================================================
+2026-05-27 21:52:57,802 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-27 21:52:57,804 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-27 21:52:57,804 - vigia - INFO -    load_dotenv retornou: True
+2026-05-27 21:52:57,804 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-27 21:52:57,805 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-27 21:52:57,805 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-27 21:52:57,805 - vigia - INFO -    supa.ok() retornou: False
+2026-05-27 21:52:57,805 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-27 21:52:57,805 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-27 21:52:57,806 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-27 21:52:57,806 - vigia - INFO -    supa.ok(): False
+2026-05-27 21:52:57,806 - vigia - INFO -    has _get_url: True
+2026-05-27 21:52:57,806 - vigia - INFO -    has _get_key: True
+2026-05-27 21:52:57,806 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-27 21:52:57,806 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-27 21:52:57,806 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 03:10:30,308 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 03:10:30,308 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 03:10:30,308 - vigia - INFO - ============================================================
+2026-05-28 03:10:30,309 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 03:10:30,309 - vigia - INFO - ============================================================
+2026-05-28 03:10:30,309 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 03:10:30,310 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 03:10:30,310 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 03:10:30,310 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 03:10:30,310 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 03:10:30,311 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 03:10:30,311 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 03:10:30,311 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 03:10:30,311 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 03:10:30,311 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 03:10:30,311 - vigia - INFO -    supa.ok(): False
+2026-05-28 03:10:30,311 - vigia - INFO -    has _get_url: True
+2026-05-28 03:10:30,311 - vigia - INFO -    has _get_key: True
+2026-05-28 03:10:30,311 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 03:10:30,312 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 03:10:30,312 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 03:58:09,341 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 03:58:09,342 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 03:58:09,342 - vigia - INFO - ============================================================
+2026-05-28 03:58:09,342 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 03:58:09,342 - vigia - INFO - ============================================================
+2026-05-28 03:58:09,342 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 03:58:09,344 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 03:58:09,344 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 03:58:09,344 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 03:58:09,344 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 03:58:09,345 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 03:58:09,345 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 03:58:09,345 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 03:58:09,345 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 03:58:09,345 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 03:58:09,345 - vigia - INFO -    supa.ok(): False
+2026-05-28 03:58:09,345 - vigia - INFO -    has _get_url: True
+2026-05-28 03:58:09,345 - vigia - INFO -    has _get_key: True
+2026-05-28 03:58:09,346 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 03:58:09,346 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 03:58:09,346 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 04:14:49,967 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 04:14:49,968 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 04:14:49,968 - vigia - INFO - ============================================================
+2026-05-28 04:14:49,968 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 04:14:49,968 - vigia - INFO - ============================================================
+2026-05-28 04:14:49,969 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 04:14:49,970 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 04:14:49,971 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 04:14:49,971 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 04:14:49,971 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 04:14:49,971 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 04:14:49,972 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 04:14:49,972 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 04:14:49,972 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 04:14:49,972 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 04:14:49,972 - vigia - INFO -    supa.ok(): False
+2026-05-28 04:14:49,972 - vigia - INFO -    has _get_url: True
+2026-05-28 04:14:49,972 - vigia - INFO -    has _get_key: True
+2026-05-28 04:14:49,972 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 04:14:49,972 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 04:14:49,972 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 04:23:20,121 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 04:23:20,122 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 04:23:20,122 - vigia - INFO - ============================================================
+2026-05-28 04:23:20,122 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 04:23:20,122 - vigia - INFO - ============================================================
+2026-05-28 04:23:20,122 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 04:23:20,123 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 04:23:20,123 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 04:23:20,123 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 04:23:20,124 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 04:23:20,124 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 04:23:20,124 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 04:23:20,124 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 04:23:20,124 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 04:23:20,124 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 04:23:20,124 - vigia - INFO -    supa.ok(): False
+2026-05-28 04:23:20,124 - vigia - INFO -    has _get_url: True
+2026-05-28 04:23:20,124 - vigia - INFO -    has _get_key: True
+2026-05-28 04:23:20,124 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 04:23:20,125 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 04:23:20,125 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 04:34:21,924 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 04:34:21,924 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 04:34:21,924 - vigia - INFO - ============================================================
+2026-05-28 04:34:21,924 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 04:34:21,924 - vigia - INFO - ============================================================
+2026-05-28 04:34:21,924 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 04:34:21,926 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 04:34:21,926 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 04:34:21,926 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 04:34:21,927 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 04:34:21,927 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 04:34:21,927 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 04:34:21,927 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 04:34:21,927 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 04:34:21,927 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 04:34:21,927 - vigia - INFO -    supa.ok(): False
+2026-05-28 04:34:21,927 - vigia - INFO -    has _get_url: True
+2026-05-28 04:34:21,927 - vigia - INFO -    has _get_key: True
+2026-05-28 04:34:21,927 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 04:34:21,928 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 04:34:21,928 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 04:44:38,509 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 04:44:38,509 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 04:44:38,509 - vigia - INFO - ============================================================
+2026-05-28 04:44:38,509 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 04:44:38,509 - vigia - INFO - ============================================================
+2026-05-28 04:44:38,510 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 04:44:38,512 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 04:44:38,513 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 04:44:38,513 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 04:44:38,513 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 04:44:38,513 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 04:44:38,514 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 04:44:38,514 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 04:44:38,514 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 04:44:38,514 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 04:44:38,514 - vigia - INFO -    supa.ok(): False
+2026-05-28 04:44:38,514 - vigia - INFO -    has _get_url: True
+2026-05-28 04:44:38,514 - vigia - INFO -    has _get_key: True
+2026-05-28 04:44:38,514 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 04:44:38,514 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 04:44:38,514 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 19:36:07,827 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 19:36:07,827 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 19:36:07,827 - vigia - INFO - ============================================================
+2026-05-28 19:36:07,827 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 19:36:07,827 - vigia - INFO - ============================================================
+2026-05-28 19:36:07,828 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 19:36:07,829 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 19:36:07,830 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 19:36:07,830 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 19:36:07,830 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 19:36:07,830 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 19:36:07,830 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 19:36:07,831 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 19:36:07,831 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 19:36:07,831 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 19:36:07,831 - vigia - INFO -    supa.ok(): False
+2026-05-28 19:36:07,831 - vigia - INFO -    has _get_url: True
+2026-05-28 19:36:07,831 - vigia - INFO -    has _get_key: True
+2026-05-28 19:36:07,831 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 19:36:07,831 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 19:36:07,831 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 19:38:56,526 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 19:38:56,526 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 19:38:56,526 - vigia - INFO - ============================================================
+2026-05-28 19:38:56,526 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 19:38:56,526 - vigia - INFO - ============================================================
+2026-05-28 19:38:56,526 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 19:38:56,528 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 19:38:56,528 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 19:38:56,528 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 19:38:56,528 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 19:38:56,528 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 19:38:56,528 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 19:38:56,528 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 19:38:56,528 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 19:38:56,529 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 19:38:56,529 - vigia - INFO -    supa.ok(): False
+2026-05-28 19:38:56,529 - vigia - INFO -    has _get_url: True
+2026-05-28 19:38:56,529 - vigia - INFO -    has _get_key: True
+2026-05-28 19:38:56,529 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 19:38:56,529 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 19:38:56,529 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 19:50:53,855 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 19:50:53,855 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 19:50:53,855 - vigia - INFO - ============================================================
+2026-05-28 19:50:53,855 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 19:50:53,855 - vigia - INFO - ============================================================
+2026-05-28 19:50:53,856 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 19:50:53,857 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 19:50:53,857 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 19:50:53,857 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 19:50:53,858 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 19:50:53,858 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 19:50:53,858 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 19:50:53,858 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 19:50:53,858 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 19:50:53,858 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 19:50:53,858 - vigia - INFO -    supa.ok(): False
+2026-05-28 19:50:53,858 - vigia - INFO -    has _get_url: True
+2026-05-28 19:50:53,859 - vigia - INFO -    has _get_key: True
+2026-05-28 19:50:53,859 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 19:50:53,859 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 19:50:53,859 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 19:51:46,054 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 19:51:46,054 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 19:51:46,054 - vigia - INFO - ============================================================
+2026-05-28 19:51:46,054 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 19:51:46,054 - vigia - INFO - ============================================================
+2026-05-28 19:51:46,055 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 19:51:46,056 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 19:51:46,056 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 19:51:46,056 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 19:51:46,057 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 19:51:46,057 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 19:51:46,057 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 19:51:46,057 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 19:51:46,057 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 19:51:46,057 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 19:51:46,058 - vigia - INFO -    supa.ok(): False
+2026-05-28 19:51:46,058 - vigia - INFO -    has _get_url: True
+2026-05-28 19:51:46,058 - vigia - INFO -    has _get_key: True
+2026-05-28 19:51:46,058 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 19:51:46,058 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 19:51:46,058 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 19:59:05,071 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 19:59:05,071 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 19:59:05,072 - vigia - INFO - ============================================================
+2026-05-28 19:59:05,072 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 19:59:05,072 - vigia - INFO - ============================================================
+2026-05-28 19:59:05,073 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 19:59:05,074 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 19:59:05,074 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 19:59:05,074 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 19:59:05,075 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 19:59:05,075 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 19:59:05,075 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 19:59:05,075 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 19:59:05,075 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 19:59:05,075 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 19:59:05,075 - vigia - INFO -    supa.ok(): False
+2026-05-28 19:59:05,075 - vigia - INFO -    has _get_url: True
+2026-05-28 19:59:05,075 - vigia - INFO -    has _get_key: True
+2026-05-28 19:59:05,075 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 19:59:05,075 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 19:59:05,076 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:16:31,048 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:16:31,048 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:16:31,048 - vigia - INFO - ============================================================
+2026-05-28 20:16:31,048 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:16:31,048 - vigia - INFO - ============================================================
+2026-05-28 20:16:31,049 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:16:31,050 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:16:31,050 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:16:31,051 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:16:31,051 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:16:31,051 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:16:31,051 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:16:31,051 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:16:31,051 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:16:31,051 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:16:31,051 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:16:31,051 - vigia - INFO -    has _get_url: True
+2026-05-28 20:16:31,052 - vigia - INFO -    has _get_key: True
+2026-05-28 20:16:31,052 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:16:31,052 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:16:31,052 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:17:58,798 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:17:58,798 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:17:58,798 - vigia - INFO - ============================================================
+2026-05-28 20:17:58,798 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:17:58,798 - vigia - INFO - ============================================================
+2026-05-28 20:17:58,799 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:17:58,800 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:17:58,800 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:17:58,800 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:17:58,801 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:17:58,801 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:17:58,801 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:17:58,801 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:17:58,801 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:17:58,801 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:17:58,801 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:17:58,801 - vigia - INFO -    has _get_url: True
+2026-05-28 20:17:58,801 - vigia - INFO -    has _get_key: True
+2026-05-28 20:17:58,802 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:17:58,802 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:17:58,802 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:25:00,825 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:25:00,825 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:25:00,826 - vigia - INFO - ============================================================
+2026-05-28 20:25:00,826 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:25:00,826 - vigia - INFO - ============================================================
+2026-05-28 20:25:00,826 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:25:00,827 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:25:00,828 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:25:00,828 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:25:00,828 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:25:00,828 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:25:00,828 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:25:00,829 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:25:00,829 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:25:00,829 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:25:00,829 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:25:00,829 - vigia - INFO -    has _get_url: True
+2026-05-28 20:25:00,829 - vigia - INFO -    has _get_key: True
+2026-05-28 20:25:00,829 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:25:00,829 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:25:00,829 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:25:51,528 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:25:51,528 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:25:51,528 - vigia - INFO - ============================================================
+2026-05-28 20:25:51,528 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:25:51,528 - vigia - INFO - ============================================================
+2026-05-28 20:25:51,529 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:25:51,530 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:25:51,530 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:25:51,530 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:25:51,531 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:25:51,531 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:25:51,531 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:25:51,531 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:25:51,531 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:25:51,531 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:25:51,531 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:25:51,531 - vigia - INFO -    has _get_url: True
+2026-05-28 20:25:51,531 - vigia - INFO -    has _get_key: True
+2026-05-28 20:25:51,531 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:25:51,532 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:25:51,532 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:33:45,597 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:33:45,597 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:33:45,597 - vigia - INFO - ============================================================
+2026-05-28 20:33:45,597 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:33:45,597 - vigia - INFO - ============================================================
+2026-05-28 20:33:45,597 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:33:45,599 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:33:45,599 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:33:45,599 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:33:45,599 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:33:45,599 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:33:45,600 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:33:45,600 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:33:45,600 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:33:45,600 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:33:45,600 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:33:45,600 - vigia - INFO -    has _get_url: True
+2026-05-28 20:33:45,600 - vigia - INFO -    has _get_key: True
+2026-05-28 20:33:45,600 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:33:45,600 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:33:45,600 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False
+2026-05-28 20:34:55,251 - vigia - INFO - 
+================================================================================
+🚀 ENDPOINT /alerts/ask CHAMADO!
+📝 Pergunta: que tokens a binance tem em holding
+================================================================================
+
+2026-05-28 20:34:55,251 - vigia - INFO - Payload completo: prompt='que tokens a binance tem em holding'
+2026-05-28 20:34:55,251 - vigia - INFO - ============================================================
+2026-05-28 20:34:55,251 - vigia - INFO - 🔍 VERIFICANDO CONFIGURAÇÃO SUPABASE NO /alerts/ask
+2026-05-28 20:34:55,251 - vigia - INFO - ============================================================
+2026-05-28 20:34:55,252 - vigia - INFO - 📁 Tentando carregar .env manualmente...
+2026-05-28 20:34:55,253 - vigia - INFO -    ✅ Carregado de: C:\Users\joser\vigia_crypto\backend\.env
+2026-05-28 20:34:55,253 - vigia - INFO -    load_dotenv retornou: True
+2026-05-28 20:34:55,254 - vigia - INFO -    Após carregar: URL=✅ (40 chars), KEY=✅ (208 chars)
+2026-05-28 20:34:55,254 - vigia - INFO -    No ficheiro: KEY=✅ (208 chars)
+2026-05-28 20:34:55,254 - vigia - INFO - 🔍 Chamando supa.ok()...
+2026-05-28 20:34:55,254 - vigia - INFO -    supa.ok() retornou: False
+2026-05-28 20:34:55,254 - vigia - INFO - 🔍 Debug Supabase no /alerts/ask:
+2026-05-28 20:34:55,254 - vigia - INFO -    URL: ✅ (40 chars)
+2026-05-28 20:34:55,255 - vigia - INFO -    KEY: ✅ (208 chars)
+2026-05-28 20:34:55,255 - vigia - INFO -    supa.ok(): False
+2026-05-28 20:34:55,255 - vigia - INFO -    has _get_url: True
+2026-05-28 20:34:55,255 - vigia - INFO -    has _get_key: True
+2026-05-28 20:34:55,255 - vigia - INFO -    URL preview: https://qynnajpvxnqcmkzrhpde.s...
+2026-05-28 20:34:55,255 - vigia - INFO -    KEY preview: eyJhbGciOiJIUzI1NiIs...
+2026-05-28 20:34:55,255 - vigia - ERROR - ❌ Supabase não configurado! URL: True (40 chars), KEY: True (208 chars), supa.ok()=False

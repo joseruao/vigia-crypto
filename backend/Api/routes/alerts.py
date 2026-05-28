@@ -1,6 +1,6 @@
 # backend/Api/routes/alerts.py
 from __future__ import annotations
-import os, time
+import os, time, math
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
@@ -78,6 +78,63 @@ def _score(row: Dict[str, Any]) -> float:
         return float(row.get("score") or 0)
     except (TypeError, ValueError):
         return 0.0
+
+def _num(row: Dict[str, Any], key: str) -> float:
+    try:
+        return float(row.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+def _freshness_bonus(row: Dict[str, Any]) -> float:
+    try:
+        ts_raw = str(row.get("ts") or "")
+        if not ts_raw:
+            return 0.0
+        ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+        age_hours = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 3600
+        if age_hours <= 24:
+            return 6.0
+        if age_hours <= 72:
+            return 3.0
+        return 0.0
+    except Exception:
+        return 0.0
+
+def _listing_score(row: Dict[str, Any]) -> float:
+    """Score continuo para UI/chat; evita dezenas de candidatos empatados em 70."""
+    value_usd = _num(row, "value_usd")
+    liquidity = _num(row, "liquidity")
+    volume_24h = _num(row, "volume_24h")
+    raw_score = _score(row)
+
+    score = 22.0
+    if value_usd > 0:
+        score += min(24.0, math.log10(value_usd + 1) * 3.6)
+    else:
+        score -= 8.0
+
+    if liquidity > 0:
+        score += min(24.0, math.log10(liquidity + 1) * 3.2)
+    if liquidity < 100_000:
+        score -= 8.0
+
+    if volume_24h > 0:
+        score += min(14.0, math.log10(volume_24h + 1) * 2.1)
+
+    if row.get("pair_url"):
+        score += 2.0
+    score += _freshness_bonus(row)
+
+    # Mantem algum sinal do score original, mas sem deixar o 70 dominar tudo.
+    score = score * 0.82 + raw_score * 0.18
+    lower_bound = 50.0 if raw_score >= 50 else 0.0
+    return round(min(max(score, lower_bound), 99.0), 1)
+
+def _apply_listing_score(row: Dict[str, Any]) -> Dict[str, Any]:
+    updated = dict(row)
+    updated["raw_score"] = _score(row)
+    updated["score"] = _listing_score(row)
+    return updated
 
 def _normalize_exchange(exchange: str) -> str:
     exchange = str(exchange or "").strip()
@@ -158,7 +215,7 @@ def _filter_prediction_rows(
     min_score: float = 50,
 ) -> List[Dict[str, Any]]:
     filtered = [
-        row for row in rows
+        _apply_listing_score(row) for row in rows
         if _score(row) >= min_score
         and not _is_test_token(row)
         and not _is_listed_on_own_exchange(row, listed_tokens)
@@ -718,6 +775,8 @@ def ask_alerts(payload: AskIn):
     
     log.info(f"Holdings filtrados: {len(out)}")
 
+    out = [_apply_listing_score(row) for row in out]
+
     # Ordena por score desc
     out = _dedupe_latest_predictions(out)
 
@@ -738,6 +797,7 @@ def ask_alerts(payload: AskIn):
                 if _score(row) < min_score:
                     continue
                 fallback_out.append(row)
+            fallback_out = [_apply_listing_score(row) for row in fallback_out]
             out = _dedupe_latest_predictions(fallback_out)
             log.info(f"Fallback historico filtrado no ask: {len(out)}")
 

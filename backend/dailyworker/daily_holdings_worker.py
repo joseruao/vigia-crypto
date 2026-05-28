@@ -4,6 +4,7 @@ import json
 import asyncio
 from datetime import datetime
 import os
+import math
 # ===========================
 # CONFIGURAÇÃO
 # ===========================
@@ -275,11 +276,31 @@ def calculate_holding_score(holding_data, exchange_name):
     liquidity = holding_data['liquidity']
     volume_24h = holding_data['volume_24h']
     
-    # Base score BAIXA - somos exigentes!
-    score = 30
-    
     # Threshold específico por exchange
     threshold = HOLDING_THRESHOLDS.get(exchange_name, 100000)
+
+    # Score continuo: diferencia candidatos sem empatar quase tudo em 70/90.
+    score = 22.0
+    if value_usd > 0:
+        score += min(28.0, math.log10(value_usd + 1) * 3.8)
+        score += min(10.0, (value_usd / max(threshold, 1)) * 4.0)
+    else:
+        score -= 8.0
+
+    if liquidity > 0:
+        score += min(24.0, math.log10(liquidity + 1) * 3.2)
+    if liquidity < MIN_LIQUIDITY:
+        score -= 10.0
+
+    if volume_24h > 0:
+        score += min(14.0, math.log10(volume_24h + 1) * 2.1)
+    if volume_24h < 100000:
+        score -= 6.0
+
+    if not is_token_listed_on_exchange(token_symbol, exchange_name):
+        score += 4.0
+
+    return round(min(max(score, 0), 100), 1)
     
     # 1. VALOR (PESO MÁXIMO)
     if value_usd > threshold * 3:  # 3x acima do threshold

@@ -507,6 +507,38 @@ class CryptoAIAnalyzer:
         ]], dtype=float)
         return feats
 
+    def _heuristic_listing_score(self, token_data: Dict[str, Any], is_new_token: bool) -> float:
+        liquidity = float(token_data.get('liquidity', 0) or 0)
+        volume_24h = float(token_data.get('volume_24h', 0) or 0)
+        value_usd = float(token_data.get('value_usd', 0) or 0)
+        buys = float(token_data.get('txns_buys', 1) or 1)
+        sells = float(token_data.get('txns_sells', 1) or 1)
+        buy_ratio = buys / max(sells, 1)
+
+        score = 20.0
+        if value_usd > 0:
+            score += min(24.0, math.log10(value_usd + 1) * 3.5)
+        else:
+            score -= 8.0
+
+        if liquidity > 0:
+            score += min(24.0, math.log10(liquidity + 1) * 3.1)
+        if liquidity < 100_000:
+            score -= 8.0
+
+        if volume_24h > 0:
+            score += min(14.0, math.log10(volume_24h + 1) * 2.0)
+
+        if buy_ratio >= 2.0:
+            score += 5.0
+        elif buy_ratio < 0.75:
+            score -= 5.0
+
+        if is_new_token:
+            score += 3.0
+
+        return min(max(score, 0.0), 99.0)
+
     def predict_listing_potential(self, token_data: Dict[str, Any], exchange_name: str, token_symbol: str):
         try:
             is_new = not is_token_listed_on_exchange(token_symbol, exchange_name)
@@ -514,9 +546,11 @@ class CryptoAIAnalyzer:
             Xs = self.scaler.transform(X)
             proba = self.model.predict_proba(Xs)[0]
             p1 = float(proba[1])*100.0
+            heuristic = self._heuristic_listing_score(token_data, is_new)
+            score = round((p1 * 0.55) + (heuristic * 0.45), 1)
             return {
                 'listing_probability': p1,
-                'score': p1,
+                'score': score,
                 'confidence': float(max(proba))*100.0,
                 'is_new_token': is_new
             }
