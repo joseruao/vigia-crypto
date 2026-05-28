@@ -125,6 +125,64 @@ def version():
 class ChatRequest(BaseModel):
     prompt: str
 
+LAST_COIN_ANALYSIS: dict = {}
+
+def _is_trade_followup(prompt: str) -> bool:
+    prompt_lower = prompt.lower()
+    decision_terms = [
+        "compro", "comprar", "boa compra", "bom comprar", "vale a pena",
+        "entro", "entrada", "buy", "should i buy", "is it good to buy",
+    ]
+    return any(term in prompt_lower for term in decision_terms)
+
+def _format_trade_followup(prompt: str):
+    cached = LAST_COIN_ANALYSIS or {}
+    coin = cached.get("coin")
+    result = cached.get("result") or {}
+    if not coin or not result:
+        return None
+
+    analysis = result.get("analysis", {}) or {}
+    zones = result.get("trading_zones", {}) or {}
+    recs = result.get("recommendations", {}) or {}
+    strategy = recs.get("estrategia_trading", {}) or {}
+    sr = analysis.get("support_resistance", {}) or {}
+    action, summary = _analysis_stance(analysis, zones, recs)
+
+    rsi = float(analysis.get("rsi") or 50)
+    position = float(sr.get("current_position") or 50)
+    current_zone = _human_zone(zones.get("posicao_atual"))
+    current_price = _fmt_price(result.get("current_price"))
+    stop_loss = _fmt_price(strategy.get("stop_loss")) if strategy.get("stop_loss") else "N/A"
+    targets = strategy.get("targets") or []
+
+    if action.startswith("AGUARDAR"):
+        decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
+    elif rsi >= 68 or position >= 75:
+        decision = "Eu so consideraria entrada faseada, porque o preco ja esta um pouco esticado."
+    elif "COMPRA" in action.upper():
+        decision = "Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in."
+    else:
+        decision = "Eu trataria como observacao ate aparecer uma entrada mais clara."
+
+    def generate():
+        yield f"Com base na ultima analise de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"**{decision}**\n\n"
+        yield f"- Preco atual: **{current_price}**\n"
+        yield f"- Zona atual: **{current_zone}**\n"
+        yield f"- RSI: **{analysis.get('rsi', 'N/A')}**\n"
+        yield f"- Sinal tecnico: **{action}**\n"
+        yield f"- Motivo: {summary}\n"
+        if stop_loss != "N/A":
+            yield f"- Invalida se perder: **{stop_loss}**\n"
+        if targets:
+            yield "- Zonas de realizacao:\n"
+            for target in targets[:3]:
+                yield f"  - {target}\n"
+        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
+
+    return generate
+
 def _should_use_coin_analysis(prompt: str) -> bool:
     """Verifica se o prompt pede análise gráfica de moeda"""
     prompt_lower = prompt.lower()
@@ -289,6 +347,10 @@ async def chat_stream(req: ChatRequest):
     Detecta pedidos de análise gráfica e integra automaticamente.
     """
     try:
+        if _is_trade_followup(req.prompt):
+            followup = _format_trade_followup(req.prompt)
+            if followup:
+                return StreamingResponse(followup(), media_type="text/plain")
         # Verifica se é pedido de análise gráfica
         if _should_use_coin_analysis(req.prompt):
             try:
@@ -359,6 +421,9 @@ async def chat_stream(req: ChatRequest):
                         analysis_result = await analyzer.analyze_coin(coin)
                     
                     if "error" not in analysis_result:
+                        LAST_COIN_ANALYSIS.clear()
+                        LAST_COIN_ANALYSIS.update({"coin": coin, "result": analysis_result})
+
                         def generate_analysis():
                             yield from _format_coin_analysis(coin, analysis_result)
                             return
