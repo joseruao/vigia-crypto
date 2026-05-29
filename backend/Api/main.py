@@ -185,6 +185,63 @@ def _extract_entry_price(prompt: str) -> float | None:
 def _is_entry_price_followup(prompt: str) -> bool:
     return _extract_entry_price(prompt) is not None
 
+def _extract_position_size(prompt: str, coin: str | None = None) -> dict | None:
+    text = prompt or ""
+    fiat_patterns = [
+        r"(?:tenho|posi[cç][aã]o(?:\s+de)?|investi|meti|entrei\s+com)\s*(?:cerca\s+de\s*)?(?:€|\$)?\s*([\d]+(?:[,.]\d+)?)\s*(€|eur|euros|usd|dolares|dólares|\$)",
+        r"(?:€|\$)\s*([\d]+(?:[,.]\d+)?)\s*(?:em|de)?\s*(?:posi[cç][aã]o|investidos?)?",
+    ]
+    for pattern in fiat_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            amount = _parse_number_text(match.group(1))
+            if amount is not None:
+                return {"type": "fiat", "amount": amount}
+
+    symbol = re.escape((coin or "").upper())
+    unit_patterns = []
+    if symbol:
+        unit_patterns.extend([
+            rf"(?:tenho|posi[cç][aã]o(?:\s+de)?)\s*([\d]+(?:[,.]\d+)?)\s*{symbol}\b",
+            rf"([\d]+(?:[,.]\d+)?)\s*{symbol}\b",
+        ])
+    unit_patterns.append(r"(?:tenho|posi[cç][aã]o(?:\s+de)?)\s*([\d]+(?:[,.]\d+)?)\s*(?:moedas|tokens|coins|unidades)")
+
+    for pattern in unit_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            amount = _parse_number_text(match.group(1))
+            if amount is not None:
+                return {"type": "units", "amount": amount}
+    return None
+
+def _position_summary(position: dict | None, entry_price: float | None, current_price: float | None) -> dict:
+    if not position or not entry_price or not current_price:
+        return {}
+
+    amount = position.get("amount")
+    if not amount:
+        return {}
+
+    if position.get("type") == "fiat":
+        invested = float(amount)
+        units = invested / entry_price if entry_price else None
+        current_value = units * current_price if units is not None else None
+    else:
+        units = float(amount)
+        invested = units * entry_price
+        current_value = units * current_price
+
+    pnl_value = current_value - invested if current_value is not None else None
+    pnl_pct = (pnl_value / invested) * 100 if invested else None
+    return {
+        "units": units,
+        "invested": invested,
+        "current_value": current_value,
+        "pnl_value": pnl_value,
+        "pnl_pct": pnl_pct,
+    }
+
 def _normalize_coin_symbol(symbol: str | None) -> str | None:
     if not symbol:
         return None
@@ -299,6 +356,8 @@ def _format_snapshot_followup(prompt: str, coin: str, content: str, side: str = 
     risk = _snapshot_risk_label(liquidity, volume)
     entry_price = _extract_entry_price(prompt)
     current_value = _parse_number_text(price)
+    position = _extract_position_size(prompt, coin)
+    position_summary = _position_summary(position, entry_price, current_value)
 
     def generate_buy():
         yield f"Com base no snapshot DexScreener de **{coin}**:\n\n"
@@ -335,6 +394,11 @@ def _format_snapshot_followup(prompt: str, coin: str, content: str, side: str = 
         yield f"- Teu preco medio: **{_fmt_price(entry_price)}**\n"
         if pnl_pct is not None:
             yield f"- Resultado aproximado: **{pnl_pct:.1f}%**\n"
+        if position_summary:
+            yield f"- Quantidade estimada: **{position_summary['units']:.4g} {coin}**\n"
+            yield f"- Capital investido: **{_fmt_money(position_summary['invested'])}**\n"
+            yield f"- Valor atual estimado: **{_fmt_money(position_summary['current_value'])}**\n"
+            yield f"- PnL estimado: **{_fmt_money(position_summary['pnl_value'])} ({position_summary['pnl_pct']:.1f}%)**\n"
         yield f"- Liquidez: **{liquidity_text}**\n"
         yield f"- Volume 24h: **{volume_text}**\n"
         yield f"- Risco: **{risk}**\n"
@@ -441,6 +505,8 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     pnl_pct = None
     if current_value and entry_price:
         pnl_pct = ((current_value - entry_price) / entry_price) * 100
+    position = _extract_position_size(prompt, coin)
+    position_summary = _position_summary(position, entry_price, current_value)
 
     if pnl_pct is not None and pnl_pct < -10:
         decision = "Como estas em perda, eu nao trataria isto como realizacao de lucro. A decisao passa por gerir risco: vender parcial se a tese mudou, ou esperar recuperacao tecnica se ainda acreditas no setup."
@@ -458,12 +524,22 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
         yield f"- Teu preco medio: **{_fmt_price(entry_price)}**\n"
         if pnl_pct is not None:
             yield f"- Resultado aproximado: **{pnl_pct:.1f}%**\n"
+        if position_summary:
+            yield f"- Quantidade estimada: **{position_summary['units']:.4g} {coin}**\n"
+            yield f"- Capital investido: **{_fmt_money(position_summary['invested'])}**\n"
+            yield f"- Valor atual estimado: **{_fmt_money(position_summary['current_value'])}**\n"
+            yield f"- PnL estimado: **{_fmt_money(position_summary['pnl_value'])} ({position_summary['pnl_pct']:.1f}%)**\n"
         yield f"- Zona atual: **{zone}**\n"
         yield f"- RSI: **{rsi}**\n"
         if target_matches:
             yield "- Zonas de venda/realizacao:\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
+            if position_summary and position_summary.get("current_value"):
+                yield "- Plano faseado possivel:\n"
+                yield f"  - 30% da posicao: ~{_fmt_money(position_summary['current_value'] * 0.30)}\n"
+                yield f"  - 50% da posicao: ~{_fmt_money(position_summary['current_value'] * 0.50)}\n"
+                yield f"  - 20% restante: deixar correr se mantiver forca\n"
         else:
             yield "- Nao encontrei targets claros na ultima analise.\n"
 
