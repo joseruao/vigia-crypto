@@ -151,6 +151,24 @@ def _is_sell_followup(prompt: str) -> bool:
     ]
     return any(term in prompt_lower for term in sell_terms)
 
+def _parse_number_text(value: str) -> float | None:
+    try:
+        cleaned = re.sub(r"[^\d,.\-]", "", value or "").replace(",", ".")
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+def _extract_entry_price(prompt: str) -> float | None:
+    patterns = [
+        r"(?:comprei|compra|entrada|preco medio|preço médio|medio|m[eé]dio)\s*(?:a|ao|em|foi|:)?\s*\$?\s*([\d]+(?:[,.]\d+)?)",
+        r"\$?\s*([\d]+(?:[,.]\d+)?)\s*(?:de entrada|preco medio|preço médio|medio|m[eé]dio)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, prompt, re.IGNORECASE)
+        if match:
+            return _parse_number_text(match.group(1))
+    return None
+
 def _is_analysis_detail_followup(prompt: str) -> bool:
     prompt_lower = prompt.lower()
     detail_terms = [
@@ -240,7 +258,7 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
 
     return generate
 
-def _format_text_sell_followup(history: list[ChatHistoryMessage]):
+def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
@@ -259,8 +277,25 @@ def _format_text_sell_followup(history: list[ChatHistoryMessage]):
         rsi_value = float(rsi)
     except (TypeError, ValueError):
         rsi_value = 50.0
+    current_value = _parse_number_text(price)
+    entry_price = _extract_entry_price(prompt)
 
-    if rsi_value >= 70:
+    if entry_price is None:
+        def ask_entry():
+            yield f"Antes de dizer se faz sentido vender **{coin}**, preciso do teu preco medio de entrada.\n\n"
+            yield f"- Preco atual: **{price}**\n"
+            yield f"- Zonas tecnicas de venda/realizacao: {', '.join(target_matches[:3]) if target_matches else 'N/A'}\n\n"
+            yield "Exemplo: `comprei a 5.5, devo vender?`\n\n"
+            yield "_Isto e analise informativa, nao aconselhamento financeiro._"
+        return ask_entry
+
+    pnl_pct = None
+    if current_value and entry_price:
+        pnl_pct = ((current_value - entry_price) / entry_price) * 100
+
+    if pnl_pct is not None and pnl_pct < -10:
+        decision = "Como estas em perda, eu nao trataria isto como realizacao de lucro. A decisao passa por gerir risco: vender parcial se a tese mudou, ou esperar recuperacao tecnica se ainda acreditas no setup."
+    elif rsi_value >= 70:
         decision = "Se ja tens posicao, faz sentido considerar realizacao parcial; nao precisa ser tudo de uma vez."
     elif target_matches:
         decision = "Eu usaria os targets como zonas de venda parcial, mantendo gestao de risco."
@@ -271,6 +306,9 @@ def _format_text_sell_followup(history: list[ChatHistoryMessage]):
         yield f"Com base na analise anterior de **{coin}**, olhando pelo lado de venda:\n\n"
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{price}**\n"
+        yield f"- Teu preco medio: **{_fmt_price(entry_price)}**\n"
+        if pnl_pct is not None:
+            yield f"- Resultado aproximado: **{pnl_pct:.1f}%**\n"
         yield f"- Zona atual: **{zone}**\n"
         yield f"- RSI: **{rsi}**\n"
         if target_matches:
@@ -569,7 +607,7 @@ async def chat_stream(req: ChatRequest):
             if followup:
                 return StreamingResponse(followup(), media_type="text/plain")
         if _is_sell_followup(req.prompt):
-            sell_followup = _format_text_sell_followup(req.history)
+            sell_followup = _format_text_sell_followup(req.prompt, req.history)
             if sell_followup:
                 return StreamingResponse(sell_followup(), media_type="text/plain")
         if _is_analysis_detail_followup(req.prompt):
