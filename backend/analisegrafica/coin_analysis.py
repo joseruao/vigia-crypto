@@ -128,6 +128,9 @@ class AdvancedCoinAnalyzer:
             # 1. Buscar dados históricos (período maior para melhor análise)
             data = await self._fetch_coin_data(coin, period)
             if data is None:
+                snapshot = self._fetch_dexscreener_snapshot(coin)
+                if snapshot:
+                    return snapshot
                 return {"error": f"Não foi possível obter dados para {coin}"}
             
             # 2. Calcular indicadores técnicos avançados
@@ -162,6 +165,70 @@ class AdvancedCoinAnalyzer:
             if data is not None:
                 return data
         return None
+
+    def _fetch_dexscreener_snapshot(self, coin: str) -> Optional[Dict]:
+        """Fallback leve para tokens pequenos sem candles nos providers principais."""
+        symbol = (coin or "").strip().upper()
+        if not symbol:
+            return None
+
+        try:
+            response = requests.get(
+                "https://api.dexscreener.com/latest/dex/search",
+                params={"q": symbol},
+                timeout=15,
+            )
+            response.raise_for_status()
+            pairs = response.json().get("pairs") or []
+            exact_pairs = [
+                pair for pair in pairs
+                if (pair.get("baseToken") or {}).get("symbol", "").upper() == symbol
+            ]
+            candidates = exact_pairs or pairs
+            if not candidates:
+                return None
+
+            def liquidity_usd(pair):
+                try:
+                    return float((pair.get("liquidity") or {}).get("usd") or 0)
+                except (TypeError, ValueError):
+                    return 0.0
+
+            pair = max(candidates, key=liquidity_usd)
+            base = pair.get("baseToken") or {}
+            quote = pair.get("quoteToken") or {}
+            price_usd = float(pair.get("priceUsd") or 0)
+            volume = pair.get("volume") or {}
+            liquidity = pair.get("liquidity") or {}
+            price_change = pair.get("priceChange") or {}
+
+            print(f"Dados obtidos via DexScreener snapshot: {symbol}")
+            return {
+                "coin": symbol,
+                "timestamp": datetime.now().isoformat(),
+                "snapshot_only": True,
+                "current_price": self._round_price(price_usd),
+                "chain": pair.get("chainId"),
+                "dex": pair.get("dexId"),
+                "pair_url": pair.get("url"),
+                "pair_address": pair.get("pairAddress"),
+                "base_symbol": base.get("symbol") or symbol,
+                "base_name": base.get("name"),
+                "quote_symbol": quote.get("symbol"),
+                "liquidity_usd": liquidity.get("usd"),
+                "volume_24h": volume.get("h24"),
+                "price_change": {
+                    "m5": price_change.get("m5"),
+                    "h1": price_change.get("h1"),
+                    "h6": price_change.get("h6"),
+                    "h24": price_change.get("h24"),
+                },
+                "fdv": pair.get("fdv"),
+                "market_cap": pair.get("marketCap"),
+            }
+        except Exception as e:
+            print(f"Erro DexScreener para {coin}: {e}")
+            return None
 
     def _fetch_gateio_data(self, coin: str, period: str) -> Optional[pd.DataFrame]:
         """Fallback sem chave para tokens listados na Gate.io, como HYPE."""

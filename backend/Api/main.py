@@ -487,6 +487,19 @@ def _fmt_percent(value) -> str:
     except (TypeError, ValueError):
         return "N/A"
 
+def _fmt_money(value) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if number >= 1_000_000_000:
+        return f"${number / 1_000_000_000:.2f}B"
+    if number >= 1_000_000:
+        return f"${number / 1_000_000:.2f}M"
+    if number >= 1_000:
+        return f"${number / 1_000:.1f}K"
+    return f"${number:.0f}"
+
 def _human_zone(zone: str) -> str:
     zones = {
         "ZONA_DE_COMPRA": "zona de compra",
@@ -535,6 +548,25 @@ def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]
     )
 
 def _format_coin_analysis(coin: str, result: dict):
+    if result.get("snapshot_only"):
+        changes = result.get("price_change") or {}
+        yield f"# Snapshot de mercado de {coin}\n\n"
+        yield "Nao encontrei candles historicos suficientes nos providers principais, por isso isto e uma leitura rapida via DexScreener.\n\n"
+        yield "## Dados rapidos\n\n"
+        yield f"- Preco atual: **{_fmt_price(result.get('current_price'))}**\n"
+        yield f"- Chain/DEX: **{result.get('chain') or 'N/A'} / {result.get('dex') or 'N/A'}**\n"
+        yield f"- Liquidez: **{_fmt_money(result.get('liquidity_usd'))}**\n"
+        yield f"- Volume 24h: **{_fmt_money(result.get('volume_24h'))}**\n"
+        yield f"- Variação 24h: **{_fmt_percent(changes.get('h24'))}**\n"
+        if result.get("market_cap"):
+            yield f"- Market cap: **{_fmt_money(result.get('market_cap'))}**\n"
+        elif result.get("fdv"):
+            yield f"- FDV: **{_fmt_money(result.get('fdv'))}**\n"
+        if result.get("pair_url"):
+            yield f"\nPar: {result.get('pair_url')}\n"
+        yield "\nSem candles fiaveis, eu nao calcularia RSI, suportes ou targets tecnicos aqui. Para estes tokens pequenos, o proximo passo e confirmar liquidez, holders e contrato antes de qualquer decisao."
+        return
+
     analysis = result.get("analysis", {}) or {}
     zones = result.get("trading_zones", {}) or {}
     recs = result.get("recommendations", {}) or {}
