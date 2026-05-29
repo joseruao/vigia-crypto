@@ -142,6 +142,15 @@ def _is_trade_followup(prompt: str) -> bool:
     ]
     return any(term in prompt_lower for term in decision_terms)
 
+def _is_analysis_detail_followup(prompt: str) -> bool:
+    prompt_lower = prompt.lower()
+    detail_terms = [
+        "porque", "porquê", "por que", "explica", "motivo", "risco",
+        "target", "targets", "alvo", "alvos", "stop", "invalidacao",
+        "invalidação", "onde entro", "entrada ideal", "plano",
+    ]
+    return any(term in prompt_lower for term in detail_terms)
+
 def _latest_analysis_text(history: list[ChatHistoryMessage]) -> tuple[str | None, str | None]:
     for msg in reversed(history or []):
         if msg.role != "assistant":
@@ -164,7 +173,7 @@ def _extract_markdown_value(content: str, label: str) -> str:
     if not match:
         return "N/A"
     value = match.group(1).strip()
-    return value.lstrip("- ").strip()
+    return value.lstrip("- ").strip().strip("*").strip()
 
 def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
     coin, content = _latest_analysis_text(history)
@@ -213,6 +222,57 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
             yield "- Zonas de realizacao:\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
+        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
+
+    return generate
+
+def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistoryMessage]):
+    coin, content = _latest_analysis_text(history)
+    if not coin or not content:
+        return None
+
+    prompt_lower = prompt.lower()
+    price = _extract_markdown_value(content, "Preco atual")
+    rsi = _extract_markdown_value(content, "RSI 14")
+    if rsi == "N/A":
+        rsi = _extract_markdown_value(content, "RSI")
+    zone = _extract_markdown_value(content, "Zona atual")
+    if zone == "N/A":
+        zone_match = re.search(r"preco esta em\s+\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
+        zone = zone_match.group(1).strip() if zone_match else "N/A"
+    action = _extract_markdown_value(content, "Sinal tecnico")
+    if action == "N/A":
+        action_match = re.search(r"\*\*Resumo:\*\*\s*([^.\n]+)", content, re.IGNORECASE)
+        action = action_match.group(1).strip() if action_match else "N/A"
+    stop = _extract_markdown_value(content, "Stop loss")
+    if stop == "N/A":
+        stop = _extract_markdown_value(content, "Invalida se perder")
+    risk = _extract_markdown_value(content, "Risco")
+    target_matches = re.findall(r"^\s*-\s+([0-9][^\n]+)", content, re.MULTILINE)
+
+    def generate():
+        yield f"Com base na analise anterior de **{coin}**:\n\n"
+        if any(term in prompt_lower for term in ["risco", "stop", "invalidacao", "invalidação"]):
+            yield f"- Risco: **{risk}**\n" if risk != "N/A" else "- Risco: nao apareceu explicitamente na ultima resposta.\n"
+            if stop != "N/A":
+                yield f"- Invalida se perder: **{stop}**\n"
+            yield f"- Contexto: preco em **{zone}**, RSI **{rsi}**, sinal **{action}**.\n"
+        elif any(term in prompt_lower for term in ["target", "targets", "alvo", "alvos"]):
+            if target_matches:
+                yield "Zonas de realizacao que estavam no plano:\n"
+                for target in target_matches[:3]:
+                    yield f"- {target}\n"
+            else:
+                yield "Nao encontrei targets claros na ultima analise.\n"
+        elif any(term in prompt_lower for term in ["onde entro", "entrada ideal", "plano"]):
+            yield f"- Entrada: **{zone}**\n"
+            yield f"- Preco atual: **{price}**\n"
+            yield f"- Sinal: **{action}**\n"
+            if stop != "N/A":
+                yield f"- Stop/invalidação: **{stop}**\n"
+        else:
+            yield f"O racional principal e: preco em **{zone}**, RSI **{rsi}** e sinal **{action}**.\n"
+            yield "Isto favorece uma leitura faseada/disciplinada, nao uma entrada all-in.\n"
         yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
@@ -437,6 +497,10 @@ async def chat_stream(req: ChatRequest):
             followup = _format_trade_followup(req.prompt, req.history)
             if followup:
                 return StreamingResponse(followup(), media_type="text/plain")
+        if _is_analysis_detail_followup(req.prompt):
+            detail_followup = _format_text_analysis_detail_followup(req.prompt, req.history)
+            if detail_followup:
+                return StreamingResponse(detail_followup(), media_type="text/plain")
         # Verifica se é pedido de análise gráfica
         if _should_use_coin_analysis(req.prompt):
             try:
