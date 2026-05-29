@@ -169,6 +169,9 @@ def _extract_entry_price(prompt: str) -> float | None:
             return _parse_number_text(match.group(1))
     return None
 
+def _is_entry_price_followup(prompt: str) -> bool:
+    return _extract_entry_price(prompt) is not None
+
 def _extract_targets(content: str) -> list[str]:
     direct = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
     if direct:
@@ -626,6 +629,10 @@ async def chat_stream(req: ChatRequest):
             if followup:
                 return StreamingResponse(followup(), media_type="text/plain")
         if _is_sell_followup(req.prompt):
+            sell_followup = _format_text_sell_followup(req.prompt, req.history)
+            if sell_followup:
+                return StreamingResponse(sell_followup(), media_type="text/plain")
+        if _is_entry_price_followup(req.prompt):
             sell_followup = _format_text_sell_followup(req.prompt, req.history)
             if sell_followup:
                 return StreamingResponse(sell_followup(), media_type="text/plain")
