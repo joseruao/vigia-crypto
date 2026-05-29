@@ -3,6 +3,7 @@ from Api.main import (
     _format_text_analysis_detail_followup,
     _format_text_analysis_followup,
     _format_text_sell_followup,
+    _normalize_coin_symbol,
 )
 
 
@@ -55,3 +56,9 @@ def test_snapshot_detail_followup_explains_missing_targets():
 
     assert "Nao ha candles historicos suficientes" in response
     assert "targets" in response
+
+
+def test_coin_symbol_aliases_normalize_common_inputs():
+    assert _normalize_coin_symbol("nea") == "NEAR"
+    assert _normalize_coin_symbol("rndr") == "RENDER"
+    assert _normalize_coin_symbol("hyperliquid") == "HYPE"

@@ -185,6 +185,21 @@ def _extract_entry_price(prompt: str) -> float | None:
 def _is_entry_price_followup(prompt: str) -> bool:
     return _extract_entry_price(prompt) is not None
 
+def _normalize_coin_symbol(symbol: str | None) -> str | None:
+    if not symbol:
+        return None
+    normalized = symbol.upper().strip().strip("$.,!?;:")
+    aliases = {
+        "NEA": "NEAR",
+        "HYPERLIQUID": "HYPE",
+        "DOGWIFHAT": "WIF",
+        "WIFHAT": "WIF",
+        "RNDR": "RENDER",
+        "FETCH": "FET",
+        "ASI": "FET",
+    }
+    return aliases.get(normalized, normalized)
+
 def _extract_targets(content: str) -> list[str]:
     direct = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
     if direct:
@@ -811,14 +826,14 @@ async def chat_stream(req: ChatRequest):
                             "ARBITRUM": "ARB", "OPTIMISM": "OP", "INJECTIVE": "INJ", "CELESTIA": "TIA",
                             "DOGWIFHAT": "WIF"
                         }
-                        coin = coin_map.get(coin_name, coin_name[:3])
+                        coin = _normalize_coin_symbol(coin_map.get(coin_name, coin_name[:3]))
                         break
                 
                 # Se não encontrou por nome, procura por símbolo
                 if not coin:
                     for symbol in coin_symbols:
-                        if symbol in prompt_upper:
-                            coin = symbol
+                        if re.search(rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])", prompt_upper):
+                            coin = _normalize_coin_symbol(symbol)
                             break
                 
                 # Se ainda não encontrou, tenta extrair palavra após "moeda" ou "coin"
@@ -829,7 +844,7 @@ async def chat_stream(req: ChatRequest):
                         if word_lower in ["moeda", "coin", "token", "criptomoeda"] and i + 1 < len(words):
                             next_word = words[i + 1].upper().strip(".,!?")
                             if len(next_word) >= 2 and next_word.isalpha():
-                                coin = next_word
+                                coin = _normalize_coin_symbol(next_word)
                                 break
                 
                 # Último recurso: procura qualquer palavra que pareça um símbolo de moeda (maiúsculas ou minúsculas)
@@ -842,7 +857,7 @@ async def chat_stream(req: ChatRequest):
                             common_words = {"ANALISA", "ME", "A", "MOEDA", "GRAFICAMENTE", "GRAFICO", "GRAFICA", 
                                           "TECNICA", "ANALISE", "CRIPTOMOEDA", "COIN", "TOKEN", "CRYPTOCURRENCY"}
                             if word_upper not in common_words:
-                                coin = word_upper
+                                coin = _normalize_coin_symbol(word_upper)
                                 break
                 
                 if coin:
