@@ -102,6 +102,7 @@ export function ChatWindow() {
 
     let id = activeId;
     if (!id) id = newConversation();
+    const history = (active?.messages ?? []).slice(-8);
 
     addMessage({ role: 'user', content });
     setInput('');
@@ -129,7 +130,7 @@ export function ChatWindow() {
           // stream = text/plain; alerts = application/json
           'Accept': useAlerts ? 'application/json' : 'text/plain',
         },
-        body: JSON.stringify({ prompt: content }),
+        body: JSON.stringify({ prompt: content, history }),
         signal: controller.signal,
       });
       

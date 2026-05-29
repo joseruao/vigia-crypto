@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import re
 
 # Garante que o diretório backend está no path para imports absolutos
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -122,8 +123,13 @@ def version():
 # CHAT ENDPOINTS
 # ============================
 
+class ChatHistoryMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
     prompt: str
+    history: list[ChatHistoryMessage] = Field(default_factory=list)
 
 LAST_COIN_ANALYSIS: dict = {}
 
@@ -135,12 +141,74 @@ def _is_trade_followup(prompt: str) -> bool:
     ]
     return any(term in prompt_lower for term in decision_terms)
 
-def _format_trade_followup(prompt: str):
+def _latest_analysis_text(history: list[ChatHistoryMessage]) -> tuple[str | None, str | None]:
+    for msg in reversed(history or []):
+        if msg.role != "assistant":
+            continue
+        content = msg.content or ""
+        match = re.search(r"Analise tecnica de\s+([A-Z0-9$.-]+)", content, re.IGNORECASE)
+        if match:
+            return match.group(1).upper(), content
+    return None, None
+
+def _extract_markdown_value(content: str, label: str) -> str:
+    match = re.search(rf"{re.escape(label)}:\s*\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    match = re.search(rf"{re.escape(label)}:\s*([^\n]+)", content, re.IGNORECASE)
+    return match.group(1).strip() if match else "N/A"
+
+def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
+    coin, content = _latest_analysis_text(history)
+    if not coin or not content:
+        return None
+
+    price = _extract_markdown_value(content, "Preco atual")
+    rsi = _extract_markdown_value(content, "RSI 14")
+    zone_match = re.search(r"preco esta em\s+\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
+    zone = zone_match.group(1).strip() if zone_match else "N/A"
+    action_match = re.search(r"\*\*Resumo:\*\*\s*([^.\n]+)", content, re.IGNORECASE)
+    action = action_match.group(1).strip() if action_match else "N/A"
+    stop = _extract_markdown_value(content, "Stop loss")
+    target_matches = re.findall(r"^\s*-\s+([0-9][^\n]+)", content, re.MULTILINE)
+
+    try:
+        rsi_value = float(rsi)
+    except (TypeError, ValueError):
+        rsi_value = 50.0
+
+    if "AGUARDAR" in action.upper():
+        decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
+    elif rsi_value >= 68:
+        decision = "Eu so consideraria entrada faseada, porque o RSI ja esta alto."
+    elif "COMPRA" in action.upper():
+        decision = "Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in."
+    else:
+        decision = "Eu trataria como observacao ate aparecer uma entrada mais clara."
+
+    def generate():
+        yield f"Com base na analise anterior de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"**{decision}**\n\n"
+        yield f"- Preco atual: **{price}**\n"
+        yield f"- Zona atual: **{zone}**\n"
+        yield f"- RSI: **{rsi}**\n"
+        yield f"- Sinal tecnico: **{action}**\n"
+        if stop != "N/A":
+            yield f"- Invalida se perder: **{stop}**\n"
+        if target_matches:
+            yield "- Zonas de realizacao:\n"
+            for target in target_matches[:3]:
+                yield f"  - {target}\n"
+        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
+
+    return generate
+
+def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None = None):
     cached = LAST_COIN_ANALYSIS or {}
     coin = cached.get("coin")
     result = cached.get("result") or {}
     if not coin or not result:
-        return None
+        return _format_text_analysis_followup(history or [])
 
     analysis = result.get("analysis", {}) or {}
     zones = result.get("trading_zones", {}) or {}
@@ -348,7 +416,7 @@ async def chat_stream(req: ChatRequest):
     """
     try:
         if _is_trade_followup(req.prompt):
-            followup = _format_trade_followup(req.prompt)
+            followup = _format_trade_followup(req.prompt, req.history)
             if followup:
                 return StreamingResponse(followup(), media_type="text/plain")
         # Verifica se é pedido de análise gráfica
@@ -627,6 +695,11 @@ async def chat_stream(req: ChatRequest):
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_msg},
+                            *[
+                                {"role": msg.role, "content": msg.content}
+                                for msg in (req.history or [])[-8:]
+                                if msg.role in {"user", "assistant"} and msg.content
+                            ],
                             {"role": "user", "content": req.prompt},
                         ],
                     ) as stream:
