@@ -30,3 +30,8 @@ def test_ask_basic(monkeypatch):
     r = client.post("/alerts/ask", json={"prompt": "que tokens a binance tem em holding"})
     assert r.status_code == 200
     assert r.json().get("ok") is False
+
+def test_buy_watchlist_question_detection():
+    assert alerts._is_buy_watchlist_question("que moedas me aconselhas a comprar hoje do top100?")
+    assert alerts._is_buy_watchlist_question("top 100 crypto buy opportunities")
+    assert not alerts._is_buy_watchlist_question("analisa BTC")

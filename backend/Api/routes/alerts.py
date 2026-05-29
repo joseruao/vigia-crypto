@@ -57,6 +57,12 @@ def _prediction_since_iso() -> str:
     since = datetime.now(timezone.utc) - timedelta(hours=_prediction_max_age_hours())
     return since.isoformat()
 
+def _is_buy_watchlist_question(q: str) -> bool:
+    q = (q or "").lower()
+    buy_terms = ("comprar", "compra", "buy", "entrada", "entrar", "aconselhas", "recomendas", "oportunidade", "oportunidades")
+    universe_terms = ("moeda", "moedas", "crypto", "cripto", "token", "tokens", "top100", "top 100", "hoje")
+    return any(term in q for term in buy_terms) and any(term in q for term in universe_terms)
+
 def _is_test_token(row: Dict[str, Any]) -> bool:
     token = str(row.get("token") or "").strip().upper()
     token_address = str(row.get("token_address") or "").strip().lower()
@@ -694,6 +700,7 @@ def ask_alerts(payload: AskIn):
     ex_norm = None
     min_score = 0
     chain = None
+    is_buy_watchlist_question = _is_buy_watchlist_question(q)
     
     # Se perguntar sobre "tokens que vão ser listados" sem exchange específica, usa score mínimo
     is_listing_question = "listados" in q or "listing" in q or "vão ser" in q or "vao ser" in q or "vai ser" in q or "achas" in q
@@ -702,6 +709,10 @@ def ask_alerts(payload: AskIn):
         log.info(f"Detectada pergunta sobre listings - aplicando score mínimo: {min_score}")
 
     # Inferência simples
+    if is_buy_watchlist_question and not any(ex in q for ex in ["binance", "gate", "bybit", "bitget", "kraken", "okx", "mexc", "coinbase"]):
+        min_score = max(min_score, 50)
+        log.info("Detectada pergunta de watchlist de compra - usando candidatos filtrados")
+
     if "binance" in q: ex_norm = "Binance"
     if "gate" in q:    ex_norm = "Gate.io"
     if "bybit" in q:   ex_norm = "Bybit"
@@ -723,6 +734,9 @@ def ask_alerts(payload: AskIn):
 
     filter_unlisted = is_listing_question or "nao foram listados" in q or "nÃ£o foram listados" in q or "unlisted" in q
     listed_tokens = _load_listed_tokens_map(log) if filter_unlisted else {}
+    if is_buy_watchlist_question and not filter_unlisted:
+        filter_unlisted = True
+        listed_tokens = _load_listed_tokens_map(log)
 
     # Base query
     params = {
@@ -733,7 +747,7 @@ def ask_alerts(payload: AskIn):
     }
     if chain:
         params["chain"] = f"eq.{chain}"
-    if is_listing_question:
+    if is_listing_question or is_buy_watchlist_question:
         params["ts"] = f"gte.{_prediction_since_iso()}"
 
     log.info(f"Buscando holdings com params: {params}")
@@ -780,7 +794,7 @@ def ask_alerts(payload: AskIn):
     # Ordena por score desc
     out = _dedupe_latest_predictions(out)
 
-    if len(out) == 0 and is_listing_question:
+    if len(out) == 0 and (is_listing_question or is_buy_watchlist_question):
         fallback_params = params.copy()
         fallback_params.pop("ts", None)
         log.info(f"Sem resultados recentes; buscando fallback historico com params: {fallback_params}")
@@ -821,7 +835,10 @@ def ask_alerts(payload: AskIn):
         else:
             lines = []
             shown = out[:10]
-            if is_listing_question or "listados" in q or "listing" in q:
+            if is_buy_watchlist_question:
+                lines.append(f"🔎 **Watchlist para analisar hoje ({len(shown)} candidato(s)):**\n")
+                lines.append("Base: sinais internos de wallets/listing ainda nao listados na propria exchange. Isto e triagem, nao recomendacao de compra.\n")
+            elif is_listing_question or "listados" in q or "listing" in q:
                 lines.append(f"🎯 **Top {len(shown)} token(s) com potencial de listing:**\n")
             else:
                 lines.append(f"📊 **Top {len(shown)} holding(s):**\n")

@@ -92,6 +92,9 @@ export function ChatWindow() {
       q.includes('wallet') ||
       q.includes('score') ||
       q.includes('scoring') ||
+      q.includes('top100') ||
+      q.includes('top 100') ||
+      (q.includes('comprar') && (q.includes('moeda') || q.includes('moedas') || q.includes('crypto') || q.includes('cripto') || q.includes('token'))) ||
       q.includes('achas') && (q.includes('token') || q.includes('listado'))
     );
   }
