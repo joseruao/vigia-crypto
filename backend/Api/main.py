@@ -143,6 +143,14 @@ def _is_trade_followup(prompt: str) -> bool:
     ]
     return any(term in prompt_lower for term in decision_terms)
 
+def _is_sell_followup(prompt: str) -> bool:
+    prompt_lower = prompt.lower()
+    sell_terms = [
+        "vender", "vendo", "venda", "realizar", "realizo", "sair",
+        "onde vendo", "onde saio", "take profit", "profit", "sell",
+    ]
+    return any(term in prompt_lower for term in sell_terms)
+
 def _is_analysis_detail_followup(prompt: str) -> bool:
     prompt_lower = prompt.lower()
     detail_terms = [
@@ -228,6 +236,49 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
             yield "- Zonas de realizacao:\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
+        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
+
+    return generate
+
+def _format_text_sell_followup(history: list[ChatHistoryMessage]):
+    coin, content = _latest_analysis_text(history)
+    if not coin or not content:
+        return None
+
+    price = _extract_markdown_value(content, "Preco atual")
+    rsi = _extract_markdown_value(content, "RSI 14")
+    if rsi == "N/A":
+        rsi = _extract_markdown_value(content, "RSI")
+    zone = _extract_markdown_value(content, "Zona atual")
+    if zone == "N/A":
+        zone_match = re.search(r"preco esta em\s+\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
+        zone = zone_match.group(1).strip() if zone_match else "N/A"
+    target_matches = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
+
+    try:
+        rsi_value = float(rsi)
+    except (TypeError, ValueError):
+        rsi_value = 50.0
+
+    if rsi_value >= 70:
+        decision = "Se ja tens posicao, faz sentido considerar realizacao parcial; nao precisa ser tudo de uma vez."
+    elif target_matches:
+        decision = "Eu usaria os targets como zonas de venda parcial, mantendo gestao de risco."
+    else:
+        decision = "Eu nao venderia por impulso; procuraria uma zona tecnica clara de realizacao."
+
+    def generate():
+        yield f"Com base na analise anterior de **{coin}**, olhando pelo lado de venda:\n\n"
+        yield f"**{decision}**\n\n"
+        yield f"- Preco atual: **{price}**\n"
+        yield f"- Zona atual: **{zone}**\n"
+        yield f"- RSI: **{rsi}**\n"
+        if target_matches:
+            yield "- Zonas de venda/realizacao:\n"
+            for target in target_matches[:3]:
+                yield f"  - {target}\n"
+        else:
+            yield "- Nao encontrei targets claros na ultima analise.\n"
         yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
@@ -517,6 +568,10 @@ async def chat_stream(req: ChatRequest):
             followup = _format_trade_followup(req.prompt, req.history)
             if followup:
                 return StreamingResponse(followup(), media_type="text/plain")
+        if _is_sell_followup(req.prompt):
+            sell_followup = _format_text_sell_followup(req.history)
+            if sell_followup:
+                return StreamingResponse(sell_followup(), media_type="text/plain")
         if _is_analysis_detail_followup(req.prompt):
             detail_followup = _format_text_analysis_detail_followup(req.prompt, req.history)
             if detail_followup:
