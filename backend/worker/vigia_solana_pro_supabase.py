@@ -770,6 +770,9 @@ def main():
         logger.info("🚀 Iniciando Vigia Solana Pro Supabase Worker...")
         
         # Atualiza e carrega tokens listados antes de analisar wallets.
+        scan_hours = int(os.getenv("SCAN_HOURS", "24"))
+        logger.info(f"Janela de scan: {scan_hours}h")
+
         update_exchange_tokens()
         load_listed_tokens_from_supabase(force=True)
         
@@ -782,8 +785,8 @@ def main():
         for exchange_name, wallet_address in EXCHANGE_WALLETS.items():
             logger.info(f"🔍 Analisando {exchange_name} (wallet: {wallet_address[:8]}...)")
             
-            # Busca transações recentes (últimas 24h)
-            signatures = get_recent_signatures(wallet_address, hours=24)
+            # Busca transações recentes na janela configurada.
+            signatures = get_recent_signatures(wallet_address, hours=scan_hours)
             logger.info(f"   📊 {len(signatures)} transações encontradas")
             
             for sig in signatures:
