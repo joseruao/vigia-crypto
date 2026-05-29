@@ -169,6 +169,31 @@ def _extract_entry_price(prompt: str) -> float | None:
             return _parse_number_text(match.group(1))
     return None
 
+def _extract_targets(content: str) -> list[str]:
+    direct = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
+    if direct:
+        return direct
+
+    lines = content.splitlines()
+    targets: list[str] = []
+    in_targets = False
+    for line in lines:
+        clean = line.strip().lstrip("- ").strip()
+        if not clean:
+            if in_targets and targets:
+                break
+            continue
+        if clean.lower().startswith(("targets", "zonas de realizacao", "zonas de venda")):
+            in_targets = True
+            continue
+        if in_targets:
+            if re.match(r"^[0-9]", clean):
+                targets.append(clean)
+                continue
+            if targets:
+                break
+    return targets
+
 def _is_analysis_detail_followup(prompt: str) -> bool:
     prompt_lower = prompt.lower()
     detail_terms = [
@@ -225,7 +250,7 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
     if action == "N/A":
         action = _extract_markdown_value(content, "Sinal tecnico")
     stop = _extract_markdown_value(content, "Stop loss")
-    target_matches = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
+    target_matches = _extract_targets(content)
 
     try:
         rsi_value = float(rsi)
@@ -254,7 +279,6 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
             yield "- Zonas de realizacao:\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
-        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
 
@@ -271,7 +295,7 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     if zone == "N/A":
         zone_match = re.search(r"preco esta em\s+\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
         zone = zone_match.group(1).strip() if zone_match else "N/A"
-    target_matches = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
+    target_matches = _extract_targets(content)
 
     try:
         rsi_value = float(rsi)
@@ -286,7 +310,6 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
             yield f"- Preco atual: **{price}**\n"
             yield f"- Zonas tecnicas de venda/realizacao: {', '.join(target_matches[:3]) if target_matches else 'N/A'}\n\n"
             yield "Exemplo: `comprei a 5.5, devo vender?`\n\n"
-            yield "_Isto e analise informativa, nao aconselhamento financeiro._"
         return ask_entry
 
     pnl_pct = None
@@ -317,7 +340,6 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
                 yield f"  - {target}\n"
         else:
             yield "- Nao encontrei targets claros na ultima analise.\n"
-        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
 
@@ -343,7 +365,7 @@ def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistory
     if stop == "N/A":
         stop = _extract_markdown_value(content, "Invalida se perder")
     risk = _extract_markdown_value(content, "Risco")
-    target_matches = re.findall(r"^\s*-\s+([0-9][^\n]+)", content, re.MULTILINE)
+    target_matches = _extract_targets(content)
 
     def generate():
         yield f"Com base na analise anterior de **{coin}**:\n\n"
@@ -368,7 +390,6 @@ def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistory
         else:
             yield f"O racional principal e: preco em **{zone}**, RSI **{rsi}** e sinal **{action}**.\n"
             yield "Isto favorece uma leitura faseada/disciplinada, nao uma entrada all-in.\n"
-        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
 
@@ -419,7 +440,6 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
             yield "- Zonas de realizacao:\n"
             for target in targets[:3]:
                 yield f"  - {target}\n"
-        yield "\n_Isto e analise informativa, nao aconselhamento financeiro._"
 
     return generate
 
@@ -592,7 +612,6 @@ def _format_coin_analysis(coin: str, result: dict):
     risk = recs.get("alerta_risco")
     if risk:
         yield f"**Risco:** {risk}\n\n"
-    yield "_Isto e analise informativa, nao aconselhamento financeiro._"
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):

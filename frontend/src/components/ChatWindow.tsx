@@ -237,11 +237,11 @@ export function ChatWindow() {
   const copy = lang === 'pt'
     ? {
         placeholder: 'Escreve a tua mensagem...',
-        disclaimer: 'Pode cometer erros. Verifica informações importantes.',
+        disclaimer: 'Pode cometer erros. Verifica informações importantes. Conteúdo informativo; não é aconselhamento financeiro.',
       }
     : {
         placeholder: 'Ask anything about crypto markets...',
-        disclaimer: 'May make mistakes. Check important information.',
+        disclaimer: 'May make mistakes. Check important information. Informational only; not financial advice.',
       };
 
   return (
