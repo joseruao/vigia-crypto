@@ -528,7 +528,7 @@ async def chat_stream(req: ChatRequest):
                             "POLKADOT": "DOT", "POLYGON": "MATIC", "AVALANCHE": "AVAX", "CHAINLINK": "LINK",
                             "LITECOIN": "LTC", "BITCOIN CASH": "BCH", "STELLAR": "XLM", "ETHEREUM CLASSIC": "ETC",
                             "TRON": "TRX", "MONERO": "XMR", "COSMOS": "ATOM", "ALGORAND": "ALGO",
-                            "VECHAIN": "VET", "INTERNET COMPUTER": "ICP", "FILECOIN": "FIL", "APTOS": "APT",
+                            "VECHAIN": "VET", "INTERNET COMPUTER": "ICP", "FILECOIN": "FIL", "NEAR": "NEAR", "APTOS": "APT",
                             "ARBITRUM": "ARB", "OPTIMISM": "OP", "INJECTIVE": "INJ", "CELESTIA": "TIA",
                             "DOGWIFHAT": "WIF"
                         }

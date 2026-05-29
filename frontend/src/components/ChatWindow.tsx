@@ -215,6 +215,7 @@ export function ChatWindow() {
       abortRef.current = null;
       abortedRef.current = false;
       setGotFirstChunk(false);
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   }
 
