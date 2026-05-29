@@ -63,6 +63,10 @@ def _is_buy_watchlist_question(q: str) -> bool:
     universe_terms = ("moeda", "moedas", "crypto", "cripto", "token", "tokens", "top100", "top 100", "hoje")
     return any(term in q for term in buy_terms) and any(term in q for term in universe_terms)
 
+def _is_top100_buy_question(q: str) -> bool:
+    q = (q or "").lower()
+    return _is_buy_watchlist_question(q) and ("top100" in q or "top 100" in q)
+
 def _is_test_token(row: Dict[str, Any]) -> bool:
     token = str(row.get("token") or "").strip().upper()
     token_address = str(row.get("token_address") or "").strip().lower()
@@ -696,6 +700,17 @@ def ask_alerts(payload: AskIn):
     q = (payload.prompt or "").lower()
     log.info(f"Pergunta recebida: {payload.prompt}")
 
+    if _is_top100_buy_question(q):
+        answer = (
+            "Ainda nao tenho um ranking tecnico diario do top100 guardado.\n\n"
+            "Para responder bem a isto, precisamos de um cron job que analise diariamente o top100 por market cap, "
+            "guarde score tecnico, RSI, tendencia, volume e risco numa tabela propria, e depois o chat usa essa tabela.\n\n"
+            "Hoje consigo ajudar de duas formas:\n"
+            "- `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc.\n"
+            "- `que tokens achas que vao ser listados?` para a watchlist de listings"
+        )
+        return {"ok": True, "answer": answer, "count": 0, "items": []}
+
     # Defaults
     ex_norm = None
     min_score = 0
@@ -845,7 +860,7 @@ def ask_alerts(payload: AskIn):
             
             for i, item in enumerate(shown, 1):  # Limita a 10
                 token = item.get("token", "N/A")
-                exchange = item.get("exchange", "N/A")
+                exchange = _normalize_exchange(item.get("exchange", "N/A"))
                 score = item.get("score", 0)
                 value_usd = item.get("value_usd", 0)
                 liquidity = item.get("liquidity", 0)

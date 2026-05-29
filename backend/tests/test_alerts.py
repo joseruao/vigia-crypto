@@ -35,3 +35,13 @@ def test_buy_watchlist_question_detection():
     assert alerts._is_buy_watchlist_question("que moedas me aconselhas a comprar hoje do top100?")
     assert alerts._is_buy_watchlist_question("top 100 crypto buy opportunities")
     assert not alerts._is_buy_watchlist_question("analisa BTC")
+
+def test_top100_buy_question_is_not_answered_from_listings(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "que moedas me aconselhas a comprar hoje do top100?"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["count"] == 0
+    assert "ranking tecnico diario do top100" in data["answer"]
