@@ -146,7 +146,11 @@ def _latest_analysis_text(history: list[ChatHistoryMessage]) -> tuple[str | None
         if msg.role != "assistant":
             continue
         content = msg.content or ""
-        match = re.search(r"Analise tecnica de\s+([A-Z0-9$.-]+)", content, re.IGNORECASE)
+        match = re.search(
+            r"(?:Analise tecnica de|ultima analise de|analise anterior de)\s+\**([A-Z0-9$.-]+)\**",
+            content,
+            re.IGNORECASE,
+        )
         if match:
             return match.group(1).upper(), content
     return None, None
@@ -156,7 +160,10 @@ def _extract_markdown_value(content: str, label: str) -> str:
     if match:
         return match.group(1).strip()
     match = re.search(rf"{re.escape(label)}:\s*([^\n]+)", content, re.IGNORECASE)
-    return match.group(1).strip() if match else "N/A"
+    if not match:
+        return "N/A"
+    value = match.group(1).strip()
+    return value.lstrip("- ").strip()
 
 def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
     coin, content = _latest_analysis_text(history)
@@ -165,10 +172,16 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
 
     price = _extract_markdown_value(content, "Preco atual")
     rsi = _extract_markdown_value(content, "RSI 14")
+    if rsi == "N/A":
+        rsi = _extract_markdown_value(content, "RSI")
     zone_match = re.search(r"preco esta em\s+\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
     zone = zone_match.group(1).strip() if zone_match else "N/A"
+    if zone == "N/A":
+        zone = _extract_markdown_value(content, "Zona atual")
     action_match = re.search(r"\*\*Resumo:\*\*\s*([^.\n]+)", content, re.IGNORECASE)
     action = action_match.group(1).strip() if action_match else "N/A"
+    if action == "N/A":
+        action = _extract_markdown_value(content, "Sinal tecnico")
     stop = _extract_markdown_value(content, "Stop loss")
     target_matches = re.findall(r"^\s*-\s+([0-9][^\n]+)", content, re.MULTILINE)
 
@@ -188,6 +201,7 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
 
     def generate():
         yield f"Com base na analise anterior de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"<!-- analysis-context: {coin} -->\n"
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{price}**\n"
         yield f"- Zona atual: **{zone}**\n"
@@ -235,6 +249,7 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
 
     def generate():
         yield f"Com base na ultima analise de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"<!-- analysis-context: {coin} -->\n"
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{current_price}**\n"
         yield f"- Zona atual: **{current_zone}**\n"
