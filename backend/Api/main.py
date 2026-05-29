@@ -138,6 +138,7 @@ def _is_trade_followup(prompt: str) -> bool:
     decision_terms = [
         "compro", "comprar", "boa compra", "bom comprar", "vale a pena",
         "entro", "entrada", "buy", "should i buy", "is it good to buy",
+        "fase de compra", "zona de compra", "esta em compra", "está em compra",
         "ainda achas", "achas o mesmo", "ainda pensas", "mantens", "e agora",
     ]
     return any(term in prompt_lower for term in decision_terms)
@@ -386,10 +387,15 @@ def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]
     trend = (analysis.get("trend") or {}).get("direction", "")
     score = recs.get("score", "N/A")
 
-    if rsi >= 70 and position >= 80:
+    if rsi >= 70 and position >= 75:
         return (
             f"AGUARDAR / COMPRA SO EM PULLBACK",
             f"RSI alto e preco perto da resistencia; tendencia ainda positiva, mas a entrada ideal ja nao e aqui. Score tecnico {score}/100."
+        )
+    if rsi >= 70:
+        return (
+            "AGUARDAR PULLBACK",
+            f"RSI alto; apesar do contexto positivo, o risco de comprar esticado e maior. Score tecnico {score}/100."
         )
     if zone == "ZONA_DE_COMPRA" and rsi < 65:
         return (

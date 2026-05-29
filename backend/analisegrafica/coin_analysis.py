@@ -622,7 +622,7 @@ class AdvancedCoinAnalyzer:
         # Análise de Posição
         current_zone = trading_zones['posicao_atual']
         current_position = analysis.get('support_resistance', {}).get('current_position', 50)
-        if current_zone == "ZONA_DE_COMPRA" and (rsi >= 70 or current_position >= 80):
+        if current_zone == "ZONA_DE_COMPRA" and (rsi >= 70 or current_position >= 75):
             actions.append("PRECO ESTICADO DENTRO DO RANGE - MELHOR AGUARDAR PULLBACK")
             strategy = self._generate_trading_strategy(analysis, trading_zones)
             return {
@@ -655,7 +655,17 @@ class AdvancedCoinAnalyzer:
     def _generate_trading_strategy(self, analysis: Dict, trading_zones: Dict) -> Dict:
         """Gera estratégia de trading específica"""
         current_zone = trading_zones['posicao_atual']
+        rsi = float(analysis.get('rsi', 50) or 50)
+        current_position = float(analysis.get('support_resistance', {}).get('current_position', 50) or 50)
         
+        if current_zone == "ZONA_DE_COMPRA" and (rsi >= 70 or current_position >= 75):
+            return {
+                "estrategia": "WAIT_FOR_PULLBACK",
+                "plano": "Aguardar pullback antes de nova entrada",
+                "acao": "Nao perseguir o preco; procurar entrada mais perto do suporte ou apos consolidacao",
+                "recompra": f"Aguardar retorno para {trading_zones['compra']['zona_compra_otima']['range']}",
+                "observacao": "RSI/posicao no range indicam preco esticado apesar da tendencia positiva"
+            }
         if current_zone == "ZONA_DE_COMPRA":
             return {
                 "estrategia": "ACCUMULATION",
