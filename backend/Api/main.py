@@ -158,6 +158,19 @@ def _parse_number_text(value: str) -> float | None:
     except (TypeError, ValueError):
         return None
 
+def _parse_compact_money(value: str) -> float | None:
+    try:
+        text = str(value or "").strip().upper().replace(",", ".")
+        match = re.search(r"(-?\d+(?:\.\d+)?)\s*([KMB])?", text)
+        if not match:
+            return None
+        number = float(match.group(1))
+        suffix = match.group(2)
+        multipliers = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+        return number * multipliers.get(suffix, 1)
+    except (TypeError, ValueError):
+        return None
+
 def _extract_entry_price(prompt: str) -> float | None:
     patterns = [
         r"(?:comprei|compra|entrada|preco medio|preço médio|medio|m[eé]dio)\s*(?:a|ao|em|foi|:)?\s*\$?\s*([\d]+(?:[,.]\d+)?)",
@@ -216,6 +229,10 @@ def _latest_analysis_text(history: list[ChatHistoryMessage]) -> tuple[str | None
         if full_match:
             return full_match.group(1).upper(), content
 
+        snapshot_match = re.search(r"Snapshot de mercado de\s+\**([A-Z0-9$.-]+)\**", content, re.IGNORECASE)
+        if snapshot_match:
+            return snapshot_match.group(1).upper(), content
+
         followup_match = re.search(
             r"(?:ultima analise de|analise anterior de)\s+\**([A-Z0-9$.-]+)\**",
             content,
@@ -235,10 +252,99 @@ def _extract_markdown_value(content: str, label: str) -> str:
     value = match.group(1).strip()
     return value.lstrip("- ").strip().strip("*").strip()
 
+def _snapshot_metrics_from_text(content: str) -> dict:
+    return {
+        "price": _extract_markdown_value(content, "Preco atual"),
+        "chain_dex": _extract_markdown_value(content, "Chain/DEX"),
+        "liquidity": _extract_markdown_value(content, "Liquidez"),
+        "volume": _extract_markdown_value(content, "Volume 24h"),
+        "change": _extract_markdown_value(content, "Variação 24h"),
+        "market_cap": _extract_markdown_value(content, "Market cap"),
+        "fdv": _extract_markdown_value(content, "FDV"),
+    }
+
+def _snapshot_risk_label(liquidity: float | None, volume: float | None) -> str:
+    if liquidity is None:
+        return "RISCO ELEVADO"
+    if liquidity < 25_000 or (volume is not None and volume < 5_000):
+        return "RISCO MUITO ELEVADO"
+    if liquidity < 100_000 or (volume is not None and volume < 25_000):
+        return "RISCO ELEVADO"
+    if liquidity < 500_000:
+        return "RISCO MODERADO/ELEVADO"
+    return "RISCO MODERADO"
+
+def _format_snapshot_followup(prompt: str, coin: str, content: str, side: str = "buy"):
+    metrics = _snapshot_metrics_from_text(content)
+    price = metrics.get("price", "N/A")
+    liquidity_text = metrics.get("liquidity", "N/A")
+    volume_text = metrics.get("volume", "N/A")
+    liquidity = _parse_compact_money(liquidity_text)
+    volume = _parse_compact_money(volume_text)
+    risk = _snapshot_risk_label(liquidity, volume)
+    entry_price = _extract_entry_price(prompt)
+    current_value = _parse_number_text(price)
+
+    def generate_buy():
+        yield f"Com base no snapshot DexScreener de **{coin}**:\n\n"
+        if risk in {"RISCO MUITO ELEVADO", "RISCO ELEVADO"}:
+            yield "**Eu nao trataria isto como compra tecnica normal. Falta liquidez/volume para confiar num setup.**\n\n"
+        else:
+            yield "**Isto ainda e so uma leitura de mercado, nao uma analise tecnica completa. Entrada teria de ser pequena e muito controlada.**\n\n"
+        yield f"- Preco atual: **{price}**\n"
+        yield f"- Liquidez: **{liquidity_text}**\n"
+        yield f"- Volume 24h: **{volume_text}**\n"
+        yield f"- Risco: **{risk}**\n"
+        yield "- Sem candles fiaveis, nao ha RSI, suporte, stop ou targets tecnicos confiaveis.\n"
+        yield "- Antes de comprar, eu confirmaria contrato, holders, liquidez bloqueada e atividade real no par.\n"
+
+    def generate_sell():
+        if entry_price is None:
+            yield f"Para avaliar venda de **{coin}**, preciso do teu preco medio de entrada.\n\n"
+            yield f"- Preco atual: **{price}**\n"
+            yield f"- Liquidez: **{liquidity_text}**\n"
+            yield f"- Risco: **{risk}**\n\n"
+            yield "Exemplo: `comprei a 0.000002, devo vender?`\n"
+            return
+
+        pnl_pct = None
+        if current_value and entry_price:
+            pnl_pct = ((current_value - entry_price) / entry_price) * 100
+
+        yield f"Com base no snapshot DexScreener de **{coin}**, olhando pelo lado de venda:\n\n"
+        if risk in {"RISCO MUITO ELEVADO", "RISCO ELEVADO"}:
+            yield "**Aqui a prioridade e gestao de risco, porque a liquidez/volume podem nao aguentar uma saida limpa.**\n\n"
+        else:
+            yield "**Eu olharia para venda parcial por gestao de risco, mas sem targets tecnicos calculados por falta de candles.**\n\n"
+        yield f"- Preco atual: **{price}**\n"
+        yield f"- Teu preco medio: **{_fmt_price(entry_price)}**\n"
+        if pnl_pct is not None:
+            yield f"- Resultado aproximado: **{pnl_pct:.1f}%**\n"
+        yield f"- Liquidez: **{liquidity_text}**\n"
+        yield f"- Volume 24h: **{volume_text}**\n"
+        yield f"- Risco: **{risk}**\n"
+        yield "- Sem candles fiaveis, eu nao inventaria targets; usaria liquidez e tamanho da posicao para decidir saida parcial.\n"
+
+    def generate_detail():
+        yield f"Com base no snapshot DexScreener de **{coin}**:\n\n"
+        yield f"- Preco atual: **{price}**\n"
+        yield f"- Liquidez: **{liquidity_text}**\n"
+        yield f"- Volume 24h: **{volume_text}**\n"
+        yield f"- Risco: **{risk}**\n"
+        yield "- Nao ha candles historicos suficientes para calcular targets, stop, RSI ou suportes com qualidade.\n"
+
+    if side == "sell":
+        return generate_sell
+    if side == "detail":
+        return generate_detail
+    return generate_buy
+
 def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
+    if "Snapshot de mercado" in content:
+        return _format_snapshot_followup("", coin, content, side="buy")
 
     price = _extract_markdown_value(content, "Preco atual")
     rsi = _extract_markdown_value(content, "RSI 14")
@@ -289,6 +395,8 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
+    if "Snapshot de mercado" in content:
+        return _format_snapshot_followup(prompt, coin, content, side="sell")
 
     price = _extract_markdown_value(content, "Preco atual")
     rsi = _extract_markdown_value(content, "RSI 14")
@@ -350,6 +458,8 @@ def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistory
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
+    if "Snapshot de mercado" in content:
+        return _format_snapshot_followup(prompt, coin, content, side="detail")
 
     prompt_lower = prompt.lower()
     price = _extract_markdown_value(content, "Preco atual")
@@ -402,6 +512,9 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     result = cached.get("result") or {}
     if not coin or not result:
         return _format_text_analysis_followup(history or [])
+    if result.get("snapshot_only"):
+        snapshot_lines = list(_format_coin_analysis(coin, result))
+        return _format_snapshot_followup(prompt, coin, "".join(snapshot_lines), side="buy")
 
     analysis = result.get("analysis", {}) or {}
     zones = result.get("trading_zones", {}) or {}
