@@ -418,7 +418,20 @@ def _format_snapshot_followup(prompt: str, coin: str, content: str, side: str = 
         return generate_detail
     return generate_buy
 
-def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
+def _entry_plan_lines(budget: float, cautious: bool = False) -> list[str]:
+    if cautious:
+        return [
+            f"  - 25% inicial: ~{_fmt_money(budget * 0.25)}",
+            f"  - 35% em pullback/confirmacao: ~{_fmt_money(budget * 0.35)}",
+            f"  - 40% reservado se o setup melhorar: ~{_fmt_money(budget * 0.40)}",
+        ]
+    return [
+        f"  - 40% inicial: ~{_fmt_money(budget * 0.40)}",
+        f"  - 30% em pullback: ~{_fmt_money(budget * 0.30)}",
+        f"  - 30% reservado para confirmacao/invalidacao: ~{_fmt_money(budget * 0.30)}",
+    ]
+
+def _format_text_analysis_followup(history: list[ChatHistoryMessage], prompt: str = ""):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
@@ -444,6 +457,8 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
         rsi_value = float(rsi)
     except (TypeError, ValueError):
         rsi_value = 50.0
+    budget_info = _extract_position_size(prompt, coin)
+    budget = budget_info.get("amount") if budget_info and budget_info.get("type") == "fiat" else None
 
     if "AGUARDAR" in action.upper():
         decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
@@ -467,6 +482,10 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
             yield "- Zonas de realizacao:\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
+        if budget:
+            yield "- Plano de entrada faseada possivel:\n"
+            for line in _entry_plan_lines(float(budget), cautious=("AGUARDAR" in action.upper() or rsi_value >= 68)):
+                yield f"{line}\n"
 
     return generate
 
@@ -602,7 +621,7 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     coin = cached.get("coin")
     result = cached.get("result") or {}
     if not coin or not result:
-        return _format_text_analysis_followup(history or [])
+        return _format_text_analysis_followup(history or [], prompt)
     if result.get("snapshot_only"):
         snapshot_lines = list(_format_coin_analysis(coin, result))
         return _format_snapshot_followup(prompt, coin, "".join(snapshot_lines), side="buy")
@@ -621,6 +640,8 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     support_price = _fmt_price(sr.get("dynamic_support")) if sr.get("dynamic_support") is not None else "N/A"
     stop_loss = _fmt_price(strategy.get("stop_loss")) if strategy.get("stop_loss") else "N/A"
     targets = strategy.get("targets") or []
+    budget_info = _extract_position_size(prompt, coin)
+    budget = budget_info.get("amount") if budget_info and budget_info.get("type") == "fiat" else None
 
     if action.startswith("AGUARDAR"):
         decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
@@ -647,6 +668,10 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
             yield "- Zonas de realizacao:\n"
             for target in targets[:3]:
                 yield f"  - {target}\n"
+        if budget:
+            yield "- Plano de entrada faseada possivel:\n"
+            for line in _entry_plan_lines(float(budget), cautious=(action.startswith("AGUARDAR") or rsi >= 68 or position >= 75)):
+                yield f"{line}\n"
 
     return generate
 

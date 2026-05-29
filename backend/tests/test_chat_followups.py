@@ -103,3 +103,13 @@ def test_sell_followup_includes_position_math_for_fiat_position():
     assert "Valor atual estimado" in response
     assert "PnL estimado" in response
     assert "Plano faseado possivel" in response
+
+
+def test_buy_followup_includes_staged_entry_plan_when_budget_is_given():
+    response = "".join(
+        _format_text_analysis_followup(_technical_history(), "tenho 1000€ vale a pena comprar?")()
+    )
+
+    assert "Plano de entrada faseada possivel" in response
+    assert "25% inicial" in response
+    assert "40% reservado" in response
