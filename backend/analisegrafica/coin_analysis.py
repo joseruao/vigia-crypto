@@ -116,6 +116,9 @@ class AdvancedCoinAnalyzer:
         if high is None:
             return f"{self._round_price(low):g} +"
         return f"{self._round_price(low):g} - {self._round_price(high):g}"
+
+    def _format_price_value(self, value: float) -> str:
+        return f"{self._round_price(value):g}"
     
     async def analyze_coin(self, coin: str, period: str = "60d") -> Dict:
         """Analisa uma moeda com zonas de compra/venda detalhadas"""
@@ -658,7 +661,7 @@ class AdvancedCoinAnalyzer:
                 "estrategia": "ACCUMULATION",
                 "plano": "Comprar em scale nas zonas definidas",
                 "alocacao": "60% na zona ótima, 30% na agressiva, 10% na conservadora",
-                "stop_loss": f"{trading_zones['compra']['zona_compra_agressiva']['alvo_stop_loss']:.2f}",
+                "stop_loss": self._format_price_value(trading_zones['compra']['zona_compra_agressiva']['alvo_stop_loss']),
                 "targets": [
                     f"{trading_zones['venda']['zona_venda_parcial']['range']} (30%)",
                     f"{trading_zones['venda']['zona_venda_principal']['range']} (50%)", 

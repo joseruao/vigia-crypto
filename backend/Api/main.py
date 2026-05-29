@@ -290,11 +290,15 @@ def _fmt_price(value) -> str:
         number = float(value)
     except (TypeError, ValueError):
         return "N/A"
+    if number == 0:
+        return "$0"
     if number >= 1000:
         return f"${number:,.0f}"
     if number >= 1:
         return f"${number:,.2f}"
-    return f"${number:.6f}"
+    if number >= 0.01:
+        return f"${number:.6f}".rstrip("0").rstrip(".")
+    return f"${number:.10f}".rstrip("0").rstrip(".")
 
 def _fmt_percent(value) -> str:
     try:
