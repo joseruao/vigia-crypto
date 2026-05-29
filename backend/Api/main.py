@@ -152,18 +152,23 @@ def _is_analysis_detail_followup(prompt: str) -> bool:
     return any(term in prompt_lower for term in detail_terms)
 
 def _latest_analysis_text(history: list[ChatHistoryMessage]) -> tuple[str | None, str | None]:
+    fallback: tuple[str | None, str | None] = (None, None)
     for msg in reversed(history or []):
         if msg.role != "assistant":
             continue
         content = msg.content or ""
-        match = re.search(
-            r"(?:Analise tecnica de|ultima analise de|analise anterior de)\s+\**([A-Z0-9$.-]+)\**",
+        full_match = re.search(r"Analise tecnica de\s+\**([A-Z0-9$.-]+)\**", content, re.IGNORECASE)
+        if full_match:
+            return full_match.group(1).upper(), content
+
+        followup_match = re.search(
+            r"(?:ultima analise de|analise anterior de)\s+\**([A-Z0-9$.-]+)\**",
             content,
             re.IGNORECASE,
         )
-        if match:
-            return match.group(1).upper(), content
-    return None, None
+        if followup_match and fallback == (None, None):
+            fallback = (followup_match.group(1).upper(), content)
+    return fallback
 
 def _extract_markdown_value(content: str, label: str) -> str:
     match = re.search(rf"{re.escape(label)}:\s*\*\*([^*\n]+)\*\*", content, re.IGNORECASE)
@@ -193,7 +198,7 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
     if action == "N/A":
         action = _extract_markdown_value(content, "Sinal tecnico")
     stop = _extract_markdown_value(content, "Stop loss")
-    target_matches = re.findall(r"^\s*-\s+([0-9][^\n]+)", content, re.MULTILINE)
+    target_matches = re.findall(r"^\s*-?\s*([0-9][^\n]+(?:\(\d+%\)|\+.*\(\d+%\)))", content, re.MULTILINE)
 
     try:
         rsi_value = float(rsi)
