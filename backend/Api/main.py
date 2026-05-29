@@ -301,6 +301,7 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     position = float(sr.get("current_position") or 50)
     current_zone = _human_zone(zones.get("posicao_atual"))
     current_price = _fmt_price(result.get("current_price"))
+    support_price = _fmt_price(sr.get("dynamic_support")) if sr.get("dynamic_support") is not None else "N/A"
     stop_loss = _fmt_price(strategy.get("stop_loss")) if strategy.get("stop_loss") else "N/A"
     targets = strategy.get("targets") or []
 
@@ -318,6 +319,8 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{current_price}**\n"
         yield f"- Zona atual: **{current_zone}**\n"
+        if action.startswith("AGUARDAR") and support_price != "N/A":
+            yield f"- Pullback a vigiar: perto de **{support_price}**\n"
         yield f"- RSI: **{analysis.get('rsi', 'N/A')}**\n"
         yield f"- Sinal tecnico: **{action}**\n"
         yield f"- Motivo: {summary}\n"
@@ -382,7 +385,9 @@ def _human_zone(zone: str) -> str:
 
 def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]:
     rsi = float(analysis.get("rsi") or 50)
-    position = float((analysis.get("support_resistance") or {}).get("current_position") or 50)
+    sr = analysis.get("support_resistance") or {}
+    position = float(sr.get("current_position") or 50)
+    support = _fmt_price(sr.get("dynamic_support")) if sr.get("dynamic_support") is not None else "suporte"
     zone = zones.get("posicao_atual")
     trend = (analysis.get("trend") or {}).get("direction", "")
     score = recs.get("score", "N/A")
@@ -390,12 +395,12 @@ def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]
     if rsi >= 70 and position >= 75:
         return (
             f"AGUARDAR / COMPRA SO EM PULLBACK",
-            f"RSI alto e preco perto da resistencia; tendencia ainda positiva, mas a entrada ideal ja nao e aqui. Score tecnico {score}/100."
+            f"RSI alto e preco perto da resistencia; tendencia ainda positiva, mas a entrada ideal ja nao e aqui. Pullback razoavel seria procurar preco mais perto de {support}. Score tecnico {score}/100."
         )
     if rsi >= 70:
         return (
             "AGUARDAR PULLBACK",
-            f"RSI alto; apesar do contexto positivo, o risco de comprar esticado e maior. Score tecnico {score}/100."
+            f"RSI alto; apesar do contexto positivo, o risco de comprar esticado e maior. Melhor esperar aproximacao ao suporte em {support} ou nova consolidacao. Score tecnico {score}/100."
         )
     if zone == "ZONA_DE_COMPRA" and rsi < 65:
         return (
@@ -410,7 +415,7 @@ def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]
     if trend == "UPTREND":
         return (
             "AGUARDAR CONFIRMACAO",
-            f"Tendencia positiva, mas sem zona de entrada clara. Score tecnico {score}/100."
+            f"Tendencia positiva, mas sem zona de entrada clara. Se corrigir, o suporte relevante abaixo esta perto de {support}. Score tecnico {score}/100."
         )
     return (
         recs.get("acao_principal", "AGUARDAR"),
@@ -464,7 +469,11 @@ def _format_coin_analysis(coin: str, result: dict):
         yield "## Plano\n\n"
         yield f"- Estrategia: **{strategy.get('estrategia', 'N/A')}**\n"
         if action.startswith("AGUARDAR"):
-            yield "- Acao: esperar pullback ou confirmacao antes de nova entrada\n"
+            support_text = _fmt_price(sr.get("dynamic_support")) if sr.get("dynamic_support") is not None else None
+            if support_text:
+                yield f"- Acao: esperar pullback para perto de **{support_text}** ou confirmacao antes de nova entrada\n"
+            else:
+                yield "- Acao: esperar pullback ou confirmacao antes de nova entrada\n"
         else:
             yield f"- Acao: {strategy.get('plano') or strategy.get('acao') or 'Aguardar confirmacao'}\n"
         if strategy.get("stop_loss"):
