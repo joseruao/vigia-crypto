@@ -104,7 +104,7 @@ export function ChatWindow() {
     if (!id) id = newConversation();
     const history = (active?.messages ?? []).slice(-8);
 
-    addMessage({ role: 'user', content });
+    addMessage({ role: 'user', content }, id);
     setInput('');
     setLoading(true);
     setGotFirstChunk(false);
@@ -176,13 +176,13 @@ export function ChatWindow() {
         addMessage({
           role: 'assistant',
           content: answer,
-        });
+        }, id);
       } else {
         const reader = res.body?.getReader();
         if (!reader) throw new Error('Sem stream');
 
         // cria a msg vazia do assistant que iremos preencher
-        addMessage({ role: 'assistant', content: '' });
+        addMessage({ role: 'assistant', content: '' }, id);
 
         let acc = '';
         const decoder = new TextDecoder();
@@ -196,7 +196,7 @@ export function ChatWindow() {
 
           acc += chunkStr;
           if (!gotFirstChunk && acc.length > 0) setGotFirstChunk(true);
-          updateLastAssistantMessage(acc);
+          updateLastAssistantMessage(acc, id);
         }
 
         // Se o stream terminou sem conteúdo, mostrar mensagem de fallback
@@ -208,7 +208,7 @@ export function ChatWindow() {
       if (!abortedRef.current) {
         const msg = e instanceof Error ? e.message : '⚠️ Erro ao comunicar com a API';
         console.error(e);
-        addMessage({ role: 'assistant', content: msg });
+        addMessage({ role: 'assistant', content: msg }, id);
       }
     } finally {
       setLoading(false);

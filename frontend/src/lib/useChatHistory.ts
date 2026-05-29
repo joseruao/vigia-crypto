@@ -54,8 +54,8 @@ export function useChatHistory() {
     return id;
   }
 
-  function addMessage(msg: Message) {
-    let id = activeId;
+  function addMessage(msg: Message, targetId?: string) {
+    let id = targetId ?? activeId;
     if (!id) id = newConversation();
 
     setConversations((prev) =>
@@ -75,11 +75,12 @@ export function useChatHistory() {
     setActiveId(id);
   }
 
-  function updateLastAssistantMessage(content: string) {
-    if (!activeId) return;
+  function updateLastAssistantMessage(content: string, targetId?: string) {
+    const id = targetId ?? activeId;
+    if (!id) return;
     setConversations((prev) =>
       prev.map((c) =>
-        c.id === activeId
+        c.id === id
           ? {
               ...c,
               messages: c.messages.map((m, i) =>

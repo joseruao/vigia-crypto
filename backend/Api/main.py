@@ -138,6 +138,7 @@ def _is_trade_followup(prompt: str) -> bool:
     decision_terms = [
         "compro", "comprar", "boa compra", "bom comprar", "vale a pena",
         "entro", "entrada", "buy", "should i buy", "is it good to buy",
+        "ainda achas", "achas o mesmo", "ainda pensas", "mantens", "e agora",
     ]
     return any(term in prompt_lower for term in decision_terms)
 
@@ -201,7 +202,6 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage]):
 
     def generate():
         yield f"Com base na analise anterior de **{coin}**, a minha leitura informativa e:\n\n"
-        yield f"<!-- analysis-context: {coin} -->\n"
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{price}**\n"
         yield f"- Zona atual: **{zone}**\n"
@@ -249,7 +249,6 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
 
     def generate():
         yield f"Com base na ultima analise de **{coin}**, a minha leitura informativa e:\n\n"
-        yield f"<!-- analysis-context: {coin} -->\n"
         yield f"**{decision}**\n\n"
         yield f"- Preco atual: **{current_price}**\n"
         yield f"- Zona atual: **{current_zone}**\n"
