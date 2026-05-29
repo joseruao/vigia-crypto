@@ -98,6 +98,8 @@ COINBASE_PRODUCTS = {
 }
 
 COINGECKO_SYMBOL_CACHE: Dict[str, str] = {}
+DEXSCREENER_SNAPSHOT_CACHE: Dict[str, Dict] = {}
+DEXSCREENER_CACHE_TTL = timedelta(minutes=15)
 
 class AdvancedCoinAnalyzer:
     def __init__(self, openai_api_key: str = None):
@@ -172,12 +174,29 @@ class AdvancedCoinAnalyzer:
         if not symbol:
             return None
 
+        cached = DEXSCREENER_SNAPSHOT_CACHE.get(symbol)
+        if cached:
+            cached_at = cached.get("_cached_at")
+            if isinstance(cached_at, datetime) and datetime.now() - cached_at < DEXSCREENER_CACHE_TTL:
+                print(f"Dados obtidos via DexScreener cache: {symbol}")
+                return {key: value for key, value in cached.items() if key != "_cached_at"}
+
         try:
             response = requests.get(
                 "https://api.dexscreener.com/latest/dex/search",
                 params={"q": symbol},
                 timeout=15,
             )
+            if response.status_code == 429:
+                print(f"DexScreener rate limit para {symbol}")
+                return {
+                    "error": (
+                        "DexScreener limitou temporariamente os pedidos. "
+                        "Tenta novamente dentro de alguns minutos."
+                    ),
+                    "temporary": True,
+                    "provider": "DexScreener",
+                }
             response.raise_for_status()
             pairs = response.json().get("pairs") or []
             exact_pairs = [
@@ -203,7 +222,7 @@ class AdvancedCoinAnalyzer:
             price_change = pair.get("priceChange") or {}
 
             print(f"Dados obtidos via DexScreener snapshot: {symbol}")
-            return {
+            snapshot = {
                 "coin": symbol,
                 "timestamp": datetime.now().isoformat(),
                 "snapshot_only": True,
@@ -226,6 +245,8 @@ class AdvancedCoinAnalyzer:
                 "fdv": pair.get("fdv"),
                 "market_cap": pair.get("marketCap"),
             }
+            DEXSCREENER_SNAPSHOT_CACHE[symbol] = {**snapshot, "_cached_at": datetime.now()}
+            return snapshot
         except Exception as e:
             print(f"Erro DexScreener para {coin}: {e}")
             return None
