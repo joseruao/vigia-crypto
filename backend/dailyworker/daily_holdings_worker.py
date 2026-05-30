@@ -663,7 +663,6 @@ def save_holding_to_supabase(holding_data, exchange_name):
             "liquidity": holding_data['liquidity'],
             "volume_24h": holding_data['volume_24h'],
             "price": holding_data['price'],
-            "price_change_24h": holding_data['price_change_24h'],
             "pair_url": holding_data['pair_url'],
             "score": holding_data['score'],
             "type": "holding",
@@ -671,7 +670,7 @@ def save_holding_to_supabase(holding_data, exchange_name):
             "ts": datetime.now().isoformat(),
         }
         
-        return supabase_insert("transacted_tokens", payload)
+        return supabase_upsert("transacted_tokens", payload, ["token_address", "chain", "type"])
         
     except Exception as e:
         print(f"❌ Erro ao guardar holding: {e}")
