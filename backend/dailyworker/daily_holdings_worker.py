@@ -214,7 +214,10 @@ def supabase_upsert(table, data, conflict_columns):
         url += f"?on_conflict={conflict_str}"
         
         response = requests.post(url, headers=headers, json=data, timeout=10)
-        return response.status_code in [200, 201, 204]
+        if response.status_code in [200, 201, 204]:
+            return True
+        print(f"Erro Supabase upsert {table}: HTTP {response.status_code} - {response.text[:200]}")
+        return False
     except Exception as e:
         print(f"❌ Erro Supabase upsert: {e}")
         return False
@@ -642,7 +645,7 @@ def save_holding_to_supabase(holding_data, exchange_name):
             "ts": datetime.now().isoformat(),
         }
         
-        return supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])
+        return supabase_insert("transacted_tokens", payload)
         
     except Exception as e:
         print(f"❌ Erro ao guardar holding: {e}")
