@@ -5,14 +5,35 @@ import asyncio
 from datetime import datetime
 import os
 import math
+import inspect
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    for env_path in (
+        Path(__file__).resolve().parent / ".env",
+        Path(__file__).resolve().parents[1] / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+    ):
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+except ImportError:
+    pass
+
 # ===========================
 # CONFIGURAÇÃO
 # ===========================
-SUPABASE_URL = "https://qynnajpvxnqcmkzrhpde.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bm5hanB2eG5xY21renJocGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Mzg4NjCsImV4cCI6MjA3MzAxNDg2M30.M30wZ79mQz2i3verO9JtyMn7JVE3yW1FjtcFJlnTvaw"
-HELIUS_API_KEY = "0fd1b496-c250-459e-ba21-fa5a33caf055"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE")
+    or os.getenv("SUPABASE_ANON_KEY")
+    or ""
+)
+_helius_raw = (os.getenv("HELIUS_API_KEY") or os.getenv("HELIUS_KEYS") or "").strip()
+HELIUS_API_KEY = _helius_raw.split(",")[0].strip() if _helius_raw else ""
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
-ETHERSCAN_API_KEY = "Y14X9JDHZY5QM3RV51GE2V8M6XSTWBNTYW"
+ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
 
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
@@ -153,7 +174,9 @@ async def safe_api_call(func, *args, max_retries=3, delay=2, **kwargs):
     """Executa chamadas de API com retry e backoff"""
     for attempt in range(max_retries):
         try:
-            result = await func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
             return result
         except Exception as e:
             if attempt == max_retries - 1:
