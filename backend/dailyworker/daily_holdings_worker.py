@@ -271,6 +271,27 @@ def supabase_upsert_many(table, rows, conflict_columns, timeout=25):
         print(f"⚠️ Erro Supabase bulk upsert {table}: {e}")
         return 0
 
+def supabase_count_rows(table, query_params=None, timeout=10):
+    """Conta linhas visiveis via REST para confirmar que o cron gravou mesmo."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        headers = SUPABASE_HEADERS.copy()
+        headers["Prefer"] = "count=exact"
+        params = {"select": "*", "limit": "1"}
+        if query_params:
+            params.update(query_params)
+        response = requests.get(url, headers=headers, params=params, timeout=timeout)
+        if response.status_code != 200:
+            print(f"Erro Supabase count {table}: HTTP {response.status_code} - {response.text[:200]}")
+            return None
+        content_range = response.headers.get("Content-Range", "")
+        if "/" in content_range:
+            return int(content_range.rsplit("/", 1)[1])
+        return len(response.json() or [])
+    except Exception as e:
+        print(f"Erro Supabase count {table}: {e}")
+        return None
+
 def get_token_data_dexscreener(token_address, chain=None):
     """Busca dados do token no DexScreener"""
     try:
@@ -853,6 +874,9 @@ async def main():
                 supabase_upsert_many,
                 max_retries=2,
             )
+            top100_visible = supabase_count_rows("top100_technical_rankings")
+            if top100_visible is not None:
+                print(f"   Confirmacao Supabase: {top100_visible} linhas visiveis em top100_technical_rankings")
             print(f"✅ {top100_saved} moedas top100 atualizadas")
         except Exception as e:
             print(f"⚠️ Erro ao atualizar top100 tecnico: {e}")
