@@ -1,9 +1,12 @@
 import math
 import time
+import asyncio
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Any
 
 import requests
+
+from analisegrafica.coin_analysis import AdvancedCoinAnalyzer
 
 
 TOP100_TABLE = "top100_technical_rankings"
@@ -13,11 +16,11 @@ TOP100_EXCLUDED_SYMBOLS = {
 }
 
 
-def _num(value, default=0.0) -> float:
+def _num(value, default=0.0):
     try:
         return float(value if value is not None else default)
     except (TypeError, ValueError):
-        return float(default)
+        return default
 
 
 def _risk_label(rank: int, volume_ratio: float, change_7d: float, change_30d: float) -> str:
@@ -119,6 +122,172 @@ def _score_coin(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _technical_score(technical: Dict[str, Any] | None, fallback_score: float) -> float:
+    if not technical:
+        return fallback_score
+
+    score = 35.0
+    rsi = _num(technical.get("rsi"), 50)
+    position = _num(technical.get("current_position"), 50)
+    trend = str(technical.get("trend") or "")
+    volume_ratio = _num(technical.get("volume_ratio_20d"), 1)
+
+    if 28 <= rsi <= 48:
+        score += 24
+    elif 48 < rsi <= 62:
+        score += 14
+    elif rsi < 28:
+        score += 10
+    elif rsi >= 70:
+        score -= 16
+
+    if 8 <= position <= 45:
+        score += 22
+    elif 45 < position <= 65:
+        score += 10
+    elif position > 75:
+        score -= 14
+
+    if trend == "UPTREND":
+        score += 14
+    else:
+        score -= 4
+
+    if volume_ratio >= 1.2:
+        score += 8
+    elif volume_ratio < 0.4:
+        score -= 3
+
+    score = score * 0.72 + fallback_score * 0.28
+    return round(min(max(score, 0), 100), 1)
+
+
+def _technical_signal(score: float, rsi: float | None, position: float | None) -> str:
+    if rsi is not None and rsi >= 72:
+        return "AGUARDAR"
+    if position is not None and position >= 78:
+        return "AGUARDAR"
+    if score >= 78:
+        return "FORTE"
+    if score >= 65:
+        return "BOA"
+    if score >= 52:
+        return "OBSERVAR"
+    return "FRACA"
+
+
+def _technical_summary(symbol: str, technical: Dict[str, Any] | None, fallback: Dict[str, Any]) -> str:
+    if not technical:
+        return fallback["rationale"]
+
+    rsi = technical.get("rsi")
+    trend = technical.get("trend")
+    position = technical.get("current_position")
+    support = technical.get("support")
+    resistance = technical.get("resistance")
+    parts = []
+
+    if trend:
+        parts.append(f"tendencia {trend.lower()}")
+    if rsi is not None:
+        if rsi < 30:
+            parts.append(f"RSI oversold ({rsi})")
+        elif rsi > 70:
+            parts.append(f"RSI alto ({rsi})")
+        else:
+            parts.append(f"RSI controlado ({rsi})")
+    if position is not None:
+        if position <= 45:
+            parts.append("perto da metade inferior do range")
+        elif position >= 75:
+            parts.append("esticada perto da resistencia")
+        else:
+            parts.append("zona intermedia do range")
+    if support and resistance:
+        parts.append(f"suporte {support}, resistencia {resistance}")
+
+    return f"{symbol}: " + "; ".join(parts[:4])
+
+
+async def _analyze_symbol_technical(symbol: str, analyzer: AdvancedCoinAnalyzer, semaphore: asyncio.Semaphore) -> Dict[str, Any] | None:
+    async with semaphore:
+        try:
+            result = await analyzer.analyze_coin(symbol, "60d")
+            if not result or result.get("error") or result.get("snapshot_only"):
+                return None
+
+            analysis = result.get("analysis") or {}
+            sr = analysis.get("support_resistance") or {}
+            trend = analysis.get("trend") or {}
+            volume = analysis.get("volume") or {}
+            recs = result.get("recommendations") or {}
+            strategy = recs.get("estrategia_trading") or {}
+            targets = strategy.get("targets") or []
+
+            return {
+                "rsi": analysis.get("rsi"),
+                "trend": trend.get("direction"),
+                "trend_strength": trend.get("strength"),
+                "volatility": analysis.get("volatility"),
+                "volume_ratio_20d": volume.get("ratio_20d"),
+                "support": sr.get("dynamic_support"),
+                "resistance": sr.get("dynamic_resistance"),
+                "current_position": sr.get("current_position"),
+                "entry_zone": (result.get("trading_zones") or {}).get("posicao_atual"),
+                "stop_loss": strategy.get("stop_loss"),
+                "targets": targets[:3],
+                "technical_action": recs.get("acao_principal"),
+                "technical_confidence": recs.get("confianca"),
+            }
+        except Exception as e:
+            print(f"Top100 tecnico falhou para {symbol}: {e}", flush=True)
+            return None
+
+
+async def enrich_rows_with_technical(rows: List[Dict[str, Any]], max_symbols: int = 100) -> List[Dict[str, Any]]:
+    analyzer = AdvancedCoinAnalyzer()
+    semaphore = asyncio.Semaphore(4)
+    symbols = [row["symbol"] for row in rows[:max_symbols]]
+    results = await asyncio.gather(
+        *[_analyze_symbol_technical(symbol, analyzer, semaphore) for symbol in symbols],
+        return_exceptions=False,
+    )
+    technical_by_symbol = dict(zip(symbols, results))
+
+    enriched = []
+    for row in rows:
+        technical = technical_by_symbol.get(row["symbol"])
+        updated = dict(row)
+        if technical:
+            updated.update({
+                "rsi": technical.get("rsi"),
+                "trend": technical.get("trend"),
+                "trend_strength": technical.get("trend_strength"),
+                "volatility": technical.get("volatility"),
+                "volume_ratio_20d": technical.get("volume_ratio_20d"),
+                "support": technical.get("support"),
+                "resistance": technical.get("resistance"),
+                "current_position": technical.get("current_position"),
+                "entry_zone": technical.get("entry_zone"),
+                "stop_loss": technical.get("stop_loss"),
+                "targets": technical.get("targets") or [],
+                "technical_action": technical.get("technical_action"),
+                "technical_confidence": technical.get("technical_confidence"),
+            })
+
+        updated["score"] = _technical_score(technical, _num(row.get("score")))
+        rsi = _num(technical.get("rsi"), None) if technical else None
+        position = _num(technical.get("current_position"), None) if technical else None
+        updated["signal"] = _technical_signal(updated["score"], rsi, position)
+        updated["rationale"] = _technical_summary(row["symbol"], technical, {
+            "rationale": row.get("rationale") or "sinais mistos",
+        })
+        enriched.append(updated)
+
+    enriched.sort(key=lambda row: (row["score"], -row["rank"]), reverse=True)
+    return enriched
+
+
 def fetch_top100_market_data() -> List[Dict[str, Any]]:
     try:
         response = requests.get(
@@ -203,16 +372,32 @@ def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def update_top100_rankings(
+async def update_top100_rankings(
     upsert_func: Callable[[str, Dict[str, Any], List[str]], bool],
     bulk_upsert_func: Callable[[str, List[Dict[str, Any]], List[str]], int] | None = None,
 ) -> int:
     print("🔎 ATUALIZANDO RANKING TECNICO TOP100...")
     items = fetch_top100_market_data()
     rows = build_top100_rows(items)
+    rows = await enrich_rows_with_technical(rows, max_symbols=100)
 
     if bulk_upsert_func:
         saved = bulk_upsert_func(TOP100_TABLE, rows, ["date", "symbol"])
+        if saved == 0 and rows and any("rsi" in row for row in rows):
+            legacy_rows = [
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {
+                        "rsi", "trend", "trend_strength", "volatility", "volume_ratio_20d",
+                        "support", "resistance", "current_position", "entry_zone", "stop_loss",
+                        "targets", "technical_action", "technical_confidence",
+                    }
+                }
+                for row in rows
+            ]
+            print("Top100 tecnico: retry sem colunas novas para manter compatibilidade Supabase", flush=True)
+            saved = bulk_upsert_func(TOP100_TABLE, legacy_rows, ["date", "symbol"])
         print(f"Top100 atualizado em lote: {saved}/{len(rows)} moedas guardadas", flush=True)
         return saved
 

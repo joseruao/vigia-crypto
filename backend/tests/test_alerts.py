@@ -206,3 +206,59 @@ def test_top100_rows_skip_stablecoins():
     ])
 
     assert [row["symbol"] for row in rows] == ["SOL"]
+
+def test_top100_technical_enrichment_reorders_by_setup(monkeypatch):
+    import asyncio
+    from dailyworker import top100_rankings_worker as worker
+
+    class FakeAnalyzer:
+        async def analyze_coin(self, symbol, period):
+            if symbol == "GOOD":
+                return {
+                    "analysis": {
+                        "rsi": 34,
+                        "trend": {"direction": "UPTREND", "strength": 2.1},
+                        "volatility": 3.2,
+                        "volume": {"ratio_20d": 1.4},
+                        "support_resistance": {
+                            "dynamic_support": 8,
+                            "dynamic_resistance": 12,
+                            "current_position": 30,
+                        },
+                    },
+                    "trading_zones": {"posicao_atual": "ZONA_DE_COMPRA"},
+                    "recommendations": {
+                        "acao_principal": "COMPRA",
+                        "confianca": "ALTA",
+                        "estrategia_trading": {
+                            "stop_loss": "7.5",
+                            "targets": ["11 - 12 (30%)"],
+                        },
+                    },
+                }
+            return {
+                "analysis": {
+                    "rsi": 78,
+                    "trend": {"direction": "UPTREND", "strength": 8},
+                    "volatility": 6,
+                    "volume": {"ratio_20d": 1},
+                    "support_resistance": {
+                        "dynamic_support": 5,
+                        "dynamic_resistance": 10,
+                        "current_position": 90,
+                    },
+                },
+                "trading_zones": {"posicao_atual": "ZONA_DE_VENDA"},
+                "recommendations": {"acao_principal": "AGUARDAR", "confianca": "MEDIA", "estrategia_trading": {}},
+            }
+
+    monkeypatch.setattr(worker, "AdvancedCoinAnalyzer", lambda: FakeAnalyzer())
+    rows = [
+        {"symbol": "PUMP", "rank": 10, "score": 90, "rationale": "pump"},
+        {"symbol": "GOOD", "rank": 50, "score": 60, "rationale": "base"},
+    ]
+
+    enriched = asyncio.run(worker.enrich_rows_with_technical(rows, max_symbols=2))
+    assert enriched[0]["symbol"] == "GOOD"
+    assert enriched[0]["rsi"] == 34
+    assert enriched[1]["signal"] == "AGUARDAR"

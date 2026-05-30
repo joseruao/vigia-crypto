@@ -24,3 +24,18 @@ create index if not exists top100_technical_rankings_score_idx
 
 create index if not exists top100_technical_rankings_ts_idx
   on public.top100_technical_rankings (ts desc);
+
+alter table public.top100_technical_rankings
+  add column if not exists rsi double precision,
+  add column if not exists trend text,
+  add column if not exists trend_strength double precision,
+  add column if not exists volatility double precision,
+  add column if not exists volume_ratio_20d double precision,
+  add column if not exists support double precision,
+  add column if not exists resistance double precision,
+  add column if not exists current_position double precision,
+  add column if not exists entry_zone text,
+  add column if not exists stop_loss text,
+  add column if not exists targets jsonb,
+  add column if not exists technical_action text,
+  add column if not exists technical_confidence text;

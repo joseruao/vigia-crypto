@@ -91,12 +91,18 @@ def _fmt_pct(value: Any) -> str:
         return "N/A"
 
 def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
+    base_select = "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts"
     params = {
-        "select": "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts",
+        "select": f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence",
         "order": "score.desc",
         "limit": "50",
     }
     r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
+    if r.status_code != 200 and "rsi" in (getattr(r, "text", "") or "").lower():
+        if log:
+            log.warning("Top100 ranking sem colunas tecnicas; fallback para select legacy")
+        params["select"] = base_select
+        r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
     if r.status_code != 200:
         if log:
             log.warning("Top100 ranking indisponivel: HTTP %s", r.status_code)
@@ -139,6 +145,14 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
             f"vol {_fmt_money(item.get('volume_24h'))}"
         )
         line += f"\n   Preco: **{price}** | 24h {change_24h}"
+        if item.get("rsi") is not None:
+            line += (
+                f"\n   RSI: **{_fmt_pct(item.get('rsi')).replace('%', '')}** | "
+                f"tendencia **{item.get('trend', 'N/A')}** | "
+                f"range **{_fmt_pct(item.get('current_position'))}**"
+            )
+        if item.get("support") is not None and item.get("resistance") is not None:
+            line += f"\n   Suporte: **{_fmt_money(item.get('support'))}** | Resistencia: **{_fmt_money(item.get('resistance'))}**"
         rationale = item.get("rationale")
         if rationale:
             line += f"\n  Motivo: {rationale}"
