@@ -131,14 +131,18 @@ def fetch_top100_market_data_coinpaprika() -> List[Dict[str, Any]]:
 def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     today = datetime.now(timezone.utc).date().isoformat()
     now = datetime.now(timezone.utc).isoformat()
-    rows = []
+    rows_by_symbol = {}
     for item in items:
+        symbol = str(item.get("symbol") or "").upper().strip()
+        if not symbol:
+            continue
+
         computed = _score_coin(item)
-        rows.append({
+        row = {
             "date": today,
             "rank": int(item.get("market_cap_rank") or 999),
             "coin_id": item.get("id"),
-            "symbol": str(item.get("symbol") or "").upper(),
+            "symbol": symbol,
             "name": item.get("name"),
             "price": item.get("current_price"),
             "market_cap": item.get("market_cap"),
@@ -152,7 +156,12 @@ def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "signal": computed["signal"],
             "rationale": computed["rationale"],
             "ts": now,
-        })
+        }
+        existing = rows_by_symbol.get(symbol)
+        if not existing or row["rank"] < existing["rank"]:
+            rows_by_symbol[symbol] = row
+
+    rows = list(rows_by_symbol.values())
     rows.sort(key=lambda row: (row["score"], -row["rank"]), reverse=True)
     return rows
 

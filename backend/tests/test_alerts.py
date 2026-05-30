@@ -116,3 +116,37 @@ def test_coinpaprika_top100_mapping():
         assert rows[0]["score"] > 0
     finally:
         monkeypatch.undo()
+
+def test_top100_rows_deduplicate_symbols():
+    from dailyworker.top100_rankings_worker import build_top100_rows
+
+    rows = build_top100_rows([
+        {
+            "id": "abc-first",
+            "symbol": "ABC",
+            "name": "ABC First",
+            "market_cap_rank": 80,
+            "market_cap": 1000000,
+            "total_volume": 50000,
+        },
+        {
+            "id": "abc-better-rank",
+            "symbol": "abc",
+            "name": "ABC Better Rank",
+            "market_cap_rank": 40,
+            "market_cap": 2000000,
+            "total_volume": 70000,
+        },
+        {
+            "id": "xyz",
+            "symbol": "XYZ",
+            "name": "XYZ",
+            "market_cap_rank": 41,
+            "market_cap": 2000000,
+            "total_volume": 70000,
+        },
+    ])
+
+    assert [row["symbol"] for row in rows].count("ABC") == 1
+    assert len(rows) == 2
+    assert next(row for row in rows if row["symbol"] == "ABC")["coin_id"] == "abc-better-rank"
