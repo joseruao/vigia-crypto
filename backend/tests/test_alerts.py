@@ -78,3 +78,41 @@ def test_top100_buy_question_uses_ranking_table(monkeypatch):
     assert data["count"] == 1
     assert "BTC" in data["answer"]
     assert "82.5/100" in data["answer"]
+
+def test_coinpaprika_top100_mapping():
+    from dailyworker.top100_rankings_worker import build_top100_rows, fetch_top100_market_data_coinpaprika
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [
+                {
+                    "id": "btc-bitcoin",
+                    "symbol": "BTC",
+                    "name": "Bitcoin",
+                    "rank": 1,
+                    "quotes": {
+                        "USD": {
+                            "price": 70000,
+                            "market_cap": 1000000000,
+                            "volume_24h": 90000000,
+                            "percent_change_24h": 1.0,
+                            "percent_change_7d": 5.0,
+                            "percent_change_30d": 12.0,
+                        }
+                    },
+                }
+            ]
+
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    try:
+        import requests
+        monkeypatch.setattr(requests, "get", lambda *args, **kwargs: FakeResponse())
+        items = fetch_top100_market_data_coinpaprika()
+        rows = build_top100_rows(items)
+        assert rows[0]["symbol"] == "BTC"
+        assert rows[0]["score"] > 0
+    finally:
+        monkeypatch.undo()

@@ -85,20 +85,47 @@ def _score_coin(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def fetch_top100_market_data() -> List[Dict[str, Any]]:
-    response = requests.get(
-        "https://api.coingecko.com/api/v3/coins/markets",
-        params={
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 100,
-            "page": 1,
-            "sparkline": "false",
-            "price_change_percentage": "24h,7d,30d",
-        },
-        timeout=30,
-    )
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": 100,
+                "page": 1,
+                "sparkline": "false",
+                "price_change_percentage": "24h,7d,30d",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        print("Top100 obtido via CoinGecko", flush=True)
+        return response.json() or []
+    except Exception as e:
+        print(f"CoinGecko indisponivel para top100: {e}. A tentar CoinPaprika...", flush=True)
+        return fetch_top100_market_data_coinpaprika()
+
+
+def fetch_top100_market_data_coinpaprika() -> List[Dict[str, Any]]:
+    response = requests.get("https://api.coinpaprika.com/v1/tickers", timeout=30)
     response.raise_for_status()
-    return response.json() or []
+    rows = []
+    for item in (response.json() or [])[:100]:
+        quote = (item.get("quotes") or {}).get("USD") or {}
+        rows.append({
+            "id": item.get("id"),
+            "symbol": item.get("symbol"),
+            "name": item.get("name"),
+            "market_cap_rank": item.get("rank"),
+            "current_price": quote.get("price"),
+            "market_cap": quote.get("market_cap"),
+            "total_volume": quote.get("volume_24h"),
+            "price_change_percentage_24h": quote.get("percent_change_24h"),
+            "price_change_percentage_7d_in_currency": quote.get("percent_change_7d"),
+            "price_change_percentage_30d_in_currency": quote.get("percent_change_30d"),
+        })
+    print(f"Top100 obtido via CoinPaprika: {len(rows)} moedas", flush=True)
+    return rows
 
 
 def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
