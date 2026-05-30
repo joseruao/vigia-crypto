@@ -67,6 +67,22 @@ export function ChatWindow() {
   // NÃO usar para análise de moedas (coin analysis)
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
+    const isTop100Question = q.includes('top100') || q.includes('top 100');
+    const isListingQuestion =
+      q.includes('listado') ||
+      q.includes('listing') ||
+      q.includes('vÃ£o ser') ||
+      q.includes('vão ser') ||
+      q.includes('vao ser') ||
+      q.includes('vai ser') ||
+      (q.includes('achas') && (q.includes('token') || q.includes('listado')));
+    const isBuyWatchlistQuestion =
+      (q.includes('comprar') || q.includes('compra') || q.includes('aconselhas') || q.includes('recomendas') || q.includes('oportunidade')) &&
+      (q.includes('moeda') || q.includes('moedas') || q.includes('crypto') || q.includes('cripto') || q.includes('token'));
+
+    if (isTop100Question || isListingQuestion || isBuyWatchlistQuestion) {
+      return true;
+    }
     
     // Se for pedido de análise de moeda, usar chat/stream
     if (q.includes('analisa-me') || q.includes('analisa') || q.includes('análise')) {
@@ -92,10 +108,9 @@ export function ChatWindow() {
       q.includes('wallet') ||
       q.includes('score') ||
       q.includes('scoring') ||
-      q.includes('top100') ||
-      q.includes('top 100') ||
-      (q.includes('comprar') && (q.includes('moeda') || q.includes('moedas') || q.includes('crypto') || q.includes('cripto') || q.includes('token'))) ||
-      q.includes('achas') && (q.includes('token') || q.includes('listado'))
+      isTop100Question ||
+      isBuyWatchlistQuestion ||
+      isListingQuestion
     );
   }
 

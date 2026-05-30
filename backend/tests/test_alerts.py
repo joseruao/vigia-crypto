@@ -36,6 +36,12 @@ def test_buy_watchlist_question_detection():
     assert alerts._is_buy_watchlist_question("top 100 crypto buy opportunities")
     assert not alerts._is_buy_watchlist_question("analisa BTC")
 
+def test_top100_question_is_not_coin_analysis():
+    from Api import main
+
+    assert main._should_use_coin_analysis("analisa BTC")
+    assert not main._should_use_coin_analysis("Que moedas me aconselhas a analisar hoje do top100?")
+
 def test_top100_buy_question_is_not_answered_from_listings(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
