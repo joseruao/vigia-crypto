@@ -43,6 +43,10 @@ EXCHANGE_NORMALIZE = {
 }
 
 TEST_TOKENS = {"TEST", "FOO", "PNUT"}
+TOP100_EXCLUDED_SYMBOLS = {
+    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
+    "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+}
 DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 36
 PREDICTIONS_LIMIT = 10
 
@@ -90,7 +94,7 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
     params = {
         "select": "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts",
         "order": "score.desc",
-        "limit": "10",
+        "limit": "50",
     }
     r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
     if r.status_code != 200:
@@ -104,7 +108,11 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-    rows = r.json() or []
+    rows = [
+        row for row in (r.json() or [])
+        if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
+        and float(row.get("score") or 0) > 0
+    ][:10]
     if not rows:
         answer = (
             "A tabela top100 existe, mas neste momento nao devolveu linhas visiveis para o bot.\n\n"
@@ -115,25 +123,31 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
     lines = [
-        f"**Top {len(rows)} moedas do top100 para analisar hoje:**\n",
-        "Base: market cap top100 + momentum 24h/7d/30d + volume relativo. Isto e triagem, nao recomendacao de compra.\n",
+        f"**Shortlist top100 para analisar hoje ({len(rows)} moedas):**\n",
+        "Base: score tecnico diario com momentum 24h/7d/30d, volume relativo e risco. Isto nao e recomendacao de compra; e uma fila de analise.\n",
     ]
-    for item in rows:
+    for i, item in enumerate(rows, 1):
         symbol = item.get("symbol") or "N/A"
         name = item.get("name") or symbol
         score = item.get("score") or 0
+        price = _fmt_money(item.get("price"))
+        change_24h = _fmt_pct(item.get("change_24h"))
         line = (
-            f"- **{symbol}** ({name}) — score **{float(score):.1f}/100** · "
+            f"{i}. **{symbol}** ({name}) - score **{float(score):.1f}/100** · "
             f"sinal **{item.get('signal', 'N/A')}** · risco **{item.get('risk', 'N/A')}** · "
             f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))} · "
             f"vol {_fmt_money(item.get('volume_24h'))}"
         )
+        line += f"\n   Preco: **{price}** | 24h {change_24h}"
         rationale = item.get("rationale")
         if rationale:
             line += f"\n  Motivo: {rationale}"
         lines.append(line)
 
-    lines.append("\nPara decidir entrada, escolhe uma e pede: `analisa BTC` ou `analisa SOL`.")
+    examples = ", ".join(str(row.get("symbol") or "").upper() for row in rows[:3] if row.get("symbol"))
+    if examples:
+        first_symbol = examples.split(", ")[0]
+        lines.append(f"\nProximo passo: escolhe uma e pede `analisa {first_symbol}`. Exemplos desta lista: {examples}.")
     return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
 
 def _is_test_token(row: Dict[str, Any]) -> bool:

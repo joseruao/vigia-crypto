@@ -7,6 +7,10 @@ import requests
 
 
 TOP100_TABLE = "top100_technical_rankings"
+TOP100_EXCLUDED_SYMBOLS = {
+    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
+    "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+}
 
 
 def _num(value, default=0.0) -> float:
@@ -27,6 +31,7 @@ def _risk_label(rank: int, volume_ratio: float, change_7d: float, change_30d: fl
 
 
 def _score_coin(item: Dict[str, Any]) -> Dict[str, Any]:
+    symbol = str(item.get("symbol") or "").upper().strip()
     rank = int(item.get("market_cap_rank") or 999)
     market_cap = _num(item.get("market_cap"))
     volume = _num(item.get("total_volume"))
@@ -35,19 +40,47 @@ def _score_coin(item: Dict[str, Any]) -> Dict[str, Any]:
     change_30d = _num(item.get("price_change_percentage_30d_in_currency"))
     volume_ratio = volume / market_cap if market_cap > 0 else 0.0
 
-    score = 45.0
-    score += max(min(change_24h * 0.7, 8), -8)
-    score += max(min(change_7d * 0.8, 18), -18)
-    score += max(min(change_30d * 0.35, 14), -14)
-    score += min(math.log10(volume_ratio * 1000 + 1) * 9, 18)
+    score = 42.0
+
+    # Preferimos setups analisaveis: tendencia positiva, mas sem perseguir pumps extremos.
+    if 5 <= change_30d <= 65:
+        score += 14
+    elif change_30d > 65:
+        score += 4
+    elif change_30d < -20:
+        score -= 10
+    else:
+        score += max(min(change_30d * 0.25, 8), -6)
+
+    if -8 <= change_7d <= 18:
+        score += 13
+    elif 18 < change_7d <= 35:
+        score += 5
+    elif change_7d > 35:
+        score -= 8
+    else:
+        score += max(min(change_7d * 0.5, 6), -10)
+
+    if -5 <= change_24h <= 7:
+        score += 6
+    elif change_24h > 12:
+        score -= 4
+    elif change_24h < -10:
+        score -= 6
+
+    score += min(math.log10(volume_ratio * 1000 + 1) * 8, 16)
 
     if rank <= 10:
-        score += 5
+        score += 1
     elif rank <= 50:
         score += 3
+    elif rank <= 100:
+        score += 1
 
+    if symbol in TOP100_EXCLUDED_SYMBOLS:
+        score = 0
     if change_7d > 30 or change_30d > 90:
-        score -= 10
+        score -= 8
     if change_24h < -8 and change_7d < -12:
         score -= 8
 
@@ -64,10 +97,12 @@ def _score_coin(item: Dict[str, Any]) -> Dict[str, Any]:
         signal = "FRACA"
 
     reasons = []
-    if change_7d > 0:
-        reasons.append(f"7d {change_7d:.1f}%")
+    if change_30d > 0 and -8 <= change_7d <= 12:
+        reasons.append("tendencia 30d com pullback/controlada")
+    elif change_7d > 0:
+        reasons.append(f"momentum 7d {change_7d:.1f}%")
     if change_30d > 0:
-        reasons.append(f"30d {change_30d:.1f}%")
+        reasons.append(f"forca 30d {change_30d:.1f}%")
     if volume_ratio >= 0.05:
         reasons.append("volume forte vs market cap")
     if change_7d > 30:
@@ -135,6 +170,8 @@ def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for item in items:
         symbol = str(item.get("symbol") or "").upper().strip()
         if not symbol:
+            continue
+        if symbol in TOP100_EXCLUDED_SYMBOLS:
             continue
 
         computed = _score_coin(item)

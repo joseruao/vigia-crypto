@@ -98,6 +98,23 @@ def test_top100_buy_question_uses_ranking_table(monkeypatch):
     assert "BTC" in data["answer"]
     assert "82.5/100" in data["answer"]
 
+def test_top100_answer_filters_stablecoins(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {"symbol": "USDT", "name": "Tether", "score": 99, "signal": "FORTE", "risk": "BAIXO"},
+                {"symbol": "SOL", "name": "Solana", "score": 75, "signal": "BOA", "risk": "MODERADO"},
+            ]
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "que moedas me aconselhas a analisar hoje do top100?"})
+    assert r.status_code == 200
+    data = r.json()
+    assert "SOL" in data["answer"]
+    assert "USDT" not in data["answer"]
+
 def test_coinpaprika_top100_mapping():
     from dailyworker.top100_rankings_worker import build_top100_rows, fetch_top100_market_data_coinpaprika
 
@@ -169,3 +186,23 @@ def test_top100_rows_deduplicate_symbols():
     assert [row["symbol"] for row in rows].count("ABC") == 1
     assert len(rows) == 2
     assert next(row for row in rows if row["symbol"] == "ABC")["coin_id"] == "abc-better-rank"
+
+def test_top100_rows_skip_stablecoins():
+    from dailyworker.top100_rankings_worker import build_top100_rows
+
+    rows = build_top100_rows([
+        {"id": "tether", "symbol": "USDT", "name": "Tether", "market_cap_rank": 3},
+        {
+            "id": "solana",
+            "symbol": "SOL",
+            "name": "Solana",
+            "market_cap_rank": 6,
+            "market_cap": 1000000000,
+            "total_volume": 100000000,
+            "price_change_percentage_24h": 1,
+            "price_change_percentage_7d_in_currency": 4,
+            "price_change_percentage_30d_in_currency": 12,
+        },
+    ])
+
+    assert [row["symbol"] for row in rows] == ["SOL"]
