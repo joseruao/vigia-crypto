@@ -107,8 +107,10 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
     rows = r.json() or []
     if not rows:
         answer = (
-            "A tabela top100 existe, mas ainda nao tem dados.\n\n"
-            "Deixa o cron dos holders correr uma vez, ou corre o daily worker manualmente, para preencher o ranking."
+            "A tabela top100 existe, mas neste momento nao devolveu linhas visiveis para o bot.\n\n"
+            "Se o cron acabou de correr, confirma nos logs a linha "
+            "`Confirmacao Supabase: X linhas visiveis em top100_technical_rankings`.\n\n"
+            "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 

@@ -2,14 +2,15 @@
 
 type Props = { visible: boolean; onSelect: (text: string) => void };
 
-// Apenas 2 sugestões por idioma
 const SUGGESTIONS: Record<'pt' | 'en', string[]> = {
   pt: [
-    'Que tokens achas que vão ser listados?',
+    'Que tokens achas que vao ser listados?',
+    'Que moedas me aconselhas a analisar hoje do top100?',
     'Analise BTC',
   ],
   en: [
     'Which tokens look close to a major exchange listing?',
+    'Which top 100 coins should I analyze today?',
     'Analyze BTC',
   ],
 };
@@ -24,7 +25,7 @@ export function Suggestions({ visible, onSelect }: Props) {
   const items = SUGGESTIONS[getLang()];
 
   return (
-    <div className="w-full grid gap-2 sm:grid-cols-2 mb-4">
+    <div className="mb-4 grid w-full gap-2 sm:grid-cols-3">
       {items.map((s, i) => (
         <button
           key={i}
