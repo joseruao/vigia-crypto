@@ -69,7 +69,15 @@ def _is_buy_watchlist_question(q: str) -> bool:
 
 def _is_top100_buy_question(q: str) -> bool:
     q = (q or "").lower()
-    return _is_buy_watchlist_question(q) and ("top100" in q or "top 100" in q)
+    if "top100" not in q and "top 100" not in q:
+        return False
+    top100_terms = (
+        "comprar", "compra", "buy", "entrada", "entrar", "aconselhas",
+        "recomendas", "oportunidade", "oportunidades", "analisar",
+        "analisa", "melhor", "melhores", "risco", "suporte", "rsi",
+        "oversold", "sobrevend", "pullback", "hoje",
+    )
+    return _is_buy_watchlist_question(q) or any(term in q for term in top100_terms)
 
 def _fmt_money(value: Any) -> str:
     try:
@@ -90,7 +98,51 @@ def _fmt_pct(value: Any) -> str:
     except (TypeError, ValueError):
         return "N/A"
 
-def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
+def _top100_mode(prompt: str) -> str:
+    q = (prompt or "").lower()
+    if "risco" in q or "segura" in q or "seguro" in q:
+        return "low_risk"
+    if "suporte" in q or "pullback" in q or "perto" in q:
+        return "near_support"
+    if "rsi" in q or "oversold" in q or "sobrevend" in q:
+        return "low_rsi"
+    return "score"
+
+def _risk_rank(value: Any) -> int:
+    text = str(value or "").upper()
+    if "BAIXO" in text:
+        return 0
+    if "MODERADO/ELEVADO" in text:
+        return 2
+    if "ELEVADO" in text:
+        return 3
+    return 1
+
+def _sort_top100_rows(rows: List[Dict[str, Any]], mode: str) -> List[Dict[str, Any]]:
+    if mode == "low_risk":
+        return sorted(rows, key=lambda row: (_risk_rank(row.get("risk")), -float(row.get("score") or 0)))
+    if mode == "near_support":
+        return sorted(rows, key=lambda row: (
+            abs(float(row.get("current_position") if row.get("current_position") is not None else 50) - 25),
+            -float(row.get("score") or 0),
+        ))
+    if mode == "low_rsi":
+        return sorted(rows, key=lambda row: (
+            float(row.get("rsi") if row.get("rsi") is not None else 50),
+            -float(row.get("score") or 0),
+        ))
+    return sorted(rows, key=lambda row: float(row.get("score") or 0), reverse=True)
+
+def _top100_title(mode: str, count: int) -> str:
+    if mode == "low_risk":
+        return f"**Top100 com menor risco para analisar ({count} moedas):**"
+    if mode == "near_support":
+        return f"**Top100 mais perto de zona de suporte/pullback ({count} moedas):**"
+    if mode == "low_rsi":
+        return f"**Top100 com RSI mais baixo para analisar ({count} moedas):**"
+    return f"**Shortlist top100 para analisar hoje ({count} moedas):**"
+
+def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
     base_select = "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts"
     params = {
         "select": f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence",
@@ -114,11 +166,13 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
+    mode = _top100_mode(prompt)
     rows = [
         row for row in (r.json() or [])
         if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
         and float(row.get("score") or 0) > 0
-    ][:10]
+    ]
+    rows = _sort_top100_rows(rows, mode)[:10]
     if not rows:
         answer = (
             "A tabela top100 existe, mas neste momento nao devolveu linhas visiveis para o bot.\n\n"
@@ -129,7 +183,7 @@ def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
     lines = [
-        f"**Shortlist top100 para analisar hoje ({len(rows)} moedas):**\n",
+        f"{_top100_title(mode, len(rows))}\n",
         "Base: score tecnico diario com momentum 24h/7d/30d, volume relativo e risco. Isto nao e recomendacao de compra; e uma fila de analise.\n",
     ]
     for i, item in enumerate(rows, 1):
@@ -798,7 +852,7 @@ def ask_alerts(payload: AskIn):
     log.info(f"Pergunta recebida: {payload.prompt}")
 
     if _is_top100_buy_question(q):
-        return _answer_top100_buy_watchlist(log)
+        return _answer_top100_buy_watchlist(log, payload.prompt)
 
     # Defaults
     ex_norm = None

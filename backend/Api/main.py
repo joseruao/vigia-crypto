@@ -899,7 +899,7 @@ async def chat_stream(req: ChatRequest):
     """
     try:
         if is_top100_buy_question(req.prompt):
-            result = answer_top100_buy_watchlist(log)
+            result = answer_top100_buy_watchlist(log, req.prompt)
 
             def top100_response():
                 yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."

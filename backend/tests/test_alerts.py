@@ -48,7 +48,7 @@ def test_chat_stream_routes_top100_to_alerts(monkeypatch):
     monkeypatch.setattr(
         main,
         "answer_top100_buy_watchlist",
-        lambda log=None: {"ok": True, "answer": "RANKING TOP100 TESTE", "count": 1, "items": []},
+        lambda log=None, prompt="": {"ok": True, "answer": "RANKING TOP100 TESTE", "count": 1, "items": []},
     )
     client = TestClient(app)
     r = client.post("/chat/stream", json={"prompt": "Que moedas me aconselhas a analisar hoje do top100?", "history": []})
@@ -114,6 +114,38 @@ def test_top100_answer_filters_stablecoins(monkeypatch):
     data = r.json()
     assert "SOL" in data["answer"]
     assert "USDT" not in data["answer"]
+
+def test_top100_risk_question_sorts_by_low_risk(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {"symbol": "RISKY", "name": "Risky", "score": 95, "risk": "ELEVADO", "signal": "FORTE"},
+                {"symbol": "SAFE", "name": "Safe", "score": 70, "risk": "BAIXO/MODERADO", "signal": "BOA"},
+            ]
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "quais moedas do top100 têm menos risco?"})
+    assert r.status_code == 200
+    answer = r.json()["answer"]
+    assert answer.index("SAFE") < answer.index("RISKY")
+
+def test_top100_support_question_sorts_by_current_position(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {"symbol": "HIGH", "name": "High", "score": 90, "current_position": 90, "risk": "MODERADO"},
+                {"symbol": "SUP", "name": "Support", "score": 70, "current_position": 24, "risk": "MODERADO"},
+            ]
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "quais do top100 estão perto do suporte?"})
+    assert r.status_code == 200
+    answer = r.json()["answer"]
+    assert answer.index("SUP") < answer.index("HIGH")
 
 def test_coinpaprika_top100_mapping():
     from dailyworker.top100_rankings_worker import build_top100_rows, fetch_top100_market_data_coinpaprika
