@@ -221,7 +221,10 @@ def supabase_insert(table, data):
     try:
         url = f"{SUPABASE_URL}/rest/v1/{table}"
         response = requests.post(url, headers=SUPABASE_HEADERS, json=data, timeout=10)
-        return response.status_code in [200, 201, 204]
+        if response.status_code in [200, 201, 204]:
+            return True
+        print(f"Erro Supabase insert {table}: HTTP {response.status_code} - {response.text[:300]}")
+        return False
     except Exception as e:
         print(f"❌ Erro Supabase insert: {e}")
         return False
