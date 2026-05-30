@@ -387,6 +387,30 @@ def _filter_prediction_rows(
     ]
     return _dedupe_latest_predictions(filtered)
 
+def _merge_prediction_backfill(recent: List[Dict[str, Any]], fallback: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    combined = list(recent)
+    seen = {
+        "|".join([
+            str(row.get("exchange") or ""),
+            str(row.get("token_address") or row.get("token") or ""),
+            str(row.get("chain") or ""),
+        ]).lower()
+        for row in combined
+    }
+    for row in fallback:
+        key = "|".join([
+            str(row.get("exchange") or ""),
+            str(row.get("token_address") or row.get("token") or ""),
+            str(row.get("chain") or ""),
+        ]).lower()
+        if key in seen:
+            continue
+        combined.append(row)
+        seen.add(key)
+        if len(combined) >= PREDICTIONS_LIMIT:
+            break
+    return combined
+
 class AskIn(BaseModel):
     prompt: str
 
@@ -575,8 +599,8 @@ def get_predictions():
         )
         
         # Se não houver nenhuma com score >= 50, retorna todas ordenadas por score (para debug)
-        if len(filtered) == 0:
-            log.warning("Nenhuma prediction recente. A procurar fallback historico nao listado.")
+        if len(filtered) < PREDICTIONS_LIMIT:
+            log.warning("Predictions recentes insuficientes (%s/%s). A procurar fallback historico nao listado.", len(filtered), PREDICTIONS_LIMIT)
             fallback_params = {
                 "type": "eq.holding",
                 "select": base_select,
@@ -586,9 +610,10 @@ def get_predictions():
             fallback_r = supa.rest_get("transacted_tokens", params=fallback_params, timeout=8)
             if fallback_r.status_code != 200:
                 log.error(f"Erro ao buscar fallback predictions: HTTP {fallback_r.status_code} - {fallback_r.text[:200]}")
-                return []
-            filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens)
-            log.info("Fallback historico filtrado: %s", len(filtered))
+                return filtered[:PREDICTIONS_LIMIT]
+            fallback_filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens)
+            filtered = _merge_prediction_backfill(filtered, fallback_filtered)
+            log.info("Predictions apos backfill historico: %s", len(filtered))
         
         # Retorna lista direta (formato esperado pelo frontend)
         return filtered[:PREDICTIONS_LIMIT]
@@ -956,10 +981,10 @@ def ask_alerts(payload: AskIn):
     # Ordena por score desc
     out = _dedupe_latest_predictions(out)
 
-    if len(out) == 0 and (is_listing_question or is_buy_watchlist_question):
+    if len(out) < PREDICTIONS_LIMIT and (is_listing_question or is_buy_watchlist_question):
         fallback_params = params.copy()
         fallback_params.pop("ts", None)
-        log.info(f"Sem resultados recentes; buscando fallback historico com params: {fallback_params}")
+        log.info(f"Resultados recentes insuficientes ({len(out)}/{PREDICTIONS_LIMIT}); buscando fallback historico com params: {fallback_params}")
         fallback_r = supa.rest_get("transacted_tokens", params=fallback_params, timeout=8)
         if fallback_r.status_code == 200:
             fallback_out: List[Dict[str, Any]] = []
@@ -974,8 +999,9 @@ def ask_alerts(payload: AskIn):
                     continue
                 fallback_out.append(row)
             fallback_out = [_apply_listing_score(row) for row in fallback_out]
-            out = _dedupe_latest_predictions(fallback_out)
-            log.info(f"Fallback historico filtrado no ask: {len(out)}")
+            fallback_out = _dedupe_latest_predictions(fallback_out)
+            out = _merge_prediction_backfill(out, fallback_out)
+            log.info(f"Ask apos backfill historico: {len(out)}")
 
     # Formata resposta em texto para o frontend
     try:

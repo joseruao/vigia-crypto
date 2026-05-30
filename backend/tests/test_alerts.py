@@ -149,6 +149,17 @@ def test_top100_support_question_sorts_by_current_position(monkeypatch):
     answer = r.json()["answer"]
     assert answer.index("SUP") < answer.index("HIGH")
 
+def test_predictions_backfill_merges_recent_and_historical():
+    recent = [{"exchange": "Gate.io", "token": "AAA", "chain": "solana", "score": 80}]
+    fallback = [
+        {"exchange": "Gate.io", "token": "AAA", "chain": "solana", "score": 80},
+        {"exchange": "Binance 2", "token": "BBB", "chain": "solana", "score": 75},
+        {"exchange": "Binance 2", "token": "CCC", "chain": "solana", "score": 74},
+    ]
+
+    merged = alerts._merge_prediction_backfill(recent, fallback)
+    assert [row["token"] for row in merged] == ["AAA", "BBB", "CCC"]
+
 def test_coinpaprika_top100_mapping():
     from dailyworker.top100_rankings_worker import build_top100_rows, fetch_top100_market_data_coinpaprika
 
