@@ -95,7 +95,11 @@ async def add_no_buffering_headers(request: Request, call_next):
     return resp
 
 # Routers
-from Api.routes.alerts import router as alerts_router
+from Api.routes.alerts import (
+    router as alerts_router,
+    _answer_top100_buy_watchlist as answer_top100_buy_watchlist,
+    _is_top100_buy_question as is_top100_buy_question,
+)
 app.include_router(alerts_router, prefix="")
 
 # Coin Analysis Router
@@ -894,6 +898,14 @@ async def chat_stream(req: ChatRequest):
     Detecta pedidos de análise gráfica e integra automaticamente.
     """
     try:
+        if is_top100_buy_question(req.prompt):
+            result = answer_top100_buy_watchlist(log)
+
+            def top100_response():
+                yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."
+
+            return StreamingResponse(top100_response(), media_type="text/plain")
+
         if _is_trade_followup(req.prompt):
             followup = _format_trade_followup(req.prompt, req.history)
             if followup:

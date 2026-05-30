@@ -42,6 +42,19 @@ def test_top100_question_is_not_coin_analysis():
     assert main._should_use_coin_analysis("analisa BTC")
     assert not main._should_use_coin_analysis("Que moedas me aconselhas a analisar hoje do top100?")
 
+def test_chat_stream_routes_top100_to_alerts(monkeypatch):
+    from Api import main
+
+    monkeypatch.setattr(
+        main,
+        "answer_top100_buy_watchlist",
+        lambda log=None: {"ok": True, "answer": "RANKING TOP100 TESTE", "count": 1, "items": []},
+    )
+    client = TestClient(app)
+    r = client.post("/chat/stream", json={"prompt": "Que moedas me aconselhas a analisar hoje do top100?", "history": []})
+    assert r.status_code == 200
+    assert "RANKING TOP100 TESTE" in r.text
+
 def test_top100_buy_question_is_not_answered_from_listings(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
