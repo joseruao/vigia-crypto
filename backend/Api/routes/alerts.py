@@ -67,6 +67,73 @@ def _is_top100_buy_question(q: str) -> bool:
     q = (q or "").lower()
     return _is_buy_watchlist_question(q) and ("top100" in q or "top 100" in q)
 
+def _fmt_money(value: Any) -> str:
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return "N/A"
+    if number >= 1_000_000_000:
+        return f"${number / 1_000_000_000:.2f}B"
+    if number >= 1_000_000:
+        return f"${number / 1_000_000:.2f}M"
+    if number >= 1_000:
+        return f"${number / 1_000:.1f}K"
+    return f"${number:.0f}"
+
+def _fmt_pct(value: Any) -> str:
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "N/A"
+
+def _answer_top100_buy_watchlist(log=None) -> Dict[str, Any]:
+    params = {
+        "select": "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts",
+        "order": "score.desc",
+        "limit": "10",
+    }
+    r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
+    if r.status_code != 200:
+        if log:
+            log.warning("Top100 ranking indisponivel: HTTP %s", r.status_code)
+        answer = (
+            "Ainda nao tenho o ranking tecnico diario do top100 disponivel.\n\n"
+            "Ja deixei o cron dos holders preparado para atualizar a tabela `top100_technical_rankings`. "
+            "Falta criares essa tabela no Supabase e deixar o proximo cron correr.\n\n"
+            "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
+        )
+        return {"ok": True, "answer": answer, "count": 0, "items": []}
+
+    rows = r.json() or []
+    if not rows:
+        answer = (
+            "A tabela top100 existe, mas ainda nao tem dados.\n\n"
+            "Deixa o cron dos holders correr uma vez, ou corre o daily worker manualmente, para preencher o ranking."
+        )
+        return {"ok": True, "answer": answer, "count": 0, "items": []}
+
+    lines = [
+        f"**Top {len(rows)} moedas do top100 para analisar hoje:**\n",
+        "Base: market cap top100 + momentum 24h/7d/30d + volume relativo. Isto e triagem, nao recomendacao de compra.\n",
+    ]
+    for item in rows:
+        symbol = item.get("symbol") or "N/A"
+        name = item.get("name") or symbol
+        score = item.get("score") or 0
+        line = (
+            f"- **{symbol}** ({name}) — score **{float(score):.1f}/100** · "
+            f"sinal **{item.get('signal', 'N/A')}** · risco **{item.get('risk', 'N/A')}** · "
+            f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))} · "
+            f"vol {_fmt_money(item.get('volume_24h'))}"
+        )
+        rationale = item.get("rationale")
+        if rationale:
+            line += f"\n  Motivo: {rationale}"
+        lines.append(line)
+
+    lines.append("\nPara decidir entrada, escolhe uma e pede: `analisa BTC` ou `analisa SOL`.")
+    return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
+
 def _is_test_token(row: Dict[str, Any]) -> bool:
     token = str(row.get("token") or "").strip().upper()
     token_address = str(row.get("token_address") or "").strip().lower()
@@ -701,15 +768,7 @@ def ask_alerts(payload: AskIn):
     log.info(f"Pergunta recebida: {payload.prompt}")
 
     if _is_top100_buy_question(q):
-        answer = (
-            "Ainda nao tenho um ranking tecnico diario do top100 guardado.\n\n"
-            "Para responder bem a isto, precisamos de um cron job que analise diariamente o top100 por market cap, "
-            "guarde score tecnico, RSI, tendencia, volume e risco numa tabela propria, e depois o chat usa essa tabela.\n\n"
-            "Hoje consigo ajudar de duas formas:\n"
-            "- `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc.\n"
-            "- `que tokens achas que vao ser listados?` para a watchlist de listings"
-        )
-        return {"ok": True, "answer": answer, "count": 0, "items": []}
+        return _answer_top100_buy_watchlist(log)
 
     # Defaults
     ex_norm = None
