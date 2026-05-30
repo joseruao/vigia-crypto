@@ -63,8 +63,12 @@ def _prediction_since_iso() -> str:
 
 def _is_buy_watchlist_question(q: str) -> bool:
     q = (q or "").lower()
-    buy_terms = ("comprar", "compra", "buy", "entrada", "entrar", "aconselhas", "recomendas", "oportunidade", "oportunidades")
-    universe_terms = ("moeda", "moedas", "crypto", "cripto", "token", "tokens", "top100", "top 100", "hoje")
+    buy_terms = (
+        "comprar", "compra", "buy", "entrada", "entrar", "aconselhas",
+        "recomendas", "oportunidade", "oportunidades", "analisar",
+        "melhor", "melhores", "risco", "suporte", "pullback", "rsi",
+    )
+    universe_terms = ("moeda", "moedas", "crypto", "cripto", "token", "tokens", "top100", "top 100", "hoje", "mercado")
     return any(term in q for term in buy_terms) and any(term in q for term in universe_terms)
 
 def _is_top100_buy_question(q: str) -> bool:

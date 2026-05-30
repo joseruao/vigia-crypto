@@ -67,10 +67,38 @@ export function ChatWindow() {
   // NÃO usar para análise de moedas (coin analysis)
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
-    const isTop100Question = q.includes('top100') || q.includes('top 100');
+    const hasMarketUniverse =
+      q.includes('top100') ||
+      q.includes('top 100') ||
+      q.includes('mercado') ||
+      q.includes('market') ||
+      q.includes('hoje') ||
+      q.includes('today') ||
+      q.includes('moeda') ||
+      q.includes('moedas') ||
+      q.includes('crypto') ||
+      q.includes('cripto');
+    const top100Intent =
+      q.includes('comprar') ||
+      q.includes('compra') ||
+      q.includes('buy') ||
+      q.includes('aconselhas') ||
+      q.includes('recomendas') ||
+      q.includes('analisar') ||
+      q.includes('melhor') ||
+      q.includes('melhores') ||
+      q.includes('risco') ||
+      q.includes('suporte') ||
+      q.includes('pullback') ||
+      q.includes('rsi') ||
+      q.includes('oversold') ||
+      q.includes('oportunidade');
+    const isTop100Question = q.includes('top100') || q.includes('top 100') || (hasMarketUniverse && top100Intent);
     const isListingQuestion =
       q.includes('listado') ||
       q.includes('listing') ||
+      q.includes('listagem') ||
+      q.includes('previsao de listing') ||
       q.includes('vÃ£o ser') ||
       q.includes('vão ser') ||
       q.includes('vao ser') ||
@@ -100,7 +128,9 @@ export function ChatWindow() {
       q.includes('vao ser') ||
       q.includes('vai ser') ||
       q.includes('exchange') ||
-      q.includes('prediction') ||
+	      q.includes('prediction') ||
+	      q.includes('previsao') ||
+	      q.includes('predicao') ||
       q.includes('previsão') ||
       q.includes('predição') ||
       q.includes('holders') ||

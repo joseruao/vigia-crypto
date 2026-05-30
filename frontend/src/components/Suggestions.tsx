@@ -4,13 +4,17 @@ type Props = { visible: boolean; onSelect: (text: string) => void };
 
 const SUGGESTIONS: Record<'pt' | 'en', string[]> = {
   pt: [
-    'Que tokens achas que vao ser listados?',
     'Que moedas me aconselhas a analisar hoje do top100?',
+    'Quais do top100 estao perto do suporte?',
+    'Quais do top100 tem menos risco?',
+    'Que tokens achas que vao ser listados?',
     'Analise BTC',
   ],
   en: [
-    'Which tokens look close to a major exchange listing?',
     'Which top 100 coins should I analyze today?',
+    'Which top 100 coins are near support?',
+    'Which top 100 coins have lower risk?',
+    'Which tokens look close to a major exchange listing?',
     'Analyze BTC',
   ],
 };
@@ -25,7 +29,7 @@ export function Suggestions({ visible, onSelect }: Props) {
   const items = SUGGESTIONS[getLang()];
 
   return (
-    <div className="mb-4 grid w-full gap-2 sm:grid-cols-3">
+    <div className="mb-4 grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((s, i) => (
         <button
           key={i}

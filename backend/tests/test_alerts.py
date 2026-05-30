@@ -33,6 +33,8 @@ def test_ask_basic(monkeypatch):
 
 def test_buy_watchlist_question_detection():
     assert alerts._is_buy_watchlist_question("que moedas me aconselhas a comprar hoje do top100?")
+    assert alerts._is_buy_watchlist_question("quais as melhores moedas para analisar hoje?")
+    assert alerts._is_buy_watchlist_question("quais moedas estao perto do suporte?")
     assert alerts._is_buy_watchlist_question("top 100 crypto buy opportunities")
     assert not alerts._is_buy_watchlist_question("analisa BTC")
 
