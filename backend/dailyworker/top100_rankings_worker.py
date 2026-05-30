@@ -130,10 +130,18 @@ def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
-def update_top100_rankings(upsert_func: Callable[[str, Dict[str, Any], List[str]], bool]) -> int:
+def update_top100_rankings(
+    upsert_func: Callable[[str, Dict[str, Any], List[str]], bool],
+    bulk_upsert_func: Callable[[str, List[Dict[str, Any]], List[str]], int] | None = None,
+) -> int:
     print("🔎 ATUALIZANDO RANKING TECNICO TOP100...")
     items = fetch_top100_market_data()
     rows = build_top100_rows(items)
+
+    if bulk_upsert_func:
+        saved = bulk_upsert_func(TOP100_TABLE, rows, ["date", "symbol"])
+        print(f"Top100 atualizado em lote: {saved}/{len(rows)} moedas guardadas", flush=True)
+        return saved
 
     saved = 0
     for row in rows:

@@ -222,6 +222,26 @@ def supabase_upsert(table, data, conflict_columns):
 # ===========================
 # FUNÇÕES DE DADOS
 # ===========================
+def supabase_upsert_many(table, rows, conflict_columns, timeout=25):
+    """Upsert em lote para evitar 100 chamadas seguidas no cron."""
+    if not rows:
+        return 0
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/{table}"
+        headers = SUPABASE_HEADERS.copy()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        conflict_str = ",".join(conflict_columns)
+        url += f"?on_conflict={conflict_str}"
+
+        response = requests.post(url, headers=headers, json=rows, timeout=timeout)
+        if response.status_code in [200, 201, 204]:
+            return len(rows)
+        print(f"⚠️ Erro Supabase bulk upsert {table}: HTTP {response.status_code} - {response.text[:200]}")
+        return 0
+    except Exception as e:
+        print(f"⚠️ Erro Supabase bulk upsert {table}: {e}")
+        return 0
+
 def get_token_data_dexscreener(token_address, chain=None):
     """Busca dados do token no DexScreener"""
     try:
@@ -799,7 +819,12 @@ async def main():
         print("\n🔎 FASE 1.5: ATUALIZAR TOP100 TECNICO")
         try:
             from top100_rankings_worker import update_top100_rankings
-            top100_saved = await safe_api_call(update_top100_rankings, supabase_upsert, max_retries=2)
+            top100_saved = await safe_api_call(
+                update_top100_rankings,
+                supabase_upsert,
+                supabase_upsert_many,
+                max_retries=2,
+            )
             print(f"✅ {top100_saved} moedas top100 atualizadas")
         except Exception as e:
             print(f"⚠️ Erro ao atualizar top100 tecnico: {e}")
