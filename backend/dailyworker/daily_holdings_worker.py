@@ -371,40 +371,6 @@ def calculate_holding_score(holding_data, exchange_name):
         score += 4.0
 
     return round(min(max(score, 0), 100), 1)
-    
-    # 1. VALOR (PESO MÁXIMO)
-    if value_usd > threshold * 3:  # 3x acima do threshold
-        score += 35
-    elif value_usd > threshold * 2:  # 2x acima do threshold
-        score += 25
-    elif value_usd > threshold:  # Apenas acima do threshold
-        score += 15
-        
-    # 2. LIQUIDEZ (MUITO IMPORTANTE)
-    if liquidity > 10000000:  # $10M+
-        score += 25
-    elif liquidity > 5000000:  # $5M+
-        score += 20
-    elif liquidity > 2000000:  # $2M+
-        score += 15
-    elif liquidity < MIN_LIQUIDITY:  # Abaixo do mínimo
-        score -= 20
-        
-    # 3. VOLUME (IMPORTANTE)
-    if volume_24h > 2000000:  # $2M+
-        score += 15
-    elif volume_24h > 1000000:  # $1M+
-        score += 10
-    elif volume_24h > MIN_VOLUME_24H:  # $500k+
-        score += 5
-    elif volume_24h < 100000:  # Volume muito baixo
-        score -= 10
-        
-    # 4. SE NÃO ESTÁ LISTADO (BÔNUS MODERADO)
-    if not is_token_listed_on_exchange(token_symbol, exchange_name):
-        score += 10
-        
-    return min(max(score, 0), 100)  # Garantir entre 0-100
 
 def is_scam_token(token_data, value_usd):
     """Verifica se é um token scam/lixo"""
@@ -619,10 +585,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
 # ===========================
 # FUNÇÕES PRINCIPAIS
 # ===========================
-# LINHA 33 - Baixar score mínimo
 
-
-# Adicionar função de análise (antes da função save_holding_to_supabase)
 def generate_holding_analysis(holding_data, exchange_name):
     """Gera análise automática para o holding"""
     score = holding_data['score']
@@ -640,58 +603,44 @@ def generate_holding_analysis(holding_data, exchange_name):
     else:
         return f"👀 EM OBSERVAÇÃO - {symbol} presente na {exchange_name}."
 
-# Atualizar a função save_holding_to_supabase
 def save_holding_to_supabase(holding_data, exchange_name):
-    """Guarda o holding COM análise"""
+    """Guarda o holding na base de dados - ✅ COMPATÍVEL COM SCHEMA SUPABASE"""
     try:
+        # ✅ FIX: Gerar hash único para signature (campo obrigatório)
+        import hashlib
+        signature = hashlib.md5(
+            f"{holding_data['address']}{exchange_name}{datetime.now().isoformat()}".encode()
+        ).hexdigest()
+        
         analysis = generate_holding_analysis(holding_data, exchange_name)
         
+        # ✅ FIX: Campos OBRIGATÓRIOS (NOT NULL) na tabela
         payload = {
-            "exchange": exchange_name,
+            # Campos obrigatórios
+            "token_address": holding_data['address'],  # NOT NULL - chave de uniqueness
+            "type": "holding",                         # NOT NULL - chave de uniqueness
+            "chain": holding_data['chain'],            # NOT NULL - chave de uniqueness
+            "signature": signature,                    # Agora preenchido
+            
+            # Campos opcionais (nullable)
             "token": holding_data['symbol'],
-            "token_address": holding_data['address'],
+            "exchange": exchange_name,
             "amount": holding_data['balance'],
             "value_usd": holding_data['value_usd'],
-            "liquidity": holding_data['liquidity'],
-            "volume_24h": holding_data['volume_24h'],
             "price": holding_data['price'],
-            "price_change_24h": holding_data['price_change_24h'],
+            "liquidity": holding_data['liquidity'],
             "pair_url": holding_data['pair_url'],
+            "volume_24h": holding_data['volume_24h'],
             "score": holding_data['score'],
-            "analysis": analysis,  # ⬅️ NOVO CAMPO
-            "type": "holding", 
-            "chain": holding_data['chain'],
+            "analysis_text": analysis,
             "ts": datetime.now().isoformat(),
         }
         
+        # ✅ Usar conflict_columns que correspondem ao UNIQUE constraint
         success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])
         if success:
             print(f"   💾 GUARDADO: {holding_data['symbol']} (Score: {holding_data['score']})")
         return success
-        
-    except Exception as e:
-        print(f"❌ Erro ao guardar holding: {e}")
-        return False
-def save_holding_to_supabase(holding_data, exchange_name):
-    """Guarda o holding na base de dados"""
-    try:
-        payload = {
-            "exchange": exchange_name,
-            "token": holding_data['symbol'],
-            "token_address": holding_data['address'],
-            "amount": holding_data['balance'],
-            "value_usd": holding_data['value_usd'],
-            "liquidity": holding_data['liquidity'],
-            "volume_24h": holding_data['volume_24h'],
-            "price": holding_data['price'],
-            "pair_url": holding_data['pair_url'],
-            "score": holding_data['score'],
-            "type": "holding",
-            "chain": holding_data['chain'],
-            "ts": datetime.now().isoformat(),
-        }
-        
-        return supabase_upsert("transacted_tokens", payload, ["token_address", "chain", "type"])
         
     except Exception as e:
         print(f"❌ Erro ao guardar holding: {e}")
