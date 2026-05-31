@@ -1,10 +1,16 @@
 import math
 import time
 import asyncio
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Dict, List, Any
 
 import requests
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from analisegrafica.coin_analysis import AdvancedCoinAnalyzer
 
