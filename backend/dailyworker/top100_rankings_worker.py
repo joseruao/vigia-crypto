@@ -1,18 +1,10 @@
 import math
 import time
 import asyncio
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from typing import Callable, Dict, List, Any
 
 import requests
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
-
-from analisegrafica.coin_analysis import AdvancedCoinAnalyzer
 
 
 TOP100_TABLE = "top100_technical_rankings"
@@ -215,50 +207,198 @@ def _technical_summary(symbol: str, technical: Dict[str, Any] | None, fallback: 
     return f"{symbol}: " + "; ".join(parts[:4])
 
 
-async def _analyze_symbol_technical(symbol: str, analyzer: AdvancedCoinAnalyzer, semaphore: asyncio.Semaphore) -> Dict[str, Any] | None:
+def _fetch_coinbase_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+    try:
+        end = datetime.utcnow()
+        start = end - timedelta(days=days)
+        response = requests.get(
+            f"https://api.exchange.coinbase.com/products/{symbol}-USD/candles",
+            params={"granularity": 86400, "start": start.isoformat(), "end": end.isoformat()},
+            timeout=12,
+        )
+        response.raise_for_status()
+        candles = [
+            {"ts": row[0], "low": float(row[1]), "high": float(row[2]), "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+            for row in response.json() or []
+        ]
+        candles.sort(key=lambda row: row["ts"])
+        return candles if len(candles) >= 20 else None
+    except Exception:
+        return None
+
+
+def _fetch_gateio_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+    try:
+        response = requests.get(
+            "https://api.gateio.ws/api/v4/spot/candlesticks",
+            params={"currency_pair": f"{symbol}_USDT", "interval": "1d", "limit": days},
+            timeout=12,
+        )
+        response.raise_for_status()
+        candles = [
+            {"ts": int(row[0]), "volume": float(row[1]), "close": float(row[2]), "high": float(row[3]), "low": float(row[4]), "open": float(row[5])}
+            for row in response.json() or []
+        ]
+        candles.sort(key=lambda row: row["ts"])
+        return candles if len(candles) >= 20 else None
+    except Exception:
+        return None
+
+
+def _fetch_binance_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+    try:
+        response = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": f"{symbol}USDT", "interval": "1d", "limit": days},
+            timeout=12,
+        )
+        response.raise_for_status()
+        candles = [
+            {"ts": row[0] / 1000, "open": float(row[1]), "high": float(row[2]), "low": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+            for row in response.json() or []
+        ]
+        return candles if len(candles) >= 20 else None
+    except Exception:
+        return None
+
+
+def _fetch_coingecko_candles(coin_id: str | None, days: int = 60) -> List[Dict[str, float]] | None:
+    if not coin_id:
+        return None
+    try:
+        response = requests.get(
+            f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart",
+            params={"vs_currency": "usd", "days": days, "interval": "daily"},
+            timeout=12,
+        )
+        response.raise_for_status()
+        payload = response.json() or {}
+        prices = payload.get("prices") or []
+        volumes = payload.get("total_volumes") or []
+        candles = []
+        for index, item in enumerate(prices):
+            ts_ms, price = item
+            volume = volumes[index][1] if index < len(volumes) else 0
+            candles.append({"ts": ts_ms / 1000, "open": float(price), "high": float(price), "low": float(price), "close": float(price), "volume": float(volume)})
+        return candles if len(candles) >= 20 else None
+    except Exception:
+        return None
+
+
+def _fetch_candles(symbol: str, coin_id: str | None) -> List[Dict[str, float]] | None:
+    for fetcher in (
+        lambda: _fetch_coinbase_candles(symbol),
+        lambda: _fetch_gateio_candles(symbol),
+        lambda: _fetch_binance_candles(symbol),
+        lambda: _fetch_coingecko_candles(coin_id),
+    ):
+        candles = fetcher()
+        if candles:
+            return candles
+    return None
+
+
+def _sma(values: List[float], window: int) -> float:
+    sample = values[-window:] if len(values) >= window else values
+    return sum(sample) / len(sample) if sample else 0.0
+
+
+def _calculate_rsi(closes: List[float], window: int = 14) -> float:
+    if len(closes) < window + 1:
+        return 50.0
+    gains = []
+    losses = []
+    for previous, current in zip(closes[-window - 1:-1], closes[-window:]):
+        delta = current - previous
+        gains.append(max(delta, 0))
+        losses.append(max(-delta, 0))
+    avg_gain = sum(gains) / window
+    avg_loss = sum(losses) / window
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 2)
+
+
+def _calculate_technical_from_candles(symbol: str, candles: List[Dict[str, float]]) -> Dict[str, Any] | None:
+    closes = [float(c["close"]) for c in candles if c.get("close") is not None]
+    volumes = [float(c.get("volume") or 0) for c in candles]
+    if len(closes) < 20:
+        return None
+
+    current = closes[-1]
+    sma_20 = _sma(closes, 20)
+    sma_50 = _sma(closes, 50)
+    trend = "UPTREND" if sma_20 >= sma_50 else "DOWNTREND"
+    trend_strength = round(abs(sma_20 - sma_50) / sma_50 * 100, 1) if sma_50 else 0.0
+    recent = closes[-30:] if len(closes) >= 30 else closes
+    static_support = min(recent)
+    static_resistance = max(recent)
+    support = round(static_support * 0.98, 10)
+    resistance = round(static_resistance * 1.02, 10)
+    current_position = round(((current - support) / (resistance - support)) * 100, 1) if resistance != support else 50.0
+    returns = [(b - a) / a for a, b in zip(closes[-21:-1], closes[-20:]) if a]
+    volatility = round((sum((r - (sum(returns) / len(returns))) ** 2 for r in returns) / len(returns)) ** 0.5 * 100, 2) if returns else 0.0
+    avg_volume = _sma(volumes, 20)
+    volume_ratio = round((volumes[-1] / avg_volume), 2) if avg_volume else 1.0
+    rsi = _calculate_rsi(closes)
+
+    if current_position <= 35:
+        entry_zone = "ZONA_DE_COMPRA"
+    elif current_position >= 75:
+        entry_zone = "ZONA_DE_VENDA"
+    else:
+        entry_zone = "ZONA_NEUTRA"
+
+    stop_loss = round(support * 0.92, 10)
+    targets = [
+        f"{resistance * 0.98:g} - {resistance:g} (30%)",
+        f"{resistance:g} - {resistance * 1.05:g} (50%)",
+        f"{resistance * 1.05:g} + (20%)",
+    ]
+
+    return {
+        "rsi": rsi,
+        "trend": trend,
+        "trend_strength": trend_strength,
+        "volatility": volatility,
+        "volume_ratio_20d": volume_ratio,
+        "support": support,
+        "resistance": resistance,
+        "current_position": current_position,
+        "entry_zone": entry_zone,
+        "stop_loss": f"{stop_loss:g}",
+        "targets": targets,
+        "technical_action": "AGUARDAR" if rsi >= 70 or current_position >= 75 else ("COMPRA" if entry_zone == "ZONA_DE_COMPRA" else "OBSERVAR"),
+        "technical_confidence": "ALTA" if 25 <= rsi <= 55 and current_position <= 45 else "MEDIA",
+    }
+
+
+def _analyze_symbol_technical_sync(row: Dict[str, Any]) -> Dict[str, Any] | None:
+    symbol = row.get("symbol")
+    candles = _fetch_candles(symbol, row.get("coin_id"))
+    if not candles:
+        return None
+    return _calculate_technical_from_candles(symbol, candles)
+
+
+async def _analyze_symbol_technical(row: Dict[str, Any], semaphore: asyncio.Semaphore) -> Dict[str, Any] | None:
     async with semaphore:
         try:
-            result = await analyzer.analyze_coin(symbol, "60d")
-            if not result or result.get("error") or result.get("snapshot_only"):
-                return None
-
-            analysis = result.get("analysis") or {}
-            sr = analysis.get("support_resistance") or {}
-            trend = analysis.get("trend") or {}
-            volume = analysis.get("volume") or {}
-            recs = result.get("recommendations") or {}
-            strategy = recs.get("estrategia_trading") or {}
-            targets = strategy.get("targets") or []
-
-            return {
-                "rsi": analysis.get("rsi"),
-                "trend": trend.get("direction"),
-                "trend_strength": trend.get("strength"),
-                "volatility": analysis.get("volatility"),
-                "volume_ratio_20d": volume.get("ratio_20d"),
-                "support": sr.get("dynamic_support"),
-                "resistance": sr.get("dynamic_resistance"),
-                "current_position": sr.get("current_position"),
-                "entry_zone": (result.get("trading_zones") or {}).get("posicao_atual"),
-                "stop_loss": strategy.get("stop_loss"),
-                "targets": targets[:3],
-                "technical_action": recs.get("acao_principal"),
-                "technical_confidence": recs.get("confianca"),
-            }
+            return await asyncio.to_thread(_analyze_symbol_technical_sync, row)
         except Exception as e:
-            print(f"Top100 tecnico falhou para {symbol}: {e}", flush=True)
+            print(f"Top100 tecnico falhou para {row.get('symbol')}: {e}", flush=True)
             return None
 
 
 async def enrich_rows_with_technical(rows: List[Dict[str, Any]], max_symbols: int = 100) -> List[Dict[str, Any]]:
-    analyzer = AdvancedCoinAnalyzer()
     semaphore = asyncio.Semaphore(4)
-    symbols = [row["symbol"] for row in rows[:max_symbols]]
+    selected_rows = rows[:max_symbols]
     results = await asyncio.gather(
-        *[_analyze_symbol_technical(symbol, analyzer, semaphore) for symbol in symbols],
+        *[_analyze_symbol_technical(row, semaphore) for row in selected_rows],
         return_exceptions=False,
     )
-    technical_by_symbol = dict(zip(symbols, results))
+    technical_by_symbol = dict(zip([row["symbol"] for row in selected_rows], results))
 
     enriched = []
     for row in rows:

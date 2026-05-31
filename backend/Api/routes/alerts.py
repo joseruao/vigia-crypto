@@ -378,13 +378,19 @@ def _filter_prediction_rows(
     rows: List[Dict[str, Any]],
     listed_tokens: Dict[str, set],
     min_score: float = 50,
+    log=None,
 ) -> List[Dict[str, Any]]:
-    filtered = [
-        _apply_listing_score(row) for row in rows
-        if _score(row) >= min_score
-        and not _is_test_token(row)
-        and not _is_listed_on_own_exchange(row, listed_tokens)
-    ]
+    filtered = []
+    excluded_listed = []
+    for row in rows:
+        if _score(row) < min_score or _is_test_token(row):
+            continue
+        if _is_listed_on_own_exchange(row, listed_tokens):
+            excluded_listed.append(f"{row.get('token')}@{_normalize_exchange(row.get('exchange'))}")
+            continue
+        filtered.append(_apply_listing_score(row))
+    if log and excluded_listed:
+        log.info("Predictions excluidas por ja estarem listadas na propria exchange: %s", ", ".join(excluded_listed[:20]))
     return _dedupe_latest_predictions(filtered)
 
 def _merge_prediction_backfill(recent: List[Dict[str, Any]], fallback: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -590,7 +596,7 @@ def get_predictions():
         log.info(f"Recebidos {len(data)} registos do Supabase")
         
         # Filtra por score mínimo de 50 e ordena por score desc
-        filtered = _filter_prediction_rows(data, listed_tokens)
+        filtered = _filter_prediction_rows(data, listed_tokens, log=log)
         
         log.info(
             "Predictions filtradas (score >= 50, ultimas %sh): %s",
@@ -611,7 +617,7 @@ def get_predictions():
             if fallback_r.status_code != 200:
                 log.error(f"Erro ao buscar fallback predictions: HTTP {fallback_r.status_code} - {fallback_r.text[:200]}")
                 return filtered[:PREDICTIONS_LIMIT]
-            fallback_filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens)
+            fallback_filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens, log=log)
             filtered = _merge_prediction_backfill(filtered, fallback_filtered)
             log.info("Predictions apos backfill historico: %s", len(filtered))
         
