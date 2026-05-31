@@ -351,11 +351,12 @@ def _calculate_technical_from_candles(symbol: str, candles: List[Dict[str, float
         entry_zone = "ZONA_NEUTRA"
 
     stop_loss = round(support * 0.92, 10)
-    targets = [
+    # ✅ FIX: Converter targets em string para evitar problemas com arrays no Supabase
+    targets_str = " | ".join([
         f"{resistance * 0.98:g} - {resistance:g} (30%)",
         f"{resistance:g} - {resistance * 1.05:g} (50%)",
-        f"{resistance * 1.05:g} + (20%)",
-    ]
+        f"{resistance * 1.05:g}+ (20%)",
+    ])
 
     return {
         "rsi": rsi,
@@ -368,7 +369,7 @@ def _calculate_technical_from_candles(symbol: str, candles: List[Dict[str, float
         "current_position": current_position,
         "entry_zone": entry_zone,
         "stop_loss": f"{stop_loss:g}",
-        "targets": targets,
+        "targets": targets_str,  # ✅ AGORA É STRING
         "technical_action": "AGUARDAR" if rsi >= 70 or current_position >= 75 else ("COMPRA" if entry_zone == "ZONA_DE_COMPRA" else "OBSERVAR"),
         "technical_confidence": "ALTA" if 25 <= rsi <= 55 and current_position <= 45 else "MEDIA",
     }
@@ -416,7 +417,7 @@ async def enrich_rows_with_technical(rows: List[Dict[str, Any]], max_symbols: in
                 "current_position": technical.get("current_position"),
                 "entry_zone": technical.get("entry_zone"),
                 "stop_loss": technical.get("stop_loss"),
-                "targets": technical.get("targets") or [],
+                "targets": technical.get("targets"),  # ✅ AGORA É STRING, OK PARA SUPABASE
                 "technical_action": technical.get("technical_action"),
                 "technical_confidence": technical.get("technical_confidence"),
             })
@@ -530,6 +531,7 @@ async def update_top100_rankings(
     if bulk_upsert_func:
         saved = bulk_upsert_func(TOP100_TABLE, rows, ["date", "symbol"])
         if saved == 0 and rows and any("rsi" in row for row in rows):
+            # ✅ FIX: Se falhar com colunas técnicas, remover também "targets" string
             legacy_rows = [
                 {
                     key: value
