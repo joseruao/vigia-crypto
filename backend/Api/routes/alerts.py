@@ -94,7 +94,13 @@ def _fmt_money(value: Any) -> str:
         return f"${number / 1_000_000:.2f}M"
     if number >= 1_000:
         return f"${number / 1_000:.1f}K"
-    return f"${number:.0f}"
+    if number >= 1:
+        return f"${number:.2f}"
+    if number >= 0.001:
+        return f"${number:.4f}"
+    if number > 0:
+        return f"${number:.8g}"
+    return f"${number:.2f}"
 
 def _fmt_pct(value: Any) -> str:
     try:
@@ -207,54 +213,59 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
 
     lines = [
         f"{_top100_title(mode, len(rows))}\n",
-        "Base: score tecnico diario com momentum 24h/7d/30d, volume relativo e risco. Isto nao e recomendacao de compra; e uma fila de analise.\n",
+        "_Score tecnico diario — nao e recomendacao de compra._\n",
     ]
     for i, item in enumerate(rows, 1):
         symbol = item.get("symbol") or "N/A"
         name = item.get("name") or symbol
-        score = item.get("score") or 0
+        score = float(item.get("score") or 0)
         price = _fmt_money(item.get("price"))
-        change_24h = _fmt_pct(item.get("change_24h"))
-        line = (
-            f"{i}. **{symbol}** ({name}) - score **{float(score):.1f}/100** · "
-            f"sinal **{item.get('signal', 'N/A')}** · risco **{item.get('risk', 'N/A')}** · "
-            f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))} · "
-            f"vol {_fmt_money(item.get('volume_24h'))}"
+        signal = item.get("signal") or "N/A"
+        risk = item.get("risk") or "N/A"
+
+        # Linha 1: identidade + score
+        line = f"**{i}. {symbol}** ({name})\n"
+
+        # Linha 2: preco + variações
+        line += (
+            f"   {price} · 24h {_fmt_pct(item.get('change_24h'))} · "
+            f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))}\n"
         )
-        line += f"\n   Preco: **{price}** | 24h {change_24h}"
+
+        # Linha 3: score + sinal + risco
+        line += f"   Score {score:.0f}/100 · {signal} · Risco {risk}\n"
+
+        # Linha 4: indicadores técnicos (se disponíveis)
         if item.get("rsi") is not None:
-            trend_str = item.get("trend", "N/A")
+            rsi = float(item.get("rsi"))
+            trend = item.get("trend") or "N/A"
             above_200 = item.get("above_sma200")
-            if above_200 is True:
-                trend_str += " ↑SMA200"
-            elif above_200 is False:
-                trend_str += " ↓SMA200"
-            line += (
-                f"\n   RSI: **{_fmt_pct(item.get('rsi')).replace('%', '')}** | "
-                f"tendencia **{trend_str}** | "
-                f"range **{_fmt_pct(item.get('current_position'))}**"
-            )
-        if item.get("macd_signal"):
-            macd_sig = item.get("macd_signal", "")
-            bb_pos = item.get("bb_position", "")
-            extras = []
+            sma_tag = " ↑200" if above_200 is True else (" ↓200" if above_200 is False else "")
+            position = _fmt_pct(item.get("current_position"))
+            macd_sig = item.get("macd_signal") or ""
+            bb_pos = item.get("bb_position") or ""
+
+            tech_parts = [
+                f"RSI {rsi:.0f}",
+                f"{trend}{sma_tag}",
+                f"range {position}",
+            ]
             if macd_sig and macd_sig != "NEUTRO":
-                extras.append(f"MACD **{macd_sig}**")
+                tech_parts.append(f"MACD {macd_sig.replace('_', ' ').title()}")
             if bb_pos and bb_pos != "NEUTRO":
-                extras.append(f"BB **{bb_pos}**")
-            if extras:
-                line += f"\n   {' | '.join(extras)}"
+                tech_parts.append(f"BB {bb_pos.replace('_', ' ').lower()}")
+            line += f"   {' · '.join(tech_parts)}\n"
+
+        # Linha 5: suporte / resistência
         if item.get("support") is not None and item.get("resistance") is not None:
-            line += f"\n   Suporte: **{_fmt_money(item.get('support'))}** | Resistencia: **{_fmt_money(item.get('resistance'))}**"
-        rationale = item.get("rationale")
-        if rationale:
-            line += f"\n   {rationale}"
-        lines.append(line)
+            line += f"   Sup {_fmt_money(item.get('support'))} → Res {_fmt_money(item.get('resistance'))}"
+
+        lines.append(line.rstrip())
 
     examples = ", ".join(str(row.get("symbol") or "").upper() for row in rows[:3] if row.get("symbol"))
     if examples:
         first_symbol = examples.split(", ")[0]
-        lines.append(f"\nProximo passo: escolhe uma e pede `analisa {first_symbol}`. Exemplos desta lista: {examples}.")
+        lines.append(f"\n_Pede_ `analisa {first_symbol}` _para analise detalhada. Sugestoes: {examples}._")
     return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
 
 def _is_test_token(row: Dict[str, Any]) -> bool:
