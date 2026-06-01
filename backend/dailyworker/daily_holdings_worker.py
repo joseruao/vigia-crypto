@@ -35,8 +35,18 @@ HELIUS_API_KEY = _helius_raw.split(",")[0].strip() if _helius_raw else ""
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN_1", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID_1", "")
+TELEGRAM_BOT_TOKEN = (
+    os.getenv("TELEGRAM_BOT_TOKEN_SOL")
+    or os.getenv("TELEGRAM_BOT_TOKEN_1")
+    or os.getenv("TELEGRAM_BOT_TOKEN")
+    or ""
+)
+TELEGRAM_CHAT_ID = (
+    os.getenv("TELEGRAM_CHAT_ID_SOL")
+    or os.getenv("TELEGRAM_CHAT_ID_1")
+    or os.getenv("TELEGRAM_CHAT_ID")
+    or ""
+)
 
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
