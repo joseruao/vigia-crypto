@@ -149,7 +149,7 @@ def _top100_title(mode: str, count: int) -> str:
 def _fetch_top100_rows(date_filter: str | None, log=None) -> tuple[list, bool]:
     """Fetch top100 rows from Supabase. Returns (rows, has_technical_cols)."""
     base_select = "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts"
-    tech_select = f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence"
+    tech_select = f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence,macd_signal,macd_hist,above_sma200,bb_position,bb_width"
     params = {"select": tech_select, "order": "score.desc", "limit": "50"}
     if date_filter:
         params["date"] = f"eq.{date_filter}"
@@ -223,16 +223,32 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         )
         line += f"\n   Preco: **{price}** | 24h {change_24h}"
         if item.get("rsi") is not None:
+            trend_str = item.get("trend", "N/A")
+            above_200 = item.get("above_sma200")
+            if above_200 is True:
+                trend_str += " ↑SMA200"
+            elif above_200 is False:
+                trend_str += " ↓SMA200"
             line += (
                 f"\n   RSI: **{_fmt_pct(item.get('rsi')).replace('%', '')}** | "
-                f"tendencia **{item.get('trend', 'N/A')}** | "
+                f"tendencia **{trend_str}** | "
                 f"range **{_fmt_pct(item.get('current_position'))}**"
             )
+        if item.get("macd_signal"):
+            macd_sig = item.get("macd_signal", "")
+            bb_pos = item.get("bb_position", "")
+            extras = []
+            if macd_sig and macd_sig != "NEUTRO":
+                extras.append(f"MACD **{macd_sig}**")
+            if bb_pos and bb_pos != "NEUTRO":
+                extras.append(f"BB **{bb_pos}**")
+            if extras:
+                line += f"\n   {' | '.join(extras)}"
         if item.get("support") is not None and item.get("resistance") is not None:
             line += f"\n   Suporte: **{_fmt_money(item.get('support'))}** | Resistencia: **{_fmt_money(item.get('resistance'))}**"
         rationale = item.get("rationale")
         if rationale:
-            line += f"\n  Motivo: {rationale}"
+            line += f"\n   {rationale}"
         lines.append(line)
 
     examples = ", ".join(str(row.get("symbol") or "").upper() for row in rows[:3] if row.get("symbol"))

@@ -129,30 +129,61 @@ def _technical_score(technical: Dict[str, Any] | None, fallback_score: float) ->
     position = _num(technical.get("current_position"), 50)
     trend = str(technical.get("trend") or "")
     volume_ratio = _num(technical.get("volume_ratio_20d"), 1)
+    macd_sig = str(technical.get("macd_signal") or "NEUTRO")
+    bb_pos = str(technical.get("bb_position") or "NEUTRO")
+    above_200 = technical.get("above_sma200")
 
+    # RSI (Wilder) — peso alto
     if 28 <= rsi <= 48:
-        score += 24
+        score += 22
     elif 48 < rsi <= 62:
-        score += 14
+        score += 12
     elif rsi < 28:
-        score += 10
+        score += 8   # oversold extremo pode ser queda livre
     elif rsi >= 70:
         score -= 16
 
-    if 8 <= position <= 45:
-        score += 22
-    elif 45 < position <= 65:
+    # Posição no range suporte/resistência
+    if 8 <= position <= 35:
+        score += 20
+    elif 35 < position <= 55:
         score += 10
     elif position > 75:
         score -= 14
 
+    # Tendência SMA20/50 + confirmação SMA200
     if trend == "UPTREND":
-        score += 14
+        score += 12
+        if above_200 is True:
+            score += 4   # bónus: macro alinhado
     else:
         score -= 4
+        if above_200 is False:
+            score -= 3   # penalidade extra: macro também bearish
 
+    # MACD
+    if macd_sig == "BULLISH_STRONG":
+        score += 10
+    elif macd_sig == "BULLISH":
+        score += 6
+    elif macd_sig == "BEARISH_STRONG":
+        score -= 10
+    elif macd_sig == "BEARISH":
+        score -= 5
+
+    # Bollinger Bands
+    if bb_pos == "ZONA_BAIXA":
+        score += 6   # perto da banda inferior = possível bounce
+    elif bb_pos == "ABAIXO_BANDA":
+        score += 3   # abaixo da banda = oversold mas pode continuar
+    elif bb_pos == "ACIMA_BANDA":
+        score -= 8
+    elif bb_pos == "ZONA_ALTA":
+        score -= 4
+
+    # Volume
     if volume_ratio >= 1.2:
-        score += 8
+        score += 6
     elif volume_ratio < 0.4:
         score -= 3
 
@@ -183,31 +214,37 @@ def _technical_summary(symbol: str, technical: Dict[str, Any] | None, fallback: 
     position = technical.get("current_position")
     support = technical.get("support")
     resistance = technical.get("resistance")
+    macd_sig = technical.get("macd_signal")
+    bb_pos = technical.get("bb_position")
+    above_200 = technical.get("above_sma200")
     parts = []
 
     if trend:
-        parts.append(f"tendencia {trend.lower()}")
+        macro = " (acima SMA200)" if above_200 is True else (" (abaixo SMA200)" if above_200 is False else "")
+        parts.append(f"tendencia {trend.lower()}{macro}")
     if rsi is not None:
         if rsi < 30:
             parts.append(f"RSI oversold ({rsi})")
         elif rsi > 70:
             parts.append(f"RSI alto ({rsi})")
         else:
-            parts.append(f"RSI controlado ({rsi})")
+            parts.append(f"RSI {rsi}")
+    if macd_sig and macd_sig != "NEUTRO":
+        parts.append(f"MACD {macd_sig.lower().replace('_', ' ')}")
+    if bb_pos and bb_pos not in ("NEUTRO",):
+        parts.append(f"BB {bb_pos.lower().replace('_', ' ')}")
     if position is not None:
-        if position <= 45:
-            parts.append("perto da metade inferior do range")
+        if position <= 35:
+            parts.append("zona de compra")
         elif position >= 75:
             parts.append("esticada perto da resistencia")
-        else:
-            parts.append("zona intermedia do range")
     if support and resistance:
-        parts.append(f"suporte {support}, resistencia {resistance}")
+        parts.append(f"sup {support:g} / res {resistance:g}")
 
-    return f"{symbol}: " + "; ".join(parts[:4])
+    return f"{symbol}: " + "; ".join(parts[:5])
 
 
-def _fetch_coinbase_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+def _fetch_coinbase_candles(symbol: str, days: int = 210) -> List[Dict[str, float]] | None:
     try:
         end = datetime.utcnow()
         start = end - timedelta(days=days)
@@ -227,7 +264,7 @@ def _fetch_coinbase_candles(symbol: str, days: int = 60) -> List[Dict[str, float
         return None
 
 
-def _fetch_gateio_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+def _fetch_gateio_candles(symbol: str, days: int = 210) -> List[Dict[str, float]] | None:
     try:
         response = requests.get(
             "https://api.gateio.ws/api/v4/spot/candlesticks",
@@ -245,7 +282,7 @@ def _fetch_gateio_candles(symbol: str, days: int = 60) -> List[Dict[str, float]]
         return None
 
 
-def _fetch_binance_candles(symbol: str, days: int = 60) -> List[Dict[str, float]] | None:
+def _fetch_binance_candles(symbol: str, days: int = 210) -> List[Dict[str, float]] | None:
     try:
         response = requests.get(
             "https://api.binance.com/api/v3/klines",
@@ -262,7 +299,7 @@ def _fetch_binance_candles(symbol: str, days: int = 60) -> List[Dict[str, float]
         return None
 
 
-def _fetch_coingecko_candles(coin_id: str | None, days: int = 60) -> List[Dict[str, float]] | None:
+def _fetch_coingecko_candles(coin_id: str | None, days: int = 210) -> List[Dict[str, float]] | None:
     if not coin_id:
         return None
     try:
@@ -303,52 +340,203 @@ def _sma(values: List[float], window: int) -> float:
     return sum(sample) / len(sample) if sample else 0.0
 
 
-def _calculate_rsi(closes: List[float], window: int = 14) -> float:
+def _ema(values: List[float], window: int) -> List[float]:
+    """Exponential Moving Average — base para MACD e Bollinger."""
+    if not values:
+        return []
+    k = 2 / (window + 1)
+    result = [values[0]]
+    for v in values[1:]:
+        result.append(v * k + result[-1] * (1 - k))
+    return result
+
+
+def _calculate_rsi_wilder(closes: List[float], window: int = 14) -> float:
+    """RSI com suavização de Wilder (mais preciso que média simples)."""
     if len(closes) < window + 1:
         return 50.0
-    gains = []
-    losses = []
-    for previous, current in zip(closes[-window - 1:-1], closes[-window:]):
-        delta = current - previous
-        gains.append(max(delta, 0))
-        losses.append(max(-delta, 0))
-    avg_gain = sum(gains) / window
-    avg_loss = sum(losses) / window
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    gains = [max(d, 0.0) for d in deltas]
+    losses = [max(-d, 0.0) for d in deltas]
+    # Seed com média simples dos primeiros `window` valores
+    avg_gain = sum(gains[:window]) / window
+    avg_loss = sum(losses[:window]) / window
+    # Wilder smoothing no resto
+    for g, l in zip(gains[window:], losses[window:]):
+        avg_gain = (avg_gain * (window - 1) + g) / window
+        avg_loss = (avg_loss * (window - 1) + l) / window
     if avg_loss == 0:
         return 100.0
-    rs = avg_gain / avg_loss
-    return round(100 - (100 / (1 + rs)), 2)
+    return round(100 - (100 / (1 + avg_gain / avg_loss)), 2)
+
+
+def _calculate_macd(closes: List[float]) -> Dict[str, Any]:
+    """MACD(12,26,9). Devolve linha MACD, sinal, histograma e classificação."""
+    if len(closes) < 35:
+        return {"macd": 0.0, "signal": 0.0, "hist": 0.0, "macd_signal": "NEUTRO"}
+    ema12 = _ema(closes, 12)
+    ema26 = _ema(closes, 26)
+    macd_line = [m - e for m, e in zip(ema12[25:], ema26[25:])]  # alinha pelo índice 25
+    if len(macd_line) < 9:
+        return {"macd": 0.0, "signal": 0.0, "hist": 0.0, "macd_signal": "NEUTRO"}
+    signal_line = _ema(macd_line, 9)
+    macd_val = round(macd_line[-1], 8)
+    sig_val = round(signal_line[-1], 8)
+    hist_val = round(macd_val - sig_val, 8)
+    prev_hist = round(macd_line[-2] - signal_line[-2], 8) if len(macd_line) >= 2 else hist_val
+    if macd_val > sig_val and hist_val > prev_hist:
+        label = "BULLISH_STRONG"
+    elif macd_val > sig_val:
+        label = "BULLISH"
+    elif macd_val < sig_val and hist_val < prev_hist:
+        label = "BEARISH_STRONG"
+    elif macd_val < sig_val:
+        label = "BEARISH"
+    else:
+        label = "NEUTRO"
+    return {"macd": macd_val, "signal": sig_val, "hist": hist_val, "macd_signal": label}
+
+
+def _calculate_bollinger(closes: List[float], window: int = 20, std_mult: float = 2.0) -> Dict[str, Any]:
+    """Bollinger Bands. Devolve posição relativa e estado de squeeze."""
+    if len(closes) < window:
+        return {"bb_upper": None, "bb_lower": None, "bb_position": "NEUTRO", "bb_width": None}
+    sample = closes[-window:]
+    mid = sum(sample) / window
+    variance = sum((x - mid) ** 2 for x in sample) / window
+    std = variance ** 0.5
+    upper = mid + std_mult * std
+    lower = mid - std_mult * std
+    current = closes[-1]
+    width = round((upper - lower) / mid * 100, 2) if mid else 0.0
+    if upper == lower:
+        bb_pct = 50.0
+    else:
+        bb_pct = round((current - lower) / (upper - lower) * 100, 1)
+    if bb_pct >= 90:
+        bb_pos = "ACIMA_BANDA"
+    elif bb_pct >= 70:
+        bb_pos = "ZONA_ALTA"
+    elif bb_pct <= 10:
+        bb_pos = "ABAIXO_BANDA"
+    elif bb_pct <= 30:
+        bb_pos = "ZONA_BAIXA"
+    else:
+        bb_pos = "NEUTRO"
+    return {
+        "bb_upper": round(upper, 10),
+        "bb_lower": round(lower, 10),
+        "bb_position": bb_pos,
+        "bb_pct": bb_pct,
+        "bb_width": width,
+    }
+
+
+def _find_pivot_support_resistance(closes: List[float], highs: List[float], lows: List[float]) -> tuple[float, float]:
+    """Suporte/resistência por swing pivots (mais realista que min/max simples)."""
+    window = 5
+    pivot_highs = []
+    pivot_lows = []
+    src_h = highs if len(highs) >= len(closes) else closes
+    src_l = lows if len(lows) >= len(closes) else closes
+    for i in range(window, len(src_h) - window):
+        if all(src_h[i] >= src_h[j] for j in range(i - window, i + window + 1) if j != i):
+            pivot_highs.append(src_h[i])
+        if all(src_l[i] <= src_l[j] for j in range(i - window, i + window + 1) if j != i):
+            pivot_lows.append(src_l[i])
+    current = closes[-1]
+    # Resistência = pivot high mais próximo ACIMA do preço atual
+    resistances_above = [p for p in pivot_highs if p > current]
+    # Suporte = pivot low mais próximo ABAIXO do preço atual
+    supports_below = [p for p in pivot_lows if p < current]
+    resistance = min(resistances_above) if resistances_above else max(src_h[-30:]) * 1.02
+    support = max(supports_below) if supports_below else min(src_l[-30:]) * 0.98
+    return round(support, 10), round(resistance, 10)
 
 
 def _calculate_technical_from_candles(symbol: str, candles: List[Dict[str, float]]) -> Dict[str, Any] | None:
     closes = [float(c["close"]) for c in candles if c.get("close") is not None]
+    highs = [float(c.get("high") or c.get("close") or 0) for c in candles]
+    lows = [float(c.get("low") or c.get("close") or 0) for c in candles]
     volumes = [float(c.get("volume") or 0) for c in candles]
     if len(closes) < 20:
         return None
 
     current = closes[-1]
+
+    # Médias móveis
     sma_20 = _sma(closes, 20)
     sma_50 = _sma(closes, 50)
-    trend = "UPTREND" if sma_20 >= sma_50 else "DOWNTREND"
+    sma_200 = _sma(closes, 200) if len(closes) >= 50 else None
+    above_sma200 = bool(sma_200 and current > sma_200)
     trend_strength = round(abs(sma_20 - sma_50) / sma_50 * 100, 1) if sma_50 else 0.0
-    recent = closes[-30:] if len(closes) >= 30 else closes
-    static_support = min(recent)
-    static_resistance = max(recent)
-    support = round(static_support * 0.98, 10)
-    resistance = round(static_resistance * 1.02, 10)
+
+    # Tendência: usa SMA200 se disponível para confirmar macro
+    if sma_200:
+        if sma_20 >= sma_50 and current > sma_200:
+            trend = "UPTREND"
+        elif sma_20 < sma_50 and current < sma_200:
+            trend = "DOWNTREND"
+        elif sma_20 >= sma_50:
+            trend = "UPTREND"  # micro up, macro misto
+        else:
+            trend = "DOWNTREND"
+    else:
+        trend = "UPTREND" if sma_20 >= sma_50 else "DOWNTREND"
+
+    # RSI Wilder
+    rsi = _calculate_rsi_wilder(closes)
+
+    # MACD
+    macd_data = _calculate_macd(closes)
+
+    # Bollinger Bands
+    bb_data = _calculate_bollinger(closes)
+
+    # Suporte/Resistência por pivots
+    support, resistance = _find_pivot_support_resistance(closes, highs, lows)
+    if resistance <= support:
+        # fallback se pivots não encontraram nada útil
+        support = round(min(lows[-30:] if len(lows) >= 30 else lows) * 0.98, 10)
+        resistance = round(max(highs[-30:] if len(highs) >= 30 else highs) * 1.02, 10)
+
     current_position = round(((current - support) / (resistance - support)) * 100, 1) if resistance != support else 50.0
+    current_position = max(0.0, min(100.0, current_position))
+
+    # Volatilidade
     returns = [(b - a) / a for a, b in zip(closes[-21:-1], closes[-20:]) if a]
     volatility = round((sum((r - (sum(returns) / len(returns))) ** 2 for r in returns) / len(returns)) ** 0.5 * 100, 2) if returns else 0.0
+
+    # Volume
     avg_volume = _sma(volumes, 20)
     volume_ratio = round((volumes[-1] / avg_volume), 2) if avg_volume else 1.0
-    rsi = _calculate_rsi(closes)
 
+    # Zona de entrada
     if current_position <= 35:
         entry_zone = "ZONA_DE_COMPRA"
     elif current_position >= 75:
         entry_zone = "ZONA_DE_VENDA"
     else:
         entry_zone = "ZONA_NEUTRA"
+
+    # Ação técnica combinando RSI + MACD + posição
+    macd_sig = macd_data["macd_signal"]
+    bearish_macd = macd_sig in ("BEARISH", "BEARISH_STRONG")
+    bullish_macd = macd_sig in ("BULLISH", "BULLISH_STRONG")
+    if rsi >= 70 or current_position >= 75 or bb_data["bb_position"] == "ACIMA_BANDA":
+        technical_action = "AGUARDAR"
+    elif entry_zone == "ZONA_DE_COMPRA" and bullish_macd:
+        technical_action = "COMPRA"
+    elif entry_zone == "ZONA_DE_COMPRA" and not bearish_macd:
+        technical_action = "COMPRA_CAUTELOSA"
+    elif bearish_macd and rsi > 60:
+        technical_action = "AGUARDAR"
+    else:
+        technical_action = "OBSERVAR"
+
+    # Confiança
+    high_conf = (25 <= rsi <= 55 and current_position <= 45 and bullish_macd)
+    technical_confidence = "ALTA" if high_conf else "MEDIA"
 
     stop_loss = round(support * 0.92, 10)
     # ✅ FIX: Converter targets em string para evitar problemas com arrays no Supabase
@@ -369,9 +557,14 @@ def _calculate_technical_from_candles(symbol: str, candles: List[Dict[str, float
         "current_position": current_position,
         "entry_zone": entry_zone,
         "stop_loss": f"{stop_loss:g}",
-        "targets": targets_str,  # ✅ AGORA É STRING
-        "technical_action": "AGUARDAR" if rsi >= 70 or current_position >= 75 else ("COMPRA" if entry_zone == "ZONA_DE_COMPRA" else "OBSERVAR"),
-        "technical_confidence": "ALTA" if 25 <= rsi <= 55 and current_position <= 45 else "MEDIA",
+        "targets": targets_str,
+        "technical_action": technical_action,
+        "technical_confidence": technical_confidence,
+        "macd_signal": macd_data["macd_signal"],
+        "macd_hist": macd_data["hist"],
+        "above_sma200": above_sma200,
+        "bb_position": bb_data["bb_position"],
+        "bb_width": bb_data.get("bb_width"),
     }
 
 
@@ -420,6 +613,11 @@ async def enrich_rows_with_technical(rows: List[Dict[str, Any]], max_symbols: in
                 "targets": technical.get("targets"),  # ✅ AGORA É STRING, OK PARA SUPABASE
                 "technical_action": technical.get("technical_action"),
                 "technical_confidence": technical.get("technical_confidence"),
+                "macd_signal": technical.get("macd_signal"),
+                "macd_hist": technical.get("macd_hist"),
+                "above_sma200": technical.get("above_sma200"),
+                "bb_position": technical.get("bb_position"),
+                "bb_width": technical.get("bb_width"),
             })
 
         updated["score"] = _technical_score(technical, _num(row.get("score")))
@@ -540,6 +738,7 @@ async def update_top100_rankings(
                         "rsi", "trend", "trend_strength", "volatility", "volume_ratio_20d",
                         "support", "resistance", "current_position", "entry_zone", "stop_loss",
                         "targets", "technical_action", "technical_confidence",
+                        "macd_signal", "macd_hist", "above_sma200", "bb_position", "bb_width",
                     }
                 }
                 for row in rows
