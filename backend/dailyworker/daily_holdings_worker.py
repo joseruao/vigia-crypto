@@ -2,7 +2,7 @@ import requests
 import time
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import math
 import inspect
@@ -609,7 +609,7 @@ def save_holding_to_supabase(holding_data, exchange_name):
         # ✅ FIX: Gerar hash único para signature (campo obrigatório)
         import hashlib
         signature = hashlib.md5(
-            f"{holding_data['address']}{exchange_name}{datetime.now().isoformat()}".encode()
+            f"{holding_data['address']}{exchange_name}{datetime.now(timezone.utc).isoformat()}".encode()
         ).hexdigest()
         
         analysis = generate_holding_analysis(holding_data, exchange_name)
@@ -633,7 +633,7 @@ def save_holding_to_supabase(holding_data, exchange_name):
             "volume_24h": holding_data['volume_24h'],
             "score": holding_data['score'],
             "analysis_text": analysis,
-            "ts": datetime.now().isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
         }
         
         # ✅ Usar conflict_columns que correspondem ao UNIQUE constraint
@@ -805,7 +805,7 @@ async def main():
     print("==================================================")
     print(f"🎯 Thresholds: Liquidez ${MIN_LIQUIDITY:,}+ | Volume ${MIN_VOLUME_24H:,}+")
     print(f"🎯 Score mínimo: {MIN_SCORE_ALERT} | Análise REALISTA")
-    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     print("==================================================")
     
     try:
