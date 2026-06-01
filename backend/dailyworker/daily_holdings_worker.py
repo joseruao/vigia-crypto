@@ -35,6 +35,9 @@ HELIUS_API_KEY = _helius_raw.split(",")[0].strip() if _helius_raw else ""
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
 
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN_1", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID_1", "")
+
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
@@ -604,6 +607,43 @@ def generate_holding_analysis(holding_data, exchange_name):
     else:
         return f"👀 EM OBSERVAÇÃO - {symbol} presente na {exchange_name}."
 
+def send_telegram_alert(holding: dict, exchange_name: str) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        symbol = holding.get("symbol", "?")
+        score = holding.get("score", 0)
+        value = holding.get("value_usd", 0)
+        liquidity = holding.get("liquidity", 0)
+        chain = holding.get("chain", "").upper()
+        pair_url = holding.get("pair_url", "")
+
+        conf = "🔥 ALTA" if score >= 90 else ("✅ BOA" if score >= 80 else "📊 MODERADA")
+        lines = [
+            f"🏦 *Novo holding detetado*",
+            f"",
+            f"*{symbol}* — {exchange_name} ({chain})",
+            f"Score: *{score:.0f}/100* — Confiança {conf}",
+            f"Valor na wallet: *${value:,.0f}*",
+            f"Liquidez: *${liquidity:,.0f}*",
+        ]
+        if pair_url:
+            lines.append(f"[Ver no DexScreener]({pair_url})")
+
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": "\n".join(lines),
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True,
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"   ⚠️ Telegram alert falhou: {e}")
+
+
 def save_holding_to_supabase(holding_data, exchange_name):
     """Guarda o holding na base de dados - ✅ COMPATÍVEL COM SCHEMA SUPABASE"""
     try:
@@ -676,6 +716,8 @@ async def analyze_wallet_holdings(wallet_name, wallet_address, chain="solana"):
                 saved_count += 1
                 metrics.holdings_saved += 1
                 print(f"   💾 Guardado: {holding['symbol']} (Score: {holding['score']})")
+                if holding['score'] >= 80:
+                    send_telegram_alert(holding, wallet_name)
         
         if holding['score'] >= 70:
             high_score_count += 1
