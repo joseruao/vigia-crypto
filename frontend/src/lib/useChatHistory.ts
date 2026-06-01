@@ -55,11 +55,15 @@ export function useChatHistory() {
   }
 
   function addMessage(msg: Message, targetId?: string) {
-    let id = targetId ?? activeId;
-    if (!id) id = newConversation();
+    const id = targetId ?? activeId ?? uuidv4();
 
-    setConversations((prev) =>
-      prev.map((c) =>
+    setConversations((prev) => {
+      const exists = prev.some((c) => c.id === id);
+      if (!exists) {
+        const title = msg.role === 'user' ? msg.content.slice(0, 40) : 'Nova conversa';
+        return [{ id, title, createdAt: Date.now(), messages: [msg] }, ...prev];
+      }
+      return prev.map((c) =>
         c.id === id
           ? {
               ...c,
@@ -70,8 +74,8 @@ export function useChatHistory() {
                   : c.title,
             }
           : c
-      )
-    );
+      );
+    });
     setActiveId(id);
   }
 

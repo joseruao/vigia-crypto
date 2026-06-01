@@ -13,7 +13,6 @@ export function ChatWindow() {
     active,
     addMessage,
     updateLastAssistantMessage,
-    newConversation,
     activeId,
   } = useChatHistoryContext();
 
@@ -99,7 +98,6 @@ export function ChatWindow() {
       q.includes('listing') ||
       q.includes('listagem') ||
       q.includes('previsao de listing') ||
-      q.includes('vÃ£o ser') ||
       q.includes('vão ser') ||
       q.includes('vao ser') ||
       q.includes('vai ser') ||
@@ -148,14 +146,18 @@ export function ChatWindow() {
     const content = (text ?? input).trim();
     if (!content || loading) return;
 
-    let id = activeId;
-    if (!id) id = newConversation();
+    const id = activeId ?? undefined;
     const history = (active?.messages ?? []).slice(-8);
 
     addMessage({ role: 'user', content }, id);
     setInput('');
     setLoading(true);
     setGotFirstChunk(false);
+
+    // Após addMessage, o activeId pode ter mudado — guardamos o id da conversa
+    // através do closure para garantir consistência nas chamadas seguintes.
+    // addMessage cria a conversa atomicamente se não existir.
+    const convId = id ?? undefined;
 
     try {
       abortedRef.current = false;
@@ -167,22 +169,15 @@ export function ChatWindow() {
         ? `${API_URL}/alerts/ask`
         : `${API_URL}/chat/stream`;
 
-      console.log('📤 Fazendo fetch para:', url);
-      console.log('📤 Payload:', { prompt: content });
-      console.log('📤 useAlerts:', useAlerts);
-      
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // stream = text/plain; alerts = application/json
           'Accept': useAlerts ? 'application/json' : 'text/plain',
         },
         body: JSON.stringify({ prompt: content, history }),
         signal: controller.signal,
       });
-      
-      console.log('📥 Resposta recebida:', res.status, res.statusText);
 
       if (!res.ok) {
         const textErr = await res.text().catch(() => '');
@@ -190,47 +185,24 @@ export function ChatWindow() {
       }
 
       if (useAlerts) {
-        const data = await res.json().catch((e) => {
-          console.error('❌ Erro ao parsear JSON:', e);
-          return {};
-        });
-        
-        console.log('📥 Resposta completa recebida:', data);
-        console.log('📥 data.answer:', data?.answer);
-        console.log('📥 data.error:', data?.error);
-        console.log('📥 data.ok:', data?.ok);
-        console.log('📥 data.debug:', data?.debug);
-        
-        // Tenta várias formas de obter a resposta
+        const data = await res.json().catch(() => ({}));
+
         let answer = data?.answer;
-        if (!answer && data?.error) {
-          answer = `Erro: ${data.error}`;
-        }
-        if (!answer && data?.items && Array.isArray(data.items) && data.items.length > 0) {
-          // Se não há answer mas há items, formata manualmente
+        if (!answer && data?.error) answer = `Erro: ${data.error}`;
+        if (!answer && Array.isArray(data?.items) && data.items.length > 0) {
           answer = `Encontrei ${data.items.length} resultado(s).`;
         }
-        if (!answer) {
-          // Mostra informações de debug se disponíveis
-          const debugInfo = data?.debug;
-          if (debugInfo) {
-            answer = `⚠️ Sem resposta do servidor.\n\n📊 Debug:\n- URL existe: ${debugInfo.url_exists} (${debugInfo.url_length} chars)\n- KEY existe: ${debugInfo.key_exists} (${debugInfo.key_length} chars)\n- supa.ok(): ${debugInfo.supa_ok}\n- has_get_url: ${debugInfo.has_get_url}\n- has_get_key: ${debugInfo.has_get_key}`;
-          } else {
-            answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
-          }
-        }
-        
-        console.log('📤 Resposta final a mostrar:', answer);
+        if (!answer) answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
+
         addMessage({
           role: 'assistant',
           content: answer,
-        }, id);
+        }, convId);
       } else {
         const reader = res.body?.getReader();
         if (!reader) throw new Error('Sem stream');
 
-        // cria a msg vazia do assistant que iremos preencher
-        addMessage({ role: 'assistant', content: '' }, id);
+        addMessage({ role: 'assistant', content: '' }, convId);
 
         let acc = '';
         const decoder = new TextDecoder();
@@ -244,19 +216,17 @@ export function ChatWindow() {
 
           acc += chunkStr;
           if (!gotFirstChunk && acc.length > 0) setGotFirstChunk(true);
-          updateLastAssistantMessage(acc, id);
+          updateLastAssistantMessage(acc, convId);
         }
 
-        // Se o stream terminou sem conteúdo, mostrar mensagem de fallback
         if (!acc.trim()) {
-          updateLastAssistantMessage('⚠️ Sem resposta do servidor. Pode ser cold start do Render — tenta novamente em alguns segundos.');
+          updateLastAssistantMessage('⚠️ Sem resposta do servidor. Pode ser cold start do Render — tenta novamente em alguns segundos.', convId);
         }
       }
     } catch (e: unknown) {
       if (!abortedRef.current) {
         const msg = e instanceof Error ? e.message : '⚠️ Erro ao comunicar com a API';
-        console.error(e);
-        addMessage({ role: 'assistant', content: msg }, id);
+        addMessage({ role: 'assistant', content: msg }, convId);
       }
     } finally {
       setLoading(false);

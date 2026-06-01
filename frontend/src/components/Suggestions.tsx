@@ -2,20 +2,22 @@
 
 type Props = { visible: boolean; onSelect: (text: string) => void };
 
-const SUGGESTIONS: Record<'pt' | 'en', string[]> = {
+const SUGGESTIONS: Record<'pt' | 'en', { label: string; prompt: string }[]> = {
   pt: [
-    'Que moedas me aconselhas a analisar hoje do top100?',
-    'Quais do top100 estao perto do suporte?',
-    'Quais do top100 tem menos risco?',
-    'Que tokens achas que vao ser listados?',
-    'Analise BTC',
+    { label: '📊 Top100 perto do suporte', prompt: 'Quais do top100 estao perto do suporte?' },
+    { label: '🛡️ Top100 menor risco', prompt: 'Quais do top100 tem menos risco?' },
+    { label: '🔍 RSI mais baixo agora', prompt: 'Quais do top100 tem RSI mais baixo?' },
+    { label: '🏦 Tokens com listing previsto', prompt: 'Que tokens achas que vao ser listados em breve?' },
+    { label: '📈 Analisa BTC', prompt: 'Analisa BTC' },
+    { label: '🔎 Analisa SOL', prompt: 'Analisa SOL' },
   ],
   en: [
-    'Which top 100 coins should I analyze today?',
-    'Which top 100 coins are near support?',
-    'Which top 100 coins have lower risk?',
-    'Which tokens look close to a major exchange listing?',
-    'Analyze BTC',
+    { label: '📊 Top100 near support', prompt: 'Which top 100 coins are near support?' },
+    { label: '🛡️ Top100 lower risk', prompt: 'Which top 100 coins have lower risk?' },
+    { label: '🔍 Lowest RSI now', prompt: 'Which top 100 coins have the lowest RSI?' },
+    { label: '🏦 Upcoming listings', prompt: 'Which tokens look close to a major exchange listing?' },
+    { label: '📈 Analyze BTC', prompt: 'Analyze BTC' },
+    { label: '🔎 Analyze SOL', prompt: 'Analyze SOL' },
   ],
 };
 
@@ -33,10 +35,10 @@ export function Suggestions({ visible, onSelect }: Props) {
       {items.map((s, i) => (
         <button
           key={i}
-          onClick={() => onSelect(s)}
+          onClick={() => onSelect(s.prompt)}
           className="rounded-xl border border-zinc-300 bg-white/85 px-4 py-3 text-left text-sm shadow-sm backdrop-blur transition hover:border-zinc-500 hover:bg-white sm:text-base"
         >
-          {s}
+          {s.label}
         </button>
       ))}
     </div>
