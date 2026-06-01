@@ -814,23 +814,6 @@ async def main():
         listed_tokens = await safe_api_call(update_listed_tokens)
         print(f"✅ {listed_tokens} tokens listados atualizados")
         
-        print("\n🔎 FASE 1.5: ATUALIZAR TOP100 TECNICO")
-        try:
-            from top100_rankings_worker import update_top100_rankings
-            top100_saved = await safe_api_call(
-                update_top100_rankings,
-                supabase_upsert,
-                supabase_upsert_many,
-                max_retries=2,
-            )
-            top100_visible = supabase_count_rows("top100_technical_rankings")
-            if top100_visible is not None:
-                print(f"   Confirmacao Supabase: {top100_visible} linhas visiveis em top100_technical_rankings")
-            print(f"✅ {top100_saved} moedas top100 atualizadas")
-        except Exception as e:
-            print(f"⚠️ Erro ao atualizar top100 tecnico: {e}")
-            metrics.errors += 1
-
         total_saved = 0
         
         # 2. Analisar Solana
