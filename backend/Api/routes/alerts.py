@@ -146,13 +146,128 @@ def _sort_top100_rows(rows: List[Dict[str, Any]], mode: str) -> List[Dict[str, A
     return sorted(rows, key=lambda row: float(row.get("score") or 0), reverse=True)
 
 def _top100_title(mode: str, count: int) -> str:
-    if mode == "low_risk":
-        return f"**Top100 com menor risco para analisar ({count} moedas):**"
     if mode == "near_support":
-        return f"**Top100 mais perto de zona de suporte/pullback ({count} moedas):**"
+        return f"**Melhores oportunidades de entrada agora ({count} moedas)**"
     if mode == "low_rsi":
-        return f"**Top100 com RSI mais baixo para analisar ({count} moedas):**"
-    return f"**Shortlist top100 para analisar hoje ({count} moedas):**"
+        return f"**Moedas mais baratas tecnicamente ({count} moedas)**"
+    return f"**Melhores setups técnicos hoje ({count} moedas)**"
+
+
+def _rsi_label(rsi: float) -> str:
+    if rsi < 28:
+        return "Oversold extremo — possível bounce"
+    if rsi < 38:
+        return "Vendedores enfraquecidos"
+    if rsi < 50:
+        return "Neutro baixo — equilibrio pendendo para baixo"
+    if rsi < 62:
+        return "Neutro — equilibrio"
+    if rsi < 70:
+        return "Compradores dominam — cuidado com entrada"
+    return "Overbought — evitar compra"
+
+
+def _mode_label(mode: str) -> str:
+    if mode == "near_support":
+        return "Perto de Suporte"
+    if mode == "low_rsi":
+        return "RSI Baixo"
+    return "Melhor Setup"
+
+
+def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
+    symbol = item.get("symbol") or "N/A"
+    name = item.get("name") or symbol
+    score = float(item.get("score") or 0)
+    price = float(item.get("price") or 0)
+    signal = item.get("signal") or "N/A"
+    entry_zone = item.get("entry_zone") or ""
+    technical_action = item.get("technical_action") or ""
+    rsi = item.get("rsi")
+    trend = item.get("trend") or ""
+    above_200 = item.get("above_sma200")
+    macd_sig = item.get("macd_signal") or "NEUTRO"
+    bb_pos = item.get("bb_position") or "NEUTRO"
+    support = item.get("support")
+    resistance = item.get("resistance")
+    current_position = item.get("current_position")
+    change_7d = item.get("change_7d")
+    change_30d = item.get("change_30d")
+
+    mode_lbl = _mode_label(mode)
+    lines = [f"**🎯 {i}. {symbol} — {name}** ({mode_lbl})"]
+
+    # Suporte / Resistência
+    if support and resistance:
+        sup_fmt = _fmt_money(support)
+        res_fmt = _fmt_money(resistance)
+        # Alvo bullish: +8% a +18% acima da resistência, proporcional ao score
+        target_mult = 1.08 + (score / 100) * 0.10
+        target_fmt = _fmt_money(float(resistance) * target_mult)
+
+        zone_label = ""
+        if entry_zone == "ZONA_DE_COMPRA":
+            zone_label = " (ZONA DE COMPRA)"
+        elif entry_zone == "ZONA_DE_VENDA":
+            zone_label = " (ZONA DE VENDA)"
+
+        lines.append("**Zonas de Preço:**")
+        lines.append(f"🟢 Suporte: **{sup_fmt}**{zone_label}")
+        lines.append(f"🔴 Resistência: **{res_fmt}**")
+        lines.append(f"🚀 Alvo potencial: **{target_fmt}**")
+    elif price:
+        lines.append(f"Preço atual: **{_fmt_money(price)}**")
+
+    # Status técnico
+    lines.append("**Status Técnico:**")
+    if rsi is not None:
+        rsi_lbl = _rsi_label(float(rsi))
+        lines.append(f"{'✅' if float(rsi) < 55 else '⚠️'} RSI **{float(rsi):.0f}** — {rsi_lbl}")
+
+    if above_200 is True:
+        lines.append(f"✅ Acima da SMA200 — tendência macro bullish")
+    elif above_200 is False:
+        lines.append(f"📉 Abaixo da SMA200 — pressão macro bearish")
+
+    if macd_sig in ("BULLISH", "BULLISH_STRONG"):
+        strength = "forte" if "STRONG" in macd_sig else ""
+        lines.append(f"✅ MACD bullish {strength}".strip() + " — momentum a favor")
+    elif macd_sig in ("BEARISH", "BEARISH_STRONG"):
+        lines.append(f"⚠️ MACD bearish — aguardar confirmação de reversão")
+
+    if bb_pos == "ZONA_BAIXA":
+        lines.append(f"✅ Bollinger: perto da banda inferior — zona de bounce")
+    elif bb_pos == "ACIMA_BANDA":
+        lines.append(f"⚠️ Bollinger: acima da banda superior — preço esticado")
+
+    if change_30d is not None:
+        c30 = float(change_30d)
+        if c30 > 0:
+            lines.append(f"📈 +{c30:.1f}% nos últimos 30 dias")
+        else:
+            lines.append(f"📉 {c30:.1f}% nos últimos 30 dias")
+
+    # Recomendação
+    lines.append("**🎯 Leitura:**")
+    if entry_zone == "ZONA_DE_COMPRA" and macd_sig in ("BULLISH", "BULLISH_STRONG"):
+        if support and resistance:
+            lines.append(f"Entrada perto de **{_fmt_money(support)}** com alvo **{_fmt_money(resistance)}**. "
+                        f"Invalida se perder **{_fmt_money(float(support) * 0.94)}**.")
+        else:
+            lines.append("Setup favorável — entrada faseada perto do suporte.")
+    elif entry_zone == "ZONA_DE_COMPRA":
+        lines.append(f"Perto do suporte mas sem confirmação de momentum. Aguardar MACD virar bullish antes de entrar.")
+    elif entry_zone == "ZONA_DE_VENDA":
+        lines.append(f"Preço perto da resistência — não perseguir. Esperar pullback para o suporte.")
+    elif technical_action == "AGUARDAR":
+        lines.append(f"Setup ainda não confirmado — observar. Sinal: **{signal}**.")
+    else:
+        if support:
+            lines.append(f"Zona neutra. Vigiar teste ao suporte **{_fmt_money(support)}** para possível entrada.")
+        else:
+            lines.append(f"Zona neutra — aguardar setup mais claro. Sinal: **{signal}**.")
+
+    return "\n".join(lines)
 
 def _fetch_top100_rows(date_filter: str | None, log=None) -> tuple[list, bool]:
     """Fetch top100 rows from Supabase. Returns (rows, has_technical_cols)."""
@@ -213,49 +328,11 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-    header = f"{_top100_title(mode, len(rows))}\n_Score tecnico diario — nao e recomendacao de compra._"
-    coin_blocks = []
-    for i, item in enumerate(rows, 1):
-        symbol = item.get("symbol") or "N/A"
-        name = item.get("name") or symbol
-        score = float(item.get("score") or 0)
-        price = _fmt_money(item.get("price"))
-        signal = item.get("signal") or "N/A"
-        risk = item.get("risk") or "N/A"
+    header = f"{_top100_title(mode, len(rows))}\n_Analise tecnica diaria — nao e recomendacao de compra._"
+    coin_blocks = [_format_top100_block(i, item, mode) for i, item in enumerate(rows, 1)]
 
-        block = f"**{i}. {symbol}** ({name})\n"
-        block += (
-            f"{price} · 24h {_fmt_pct(item.get('change_24h'))} · "
-            f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))}\n"
-        )
-        block += f"Score {score:.0f}/100 · {signal} · Risco {risk}"
-
-        if item.get("rsi") is not None:
-            rsi = float(item.get("rsi"))
-            trend = item.get("trend") or "N/A"
-            above_200 = item.get("above_sma200")
-            sma_tag = " ↑200" if above_200 is True else (" ↓200" if above_200 is False else "")
-            position = _fmt_pct(item.get("current_position"))
-            macd_sig = item.get("macd_signal") or ""
-            bb_pos = item.get("bb_position") or ""
-
-            tech_parts = [f"RSI {rsi:.0f}", f"{trend}{sma_tag}", f"range {position}"]
-            if macd_sig and macd_sig != "NEUTRO":
-                tech_parts.append(f"MACD {macd_sig.replace('_', ' ').title()}")
-            if bb_pos and bb_pos != "NEUTRO":
-                tech_parts.append(f"BB {bb_pos.replace('_', ' ').lower()}")
-            block += f"\n{' · '.join(tech_parts)}"
-
-        if item.get("support") is not None and item.get("resistance") is not None:
-            block += f"\nSup {_fmt_money(item.get('support'))} → Res {_fmt_money(item.get('resistance'))}"
-
-        coin_blocks.append(block)
-
-    examples = ", ".join(str(row.get("symbol") or "").upper() for row in rows[:3] if row.get("symbol"))
-    footer = ""
-    if examples:
-        first_symbol = examples.split(", ")[0]
-        footer = f"_Pede_ `analisa {first_symbol}` _para analise detalhada._"
+    examples = ", ".join(str(r.get("symbol") or "").upper() for r in rows[:3] if r.get("symbol"))
+    footer = f"_Pede_ `analisa {examples.split(', ')[0]}` _para analise tecnica detalhada._" if examples else ""
 
     answer = header + "\n\n" + "\n\n---\n\n".join(coin_blocks)
     if footer:
