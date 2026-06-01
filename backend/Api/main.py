@@ -148,6 +148,9 @@ def _extract_coin_from_prompt(prompt: str) -> str | None:
     for symbol in _KNOWN_SYMBOLS:
         if re.search(rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])", upper):
             return _normalize_coin_symbol(symbol)
+        # also match lowercase versions (btc, eth, sol, ...)
+        if re.search(rf"(?<![a-zA-Z0-9]){re.escape(symbol.lower())}(?![a-zA-Z0-9])", prompt):
+            return _normalize_coin_symbol(symbol)
     words = prompt.split()
     for i, word in enumerate(words):
         if word.lower().strip(".,!?") in ["moeda", "coin", "token", "criptomoeda"] and i + 1 < len(words):
@@ -187,6 +190,20 @@ async def chat_stream(req: ChatRequest):
             fn = _format_text_analysis_detail_followup(req.prompt, req.history)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
+
+        # Detect comparison questions (two or more coin symbols in the same prompt)
+        _prompt_upper = req.prompt.upper()
+        _mentioned_coins = [s for s in _KNOWN_SYMBOLS if re.search(rf"(?<![A-Z0-9]){re.escape(s)}(?![A-Z0-9])", _prompt_upper)]
+        if len(_mentioned_coins) >= 2:
+            _coins_hint = " e ".join(f"`analisa {c}`" for c in _mentioned_coins[:3])
+            def _comparison_hint():
+                yield (
+                    f"Para comparar {' vs '.join(_mentioned_coins[:3])}, o melhor é analisares cada uma em separado e depois comparares os resultados.\n\n"
+                    f"Experimenta:\n"
+                    + "\n".join(f"- {f'`analisa {c}`'}" for c in _mentioned_coins[:3])
+                    + "\n\nDepois diz-me o que vês em cada uma e ajudo-te a interpretar qual está em melhor posição técnica."
+                )
+            return StreamingResponse(_comparison_hint(), media_type="text/plain")
 
         if _should_use_coin_analysis(req.prompt):
             try:
@@ -231,13 +248,31 @@ async def chat_stream(req: ChatRequest):
                         "És um assistente especializado em análise de mercado de criptomoedas. "
                         "Responde sempre em português europeu quando o utilizador escrever em português. "
                         "O teu estilo é direto, técnico mas acessível — sem jargão desnecessário.\n\n"
+                        "Data de hoje: 2026-06-01. Usa esta data como referência — nunca inventes datas futuras ou passadas.\n\n"
                         "O que sabes fazer:\n"
                         "- Explicar conceitos de análise técnica (RSI, MACD, Bollinger, suporte/resistência, médias móveis)\n"
                         "- Interpretar setups de mercado e dar contexto sobre o que os indicadores significam\n"
                         "- Ajudar a pensar em gestão de risco: stop loss, targets, dimensionamento de posição\n"
                         "- Responder a perguntas sobre como exchanges funcionam, o que é on-chain, wallets, listings\n"
                         "- Dar contexto sobre projetos crypto: o que fazem, qual a narrativa, riscos conhecidos\n\n"
-                        "Regras:\n"
+                        "Como lidar com perguntas específicas:\n\n"
+                        "COMPARAÇÕES (ex: 'BTC ou ETH qual está melhor?'):\n"
+                        "- Explica que a comparação técnica se faz moeda a moeda\n"
+                        "- Sugere pedir 'analisa BTC' e 'analisa ETH' para obter os dados de RSI, tendência e SMA de cada uma\n"
+                        "- Explica o que comparar: RSI (sobrecomprado vs sobrever), tendência de curto prazo, posição face à SMA200\n\n"
+                        "PORTFOLIO (ex: 'tenho BTC e SOL, o que achas?'):\n"
+                        "- Pergunta a que preço entrou em cada posição, se ainda não disse\n"
+                        "- Dá contexto sobre o estado técnico atual de cada moeda com base no que sabes\n"
+                        "- Fala sobre risco de correlação entre assets e diversificação\n\n"
+                        "NOTÍCIAS / MACRO (ex: 'o que está a acontecer no mercado?'):\n"
+                        "- Reconhece que não tens acesso a notícias em tempo real\n"
+                        "- Explica o que os indicadores técnicos mostram (RSI médio do mercado, dominância BTC, tendência geral)\n"
+                        "- Sugere pedir análises específicas para ver o estado técnico de cada moeda\n\n"
+                        "PREVISÕES TEMPORAIS (ex: 'vai subir esta semana?'):\n"
+                        "- Explica claramente por que previsões de curto prazo são impossíveis com certeza\n"
+                        "- Oferece o que os indicadores mostram agora: RSI, tendência, suporte/resistência próximos\n"
+                        "- Sugere 'analisa [SÍMBOLO]' para análise técnica atual\n\n"
+                        "Regras gerais:\n"
                         "- Nunca digas 'deves comprar X' ou 'este é um bom investimento' — apresenta sempre cenários e riscos\n"
                         "- Se o utilizador perguntar sobre uma moeda específica, diz-lhe que pode pedir 'analisa [SÍMBOLO]' para análise técnica detalhada\n"
                         "- Se não souberes algo com certeza, diz-o — não inventes dados de preços ou indicadores\n"

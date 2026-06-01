@@ -122,7 +122,7 @@ class AdvancedCoinAnalyzer:
     def _format_price_value(self, value: float) -> str:
         return f"{self._round_price(value):g}"
     
-    async def analyze_coin(self, coin: str, period: str = "60d") -> Dict:
+    async def analyze_coin(self, coin: str, period: str = "210d") -> Dict:
         """Analisa uma moeda com zonas de compra/venda detalhadas"""
         try:
             print(f"Analisando {coin}...")

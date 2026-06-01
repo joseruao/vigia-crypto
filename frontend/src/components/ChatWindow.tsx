@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { Suggestions } from '@/components/Suggestions';
 import { TradingViewChart } from '@/components/TradingViewChart';
 import ReactMarkdown from 'react-markdown';
@@ -158,18 +159,13 @@ export function ChatWindow() {
     const content = (text ?? input).trim();
     if (!content || loading) return;
 
-    const id = activeId ?? undefined;
+    const convId = activeId ?? uuidv4();
     const history = (active?.messages ?? []).slice(-8);
 
-    addMessage({ role: 'user', content }, id);
+    addMessage({ role: 'user', content }, convId);
     setInput('');
     setLoading(true);
     setGotFirstChunk(false);
-
-    // Após addMessage, o activeId pode ter mudado — guardamos o id da conversa
-    // através do closure para garantir consistência nas chamadas seguintes.
-    // addMessage cria a conversa atomicamente se não existir.
-    const convId = id ?? undefined;
 
     try {
       abortedRef.current = false;

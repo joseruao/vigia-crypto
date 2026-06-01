@@ -1,6 +1,11 @@
 """
 Chat helper functions: intent classification, coin extraction,
 position/PnL calculation, and response formatters.
+
+Exported intent classifiers:
+  _is_trade_followup, _is_sell_followup, _is_entry_price_followup,
+  _is_analysis_detail_followup, _is_onboarding_question,
+  _is_comparison_question, _should_use_coin_analysis
 """
 from __future__ import annotations
 import re
@@ -40,6 +45,7 @@ def _is_trade_followup(prompt: str) -> bool:
         "entro", "entrada", "buy", "should i buy", "is it good to buy",
         "fase de compra", "zona de compra", "esta em compra", "está em compra",
         "ainda achas", "achas o mesmo", "ainda pensas", "mantens", "e agora",
+        "faz sentido", "o que achas",
     ])
 
 
@@ -59,6 +65,7 @@ def _is_analysis_detail_followup(prompt: str) -> bool:
         "porque", "porquê", "por que", "explica", "motivo", "risco",
         "target", "targets", "alvo", "alvos", "stop", "invalidacao",
         "invalidação", "onde entro", "entrada ideal", "plano",
+        "fibonacci", "fib", "quando entra", "quando compro",
     ])
 
 
@@ -70,6 +77,13 @@ def _is_onboarding_question(prompt: str) -> bool:
         "what is this", "how does this work", "what can you do",
         "what is vigia", "how can you help", "what do you do",
     ])
+
+
+def _is_comparison_question(prompt: str) -> bool:
+    upper = prompt.upper()
+    known = ["BTC","ETH","SOL","BNB","XRP","ADA","AVAX","DOGE","DOT","LINK","NEAR","APT","ARB","OP","SUI","ATOM","UNI","AAVE","FIL","WIF"]
+    found = [c for c in known if re.search(rf"(?<![A-Z0-9]){c}(?![A-Z0-9])", upper)]
+    return len(found) >= 2
 
 
 def _format_onboarding() -> callable:
@@ -112,6 +126,14 @@ def _should_use_coin_analysis(prompt: str) -> bool:
     educational = ["o que é", "what is", "what are", "explica o que", "define ", "o que significa", "o que sao"]
     if any(t in q for t in educational):
         return False
+    # Perguntas sobre o mercado em geral sem moeda específica não devem disparar análise de moeda
+    if any(t in q for t in ["mercado", "market"]) and not _is_comparison_question(prompt):
+        # Only block if there's no specific coin symbol present
+        known = ["BTC","ETH","SOL","BNB","XRP","ADA","AVAX","DOGE","DOT","LINK","NEAR","APT","ARB","OP","SUI","ATOM","UNI","AAVE","FIL","WIF"]
+        upper = prompt.upper()
+        has_coin = any(re.search(rf"(?<![A-Z0-9]){c}(?![A-Z0-9])", upper) for c in known)
+        if not has_coin:
+            return False
     analysis_kw = [
         "analisa", "analise", "analyze", "análise", "análise gráfica",
         "gráfico", "gráfica", "técnica", "rsi", "médias móveis", "analisa-me",
