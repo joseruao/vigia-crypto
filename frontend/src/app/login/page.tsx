@@ -92,7 +92,7 @@ export default function LoginPage() {
             <div className="h-7 w-7 rounded bg-blue-600" />
             <span className="font-semibold tracking-tight">joseruao.com</span>
           </div>
-          <span className="text-xs text-gray-500">Vigia Crypto</span>
+          <span className="text-xs text-gray-500">Crypto Intelligence</span>
         </div>
       </header>
 
@@ -100,7 +100,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="rounded-xl bg-white border border-gray-200 shadow-sm p-8">
             <div className="flex flex-col items-center text-center space-y-2 mb-6">
-              <h1 className="text-2xl font-semibold">Entrar no Vigia Crypto</h1>
+              <h1 className="text-2xl font-semibold">Entrar em joseruao.com</h1>
               <p className="text-sm text-gray-600">Usa a tua conta Google ou email.</p>
             </div>
 
@@ -189,7 +189,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-xs text-center text-gray-500 mt-6">
-            © {new Date().getFullYear()} joseruao.com · Vigia Crypto
+            © {new Date().getFullYear()} joseruao.com
           </p>
         </div>
       </main>

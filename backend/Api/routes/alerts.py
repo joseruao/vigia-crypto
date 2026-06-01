@@ -328,7 +328,7 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-    header = f"{_top100_title(mode, len(rows))}\n_Analise tecnica diaria — nao e recomendacao de compra._"
+    header = _top100_title(mode, len(rows))
     coin_blocks = [_format_top100_block(i, item, mode) for i, item in enumerate(rows, 1)]
 
     examples = ", ".join(str(r.get("symbol") or "").upper() for r in rows[:3] if r.get("symbol"))
@@ -888,11 +888,11 @@ def ask_alerts(payload: AskIn):
 
         shown = out[:8]
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
-            header = f"**Tokens detetados em wallets de exchanges com potencial de listing ({len(shown)}):**\n_Baseado em movimentos on-chain de wallets conhecidas. Nao e garantia de listing._"
+            header = f"**Tokens detetados em wallets de exchanges com potencial de listing ({len(shown)})**"
         elif is_buy_watchlist_question:
-            header = f"**Watchlist de hoje — tokens em wallets de exchanges ainda nao listados ({len(shown)}):**\n_Triagem de sinal, nao recomendacao de compra._"
+            header = f"**Watchlist de hoje — tokens em wallets de exchanges ({len(shown)})**"
         else:
-            header = f"**Top {len(shown)} holdings detetados:**"
+            header = f"**Top {len(shown)} holdings detetados**"
 
         def _fmt_ts(ts_val) -> str:
             try:
