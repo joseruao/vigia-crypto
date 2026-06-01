@@ -617,28 +617,53 @@ def generate_holding_analysis(holding_data, exchange_name):
     else:
         return f"👀 EM OBSERVAÇÃO - {symbol} presente na {exchange_name}."
 
+def _normalize_exchange_name(raw: str) -> str:
+    """Converte 'Binance 2', 'Kraken Cold 1', etc. para o nome limpo da exchange."""
+    return EXCHANGE_NORMALIZE.get(raw, raw.split(" ")[0])
+
+
 def send_telegram_alert(holding: dict, exchange_name: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
-        symbol = holding.get("symbol", "?")
-        score = holding.get("score", 0)
-        value = holding.get("value_usd", 0)
-        liquidity = holding.get("liquidity", 0)
-        chain = holding.get("chain", "").upper()
+        symbol   = holding.get("symbol", "?")
+        score    = holding.get("score", 0)
+        value    = holding.get("value_usd", 0)
+        liquidity= holding.get("liquidity", 0)
+        volume   = holding.get("volume_24h", 0)
+        chain    = holding.get("chain", "").capitalize()
         pair_url = holding.get("pair_url", "")
+        exchange = _normalize_exchange_name(exchange_name)
 
-        conf = "🔥 ALTA" if score >= 90 else ("✅ BOA" if score >= 80 else "📊 MODERADA")
+        if score >= 90:
+            badge = "🔥 Score muito alto"
+            verdict = "Forte candidato a listing"
+        elif score >= 80:
+            badge = "✅ Score alto"
+            verdict = "Bom sinal — merece atenção"
+        else:
+            badge = "📊 Score moderado"
+            verdict = "Em monitorização"
+
+        sep = "─" * 22
         lines = [
-            f"🏦 *Novo holding detetado*",
+            f"🏦 *Novo token detetado*",
+            sep,
+            f"*{symbol}*  ·  {exchange}  ·  {chain}",
+            sep,
+            f"*{badge}*   {score:.0f}/100",
             f"",
-            f"*{symbol}* — {exchange_name} ({chain})",
-            f"Score: *{score:.0f}/100* — Confiança {conf}",
-            f"Valor na wallet: *${value:,.0f}*",
-            f"Liquidez: *${liquidity:,.0f}*",
+            f"💰 Valor na wallet    *${value:,.0f}*",
+            f"💧 Liquidez no par    *${liquidity:,.0f}*",
+        ]
+        if volume:
+            lines.append(f"📈 Volume 24h         *${volume:,.0f}*")
+        lines += [
+            f"",
+            f"_{verdict}_",
         ]
         if pair_url:
-            lines.append(f"[Ver no DexScreener]({pair_url})")
+            lines.append(f"[🔗 Ver no DexScreener]({pair_url})")
 
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -650,6 +675,7 @@ def send_telegram_alert(holding: dict, exchange_name: str) -> None:
             },
             timeout=10,
         )
+        print(f"   📨 Telegram alert enviado: {symbol} ({exchange})")
     except Exception as e:
         print(f"   ⚠️ Telegram alert falhou: {e}")
 

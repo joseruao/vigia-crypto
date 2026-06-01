@@ -1,57 +1,89 @@
-# Crypto Intelligence Platform — joseruao.com
+# Crypto Intelligence Platform
 
-A personal project I built to monitor crypto markets — started as a simple Telegram bot and grew into a full web app with a conversational AI interface.
+AI-powered web application for cryptocurrency analysis, on-chain market intelligence, and automated alerts.
 
 **Live:** [joseruao.com](https://joseruao.com)
 
 ---
 
-## The idea
-
-I wanted to know when major exchanges were quietly accumulating tokens before listing them. The theory: if Binance's wallet starts holding a token it doesn't list yet, that's a possible early signal.
-
-Started with a Python script that sent Telegram alerts. Over time it grew into something with a proper frontend, a database, daily scheduled jobs, and a chat interface where you can ask questions in plain language.
-
----
-
 ## What it does
 
-**Exchange wallet monitoring**
-Tracks known on-chain wallets of Binance, Coinbase, Kraken, OKX, Gate.io, Bybit, and others on Solana and Ethereum. Flags tokens accumulating in those wallets that aren't listed there yet.
+The platform combines three data sources into a single conversational interface — no dashboards, no menus. You ask a question, it routes it to the right engine and answers.
 
-**Daily technical analysis of top 100 coins**
-Every day a scheduled job fetches the top 100 coins and runs technical analysis: RSI, MACD, Bollinger Bands, moving averages, support and resistance. Results are queryable through the chat ("best setups today", "what's near support?").
+### 🏦 On-chain token discovery
+Monitors hot wallets of major exchanges (Binance, Coinbase, Kraken, OKX, Gate.io, Bybit, Bitfinex, Gemini) on both Solana and Ethereum. When an exchange accumulates a token it hasn't listed yet, that's a potential early signal. Each holding is scored by liquidity, volume, and an ML model, and high-score finds trigger a Telegram alert automatically.
 
-**Chat interface**
-Instead of dashboards and menus, everything is a question. The app figures out what you're asking and routes it to the right data source — on-chain holdings, the daily rankings, or a coin-specific analysis.
+### 📊 Daily top-100 technical ranking
+Every day, a scheduled job fetches the top 100 coins by market cap and runs full technical analysis: Wilder RSI, MACD(12,26,9), Bollinger Bands, SMA20/50/200, and pivot-based support/resistance levels. Results are queryable through the chat ("best opportunities today", "what's near support?", "what's cheap right now?").
+
+### 🔍 Coin analysis on demand
+Ask "analisa BTC" and get a full technical breakdown — support/resistance zones, RSI interpretation, trend direction, Fibonacci levels, stop loss and targets — plus an embedded TradingView chart automatically.
+
+### 💬 AI chat assistant
+General crypto questions go to GPT-4o-mini with a custom system prompt tuned for technical analysis, risk management, and on-chain market context. The intent routing is deterministic (no LLM decides where a question goes), which keeps latency low and costs predictable.
 
 ---
 
 ## Tech stack
 
-| | |
+| Layer | Stack |
 |---|---|
-| **Frontend** | Next.js 15, React 19, Tailwind CSS |
-| **Backend** | FastAPI (Python), deployed on Render |
-| **Database** | Supabase (PostgreSQL) |
-| **AI** | OpenAI GPT-4o-mini for general chat |
-| **On-chain data** | Helius (Solana RPC), Etherscan (Ethereum) |
-| **Market data** | CoinGecko, Binance, Coinbase public APIs |
-| **Auth** | Supabase Auth (Google + email) |
-| **Deployment** | Vercel (frontend) + Render (backend + cron jobs) |
+| **Frontend** | Next.js 15 (App Router), React 19, Tailwind CSS 4, TypeScript |
+| **Backend** | FastAPI, Python 3.13, Uvicorn |
+| **Database** | Supabase (PostgreSQL + REST API) |
+| **AI** | OpenAI GPT-4o-mini (streaming), scikit-learn Random Forest (token scoring) |
+| **On-chain** | Helius RPC (Solana), Etherscan (Ethereum) |
+| **Market data** | CoinGecko, CoinPaprika, Binance, Coinbase, Gate.io (public APIs) |
+| **Charts** | TradingView embed widget |
+| **Alerts** | Telegram Bot API |
+| **Auth** | Supabase Auth (Google OAuth + email) |
+| **Deploy** | Vercel (frontend) · Render (backend + cron jobs) |
 
 ---
 
-## How it's structured
+## Architecture
 
 ```
-frontend/   → Next.js chat interface
-backend/
-  Api/          → FastAPI endpoints
-  dailyworker/  → scheduled jobs (top100 + wallet monitoring)
-  analisegrafica/ → technical analysis (RSI, MACD, support/resistance)
-  utils/        → Supabase client
+User (browser)
+    │
+    ▼
+Next.js Frontend  ──── intent routing in the client ────►  /alerts/ask
+    │                                                       (listings, top100)
+    │
+    ▼  /chat/stream
+FastAPI Backend
+    │
+    ├── Coin analysis  →  AdvancedCoinAnalyzer
+    │                     (RSI · MACD · Fibonacci · S/R)
+    │
+    ├── Top-100 query  →  top100_technical_rankings (Supabase)
+    │
+    ├── Listing query  →  transacted_tokens (Supabase)
+    │
+    └── General chat   →  OpenAI GPT-4o-mini (streaming)
+
+Supabase (PostgreSQL)
+    ├── transacted_tokens           on-chain holdings + ML scores
+    ├── top100_technical_rankings   daily technical rankings
+    └── exchange_tokens             known listed tokens per exchange
+
+Render cron jobs (daily)
+    ├── top100 cron      fetch + analyze top-100 coins
+    └── holders cron     scan exchange wallets (Solana + ETH)
+                         → save to Supabase
+                         → Telegram alert if score ≥ 80
 ```
+
+---
+
+## Key technical details
+
+- **Streaming end-to-end** — FastAPI yields chunks, Next.js reads with `ReadableStream`; the UI updates in real time
+- **Wilder RSI** — same smoothing method as TradingView (not the simpler naive average)
+- **Pivot-based S/R** — swing high/low detection over 210-day history, not just 30-day min/max ±2%
+- **ML scorer** — Random Forest trained on liquidity, volume, holder concentration, wallet value; outputs a 0–100 listing probability score
+- **Multi-source candle cascade** — Coinbase → Gate.io → Binance → CoinGecko; if one is rate-limited, the next takes over automatically
+- **Context-aware followups** — "is it good to buy?" after an analysis reuses the last result; "I bought at $5.5, should I sell?" extracts entry price and calculates P&L
 
 ---
 
@@ -61,30 +93,40 @@ backend/
 ```bash
 cd backend
 pip install -r requirements.txt
+# add your keys to .env (see below)
 uvicorn Api.main:app --reload --port 8000
 ```
 
 **Frontend**
 ```bash
 cd frontend
-npm install && npm run dev
+npm install
+# set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local
+npm run dev
 ```
 
-**Env vars needed**
+**Required environment variables**
 ```
-SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
 OPENAI_API_KEY
-HELIUS_API_KEY        # Solana
-ETHERSCAN_API_KEY     # Ethereum
-FRONTEND_URL          # for CORS
+HELIUS_API_KEY          # Solana RPC
+ETHERSCAN_API_KEY       # Ethereum
+TELEGRAM_BOT_TOKEN_SOL  # optional — for alerts
+TELEGRAM_CHAT_ID_SOL    # optional — for alerts
+FRONTEND_URL            # for CORS
 ```
 
 ---
 
-## Honest notes
+## Project background
 
-This project was built with heavy use of AI coding tools (Claude Code). I came in knowing Python basics and an idea — the technical implementation grew through a lot of iteration, debugging, and learning on the go.
+Started as a Telegram bot that sent alerts when exchange wallets accumulated tokens. No frontend, no database, no deploy — just a Python script running locally.
 
-What I genuinely contributed: the product decisions (what signals matter, what thresholds make sense, how the conversation should feel), the domain knowledge about how crypto listings work, and the persistence to keep iterating until it worked.
+Grew into this over several months: learned Supabase, Vercel, and Render from scratch (deployment took the longest to get right), added the web interface, and integrated AI throughout. Heavy use of AI coding tools (Claude Code) for implementation — the product decisions, domain logic, and iteration were mine.
 
-What I learned along the way: how APIs and databases talk to each other, how to deploy and keep a web app running, how streaming responses work, and a lot about on-chain data and technical analysis.
+---
+
+## Disclaimer
+
+Informational only. Not financial advice.
