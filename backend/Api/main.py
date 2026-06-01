@@ -108,12 +108,14 @@ from Api.services.chat_helpers import (
     _is_sell_followup,
     _is_entry_price_followup,
     _is_analysis_detail_followup,
+    _is_onboarding_question,
     _should_use_coin_analysis,
     _normalize_coin_symbol,
     _format_trade_followup,
     _format_text_sell_followup,
     _format_text_analysis_detail_followup,
     _format_coin_analysis,
+    _format_onboarding,
 )
 
 _KNOWN_COIN_NAMES = {
@@ -162,6 +164,9 @@ def _extract_coin_from_prompt(prompt: str) -> str | None:
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     try:
+        if _is_onboarding_question(req.prompt):
+            return StreamingResponse(_format_onboarding()(), media_type="text/plain")
+
         if is_top100_buy_question(req.prompt):
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():

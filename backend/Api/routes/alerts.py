@@ -799,82 +799,110 @@ def ask_alerts(payload: AskIn):
             out = _merge_prediction_backfill(out, fallback_out)
             log.info(f"Ask apos backfill historico: {len(out)}")
 
-    # Formata resposta em texto para o frontend
     try:
         if len(out) == 0:
-            # Mensagem mais informativa quando não há resultados
-            answer = "Não encontrei tokens que correspondam à tua pesquisa."
             if ex_norm:
-                answer = f"Não encontrei holdings da {ex_norm} que correspondam aos critérios."
+                answer = f"Nao encontrei holdings da {ex_norm} que correspondam aos criterios."
             elif is_listing_question:
-                answer = f"Não encontrei tokens com potencial de listing (score >= {min_score})."
-                if len(data) > 0:
-                    # Mostra quantos há no total mas não passam o filtro
-                    max_score = max([float(x.get("score") or 0) for x in data] or [0])
-                    answer += f"\n\n📊 Há {len(data)} holdings no total, mas nenhum com score >= {min_score}."
-                    answer += f"\n💡 Score máximo encontrado: {max_score:.1f}%"
-            if min_score > 0:
-                answer += f"\n\n💡 Score mínimo aplicado: {min_score}%"
-            answer += "\n\n💡 Tenta reduzir os filtros ou verifica se há dados no Supabase."
-        else:
-            lines = []
-            shown = out[:10]
-            if is_buy_watchlist_question:
-                lines.append(f"🔎 **Watchlist para analisar hoje ({len(shown)} candidato(s)):**\n")
-                lines.append("Base: sinais internos de wallets/listing ainda nao listados na propria exchange. Isto e triagem, nao recomendacao de compra.\n")
-            elif is_listing_question or "listados" in q or "listing" in q:
-                lines.append(f"🎯 **Top {len(shown)} token(s) com potencial de listing:**\n")
+                answer = "Nao encontrei tokens com potencial de listing nos dados recentes.\n\nO cron de holdings corre diariamente e analisa wallets de exchanges como Binance, Coinbase, Gate.io e Kraken. Se os dados estiverem desatualizados, aguarda o proximo ciclo."
             else:
-                lines.append(f"📊 **Top {len(shown)} holding(s):**\n")
-            
-            for i, item in enumerate(shown, 1):  # Limita a 10
-                token = item.get("token", "N/A")
-                exchange = _normalize_exchange(item.get("exchange", "N/A"))
-                score = item.get("score", 0)
-                value_usd = item.get("value_usd", 0)
-                liquidity = item.get("liquidity", 0)
-                pair_url = item.get("pair_url", "")
-                analysis = item.get("ai_analysis") or item.get("analysis_text", "")
-                
-                line = f"{i}. **{token}** ({exchange})"
-                if score:
-                    line += f" - Score: **{score:.1f}%**"
-                if value_usd:
-                    line += f" - Valor: ${value_usd:,.0f}"
-                if liquidity:
-                    line += f" - Liquidez: ${liquidity:,.0f}"
-                
-                # Links formatados
-                links = []
-                if pair_url:
-                    links.append(f"**[DexScreener]({pair_url})**")
-                
-                # Adiciona link CoinGecko se tiver token_address ou token name
-                token_address = item.get("token_address", "")
-                token_lower = token.lower()
-                if token_address or token_lower:
-                    # CoinGecko usa o nome do token em minúsculas na URL
-                    coingecko_url = f"https://www.coingecko.com/en/coins/{token_lower}"
-                    links.append(f"[CoinGecko]({coingecko_url})")
-                
-                if links:
-                    line += f" - {' | '.join(links)}"
-                
-                lines.append(line)
-                
-                # Adiciona análise se existir (apenas para os primeiros 3)
-                if analysis and i <= 3:
-                    analysis_short = analysis[:150] + "..." if len(analysis) > 150 else analysis
-                    lines.append(f"   💡 {analysis_short}\n")
-            
-            if len(out) > 10:
-                lines.append(f"\n... e mais {len(out) - len(shown)} candidato(s) filtrados")
-            
-            answer = "\n".join(lines)
-        
-        log.info(f"Resposta formatada: {len(answer)} caracteres")
+                answer = "Nao encontrei tokens que correspondam a tua pesquisa."
+            return {"ok": True, "answer": answer, "count": 0, "items": []}
+
+        shown = out[:8]
+        if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
+            header = f"**Tokens detetados em wallets de exchanges com potencial de listing ({len(shown)}):**\n_Baseado em movimentos on-chain de wallets conhecidas. Nao e garantia de listing._"
+        elif is_buy_watchlist_question:
+            header = f"**Watchlist de hoje — tokens em wallets de exchanges ainda nao listados ({len(shown)}):**\n_Triagem de sinal, nao recomendacao de compra._"
+        else:
+            header = f"**Top {len(shown)} holdings detetados:**"
+
+        def _fmt_ts(ts_val) -> str:
+            try:
+                if isinstance(ts_val, (int, float)):
+                    dt = datetime.fromtimestamp(ts_val / 1000 if ts_val > 1e10 else ts_val, tz=timezone.utc)
+                else:
+                    dt = datetime.fromisoformat(str(ts_val).replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                diff = now - dt
+                if diff.days >= 2:
+                    return f"há {diff.days} dias"
+                if diff.days == 1:
+                    return "ontem"
+                hours = diff.seconds // 3600
+                if hours >= 1:
+                    return f"há {hours}h"
+                return "agora mesmo"
+            except Exception:
+                return ""
+
+        def _confidence_label(score_val) -> str:
+            try:
+                s = float(score_val or 0)
+            except (TypeError, ValueError):
+                return "desconhecida"
+            if s >= 80:
+                return "alta"
+            if s >= 60:
+                return "moderada"
+            return "baixa"
+
+        blocks = []
+        for i, item in enumerate(shown, 1):
+            token = item.get("token", "N/A")
+            exchange = _normalize_exchange(item.get("exchange", "N/A"))
+            score = item.get("score", 0)
+            value_usd = item.get("value_usd") or 0
+            liquidity = item.get("liquidity") or 0
+            pair_url = item.get("pair_url", "")
+            analysis = item.get("ai_analysis") or item.get("analysis_text", "")
+            ts = item.get("last_seen_ts") or item.get("ts")
+            chain = (item.get("chain") or "").capitalize()
+
+            block = f"**{i}. {token}**"
+            if chain:
+                block += f" · {chain}"
+            block += "\n"
+
+            # Contexto principal: quem tem e quanto
+            block += f"Detetado na wallet da **{exchange}**"
+            when = _fmt_ts(ts)
+            if when:
+                block += f" ({when})"
+            block += "\n"
+
+            if value_usd and float(value_usd) > 0:
+                block += f"Valor em carteira: **${float(value_usd):,.0f}**"
+                if liquidity and float(liquidity) > 0:
+                    block += f" · Liquidez no par: **${float(liquidity):,.0f}**"
+                block += "\n"
+
+            # Probabilidade de listing
+            conf = _confidence_label(score)
+            block += f"Probabilidade de listing: **{conf}**"
+            if score:
+                block += f" (score {float(score):.0f}/100)"
+            block += "\n"
+
+            # Análise curta
+            if analysis:
+                snippet = analysis.strip()[:180]
+                if len(analysis.strip()) > 180:
+                    snippet += "…"
+                block += f"_{snippet}_\n"
+
+            # Link
+            if pair_url:
+                block += f"[Ver no DexScreener]({pair_url})"
+
+            blocks.append(block)
+
+        answer = header + "\n\n" + "\n\n---\n\n".join(blocks)
+        if len(out) > len(shown):
+            answer += f"\n\n_...e mais {len(out) - len(shown)} tokens filtrados._"
+
         return {"ok": True, "answer": answer, "count": len(out), "items": out}
-        
+
     except Exception as e:
         log.error(f"Erro ao formatar resposta: {e}", exc_info=True)
         return {"ok": False, "error": str(e), "answer": f"Erro ao processar: {str(e)}", "count": 0, "items": []}

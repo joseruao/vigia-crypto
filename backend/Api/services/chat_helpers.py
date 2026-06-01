@@ -62,6 +62,44 @@ def _is_analysis_detail_followup(prompt: str) -> bool:
     ])
 
 
+def _is_onboarding_question(prompt: str) -> bool:
+    q = prompt.lower()
+    return any(t in q for t in [
+        "o que é isto", "o que é o vigia", "como funciona", "o que fazes",
+        "o que podes", "como me podes ajudar", "o que é este site",
+        "what is this", "how does this work", "what can you do",
+        "what is vigia", "how can you help",
+    ])
+
+
+def _format_onboarding() -> callable:
+    def generate():
+        yield (
+            "## O que é o Vigia Crypto?\n\n"
+            "O Vigia Crypto é uma ferramenta de inteligência de mercado para criptomoedas. "
+            "Não dou conselhos de investimento — dou-te **informação estruturada** para tomares melhores decisões.\n\n"
+            "Tenho três fontes de dados principais:\n\n"
+            "---\n\n"
+            "### 🏦 Monitorização de wallets de exchanges\n"
+            "Analiso wallets on-chain de exchanges como **Binance, Coinbase, Gate.io, Kraken, OKX, Bybit** e outras. "
+            "Quando uma exchange começa a acumular um token que ainda não está listada nela, isso pode ser um sinal antecipado de listing.\n\n"
+            "Pergunta-me: _\"Potenciais listings nas exchanges\"_\n\n"
+            "---\n\n"
+            "### 📊 Ranking técnico do Top 100\n"
+            "Todos os dias analiso as 100 maiores criptomoedas por capitalização de mercado com indicadores técnicos: "
+            "RSI, MACD, Bollinger Bands, médias móveis (SMA20/50/200) e suporte/resistência por pivots reais.\n\n"
+            "Pergunta-me: _\"Melhores oportunidades hoje\"_ ou _\"O que está barato agora?\"_\n\n"
+            "---\n\n"
+            "### 🔍 Análise técnica individual\n"
+            "Posso analisar qualquer moeda do mercado em detalhe — zonas de compra/venda, stop loss, targets, RSI, tendência e Fibonacci.\n\n"
+            "Pergunta-me: _\"Analisa BTC\"_, _\"Analisa SOL\"_, _\"Analisa NEAR\"_\n\n"
+            "---\n\n"
+            "**Importante:** Tudo o que vês aqui é informação de mercado, não aconselhamento financeiro. "
+            "Usa os dados para informares a tua própria análise — nunca como única razão para comprar ou vender."
+        )
+    return generate
+
+
 def _should_use_coin_analysis(prompt: str) -> bool:
     q = prompt.lower()
     if "top100" in q or "top 100" in q:
