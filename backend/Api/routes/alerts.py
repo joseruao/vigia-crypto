@@ -146,42 +146,61 @@ def _top100_title(mode: str, count: int) -> str:
         return f"**Top100 com RSI mais baixo para analisar ({count} moedas):**"
     return f"**Shortlist top100 para analisar hoje ({count} moedas):**"
 
-def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
+def _fetch_top100_rows(date_filter: str | None, log=None) -> tuple[list, bool]:
+    """Fetch top100 rows from Supabase. Returns (rows, has_technical_cols)."""
     base_select = "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts"
-    params = {
-        "select": f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence",
-        "order": "score.desc",
-        "limit": "50",
-    }
+    tech_select = f"{base_select},rsi,trend,support,resistance,current_position,entry_zone,technical_action,technical_confidence"
+    params = {"select": tech_select, "order": "score.desc", "limit": "50"}
+    if date_filter:
+        params["date"] = f"eq.{date_filter}"
     r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
-    if r.status_code != 200 and "rsi" in (getattr(r, "text", "") or "").lower():
-        if log:
-            log.warning("Top100 ranking sem colunas tecnicas; fallback para select legacy")
-        params["select"] = base_select
-        r = supa.rest_get("top100_technical_rankings", params=params, timeout=8)
     if r.status_code != 200:
+        # Fallback: try without technical columns (older schema)
+        params2 = {"select": base_select, "order": "score.desc", "limit": "50"}
+        if date_filter:
+            params2["date"] = f"eq.{date_filter}"
+        r2 = supa.rest_get("top100_technical_rankings", params=params2, timeout=8)
+        if r2.status_code != 200:
+            if log:
+                log.warning("Top100 ranking indisponivel: HTTP %s / %s", r.status_code, r2.status_code)
+            return [], False
         if log:
-            log.warning("Top100 ranking indisponivel: HTTP %s", r.status_code)
+            log.warning("Top100 ranking sem colunas tecnicas; usando select legacy")
+        return r2.json() or [], False
+    return r.json() or [], True
+
+
+def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+
+    raw, has_tech = _fetch_top100_rows(today, log)
+    if not raw:
+        raw, has_tech = _fetch_top100_rows(yesterday, log)
+    if not raw:
+        # Last resort: no date filter (any historical data)
+        raw, has_tech = _fetch_top100_rows(None, log)
+
+    if raw is None or (isinstance(raw, list) and len(raw) == 0 and not has_tech):
         answer = (
             "Ainda nao tenho o ranking tecnico diario do top100 disponivel.\n\n"
-            "Ja deixei o cron dos holders preparado para atualizar a tabela `top100_technical_rankings`. "
-            "Falta criares essa tabela no Supabase e deixar o proximo cron correr.\n\n"
+            "Confirma nos logs do cron dos holders a linha "
+            "`Confirmacao Supabase: X linhas visiveis em top100_technical_rankings`.\n\n"
             "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
     mode = _top100_mode(prompt)
     rows = [
-        row for row in (r.json() or [])
+        row for row in raw
         if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
         and float(row.get("score") or 0) > 0
     ]
     rows = _sort_top100_rows(rows, mode)[:10]
     if not rows:
         answer = (
-            "A tabela top100 existe, mas neste momento nao devolveu linhas visiveis para o bot.\n\n"
-            "Se o cron acabou de correr, confirma nos logs a linha "
-            "`Confirmacao Supabase: X linhas visiveis em top100_technical_rankings`.\n\n"
+            "A tabela top100 existe mas nao tem dados validos para hoje.\n\n"
+            "O cron dos holders atualiza o top100 na FASE 1.5 — verifica nos logs se correu sem erros.\n\n"
             "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
