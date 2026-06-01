@@ -101,6 +101,9 @@ export function ChatWindow() {
       q.includes('vão ser') ||
       q.includes('vao ser') ||
       q.includes('vai ser') ||
+      q.includes('acumular') ||
+      q.includes('accumulate') ||
+      (q.includes('exchange') && q.includes('token')) ||
       (q.includes('achas') && (q.includes('token') || q.includes('listado')));
     const isBuyWatchlistQuestion =
       (q.includes('comprar') || q.includes('compra') || q.includes('aconselhas') || q.includes('recomendas') || q.includes('oportunidade')) &&

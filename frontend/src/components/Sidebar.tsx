@@ -140,7 +140,7 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-zinc-200 p-4 text-center text-xs text-zinc-500 bg-zinc-50">
-        Vigia Crypto · beta
+        joseruao.com · crypto intel
       </div>
     </aside>
   )

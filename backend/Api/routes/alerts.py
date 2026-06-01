@@ -961,12 +961,14 @@ def ask_alerts(payload: AskIn):
                 block += f" (score {float(score):.0f}/100)"
             block += "\n"
 
-            # Análise curta
+            # Análise curta — remove emojis e caracteres especiais do texto armazenado
             if analysis:
-                snippet = analysis.strip()[:180]
-                if len(analysis.strip()) > 180:
-                    snippet += "…"
-                block += f"_{snippet}_\n"
+                import re as _re
+                clean = _re.sub(r'[^\w\s\.,;:\-\(\)%$€£\+\/]', '', analysis).strip()
+                clean = _re.sub(r'\s+', ' ', clean)
+                if len(clean) > 20:
+                    snippet = clean[:180] + ("…" if len(clean) > 180 else "")
+                    block += f"_{snippet}_\n"
 
             # Link
             if pair_url:

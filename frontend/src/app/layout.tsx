@@ -6,7 +6,7 @@ import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
 
 export const metadata: Metadata = {
   title: 'joseruao.com',
-  description: 'Vigia Crypto',
+  description: 'Análise de mercado crypto — joseruao.com',
 }
 
 export const dynamic = 'force-dynamic'

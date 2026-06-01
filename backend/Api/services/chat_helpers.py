@@ -68,34 +68,36 @@ def _is_onboarding_question(prompt: str) -> bool:
         "o que é isto", "o que é o vigia", "como funciona", "o que fazes",
         "o que podes", "como me podes ajudar", "o que é este site",
         "what is this", "how does this work", "what can you do",
-        "what is vigia", "how can you help",
+        "what is vigia", "how can you help", "what do you do",
     ])
 
 
 def _format_onboarding() -> callable:
     def generate():
         yield (
-            "## O que é o Vigia Crypto?\n\n"
-            "O Vigia Crypto é uma ferramenta de inteligência de mercado para criptomoedas. "
+            "## O que faço e como te posso ajudar\n\n"
+            "Sou um assistente de análise de mercado crypto. "
             "Não dou conselhos de investimento — dou-te **informação estruturada** para tomares melhores decisões.\n\n"
             "Tenho três fontes de dados principais:\n\n"
             "---\n\n"
-            "### 🏦 Monitorização de wallets de exchanges\n"
-            "Analiso wallets on-chain de exchanges como **Binance, Coinbase, Gate.io, Kraken, OKX, Bybit** e outras. "
-            "Quando uma exchange começa a acumular um token que ainda não está listada nela, isso pode ser um sinal antecipado de listing.\n\n"
-            "Pergunta-me: _\"Potenciais listings nas exchanges\"_\n\n"
+            "### 🏦 Monitorização de wallets de grandes exchanges\n"
+            "Acompanho wallets on-chain de exchanges como **Binance, Coinbase, Gate.io, Kraken, OKX e Bybit**. "
+            "Quando uma exchange acumula um token que ainda não está listado nela, isso pode ser um sinal antecipado. "
+            "Mostro o valor acumulado, há quanto tempo foi detetado e a probabilidade estimada.\n\n"
+            "_Pergunta-me: \"Potenciais listings nas exchanges\"_\n\n"
             "---\n\n"
-            "### 📊 Ranking técnico do Top 100\n"
-            "Todos os dias analiso as 100 maiores criptomoedas por capitalização de mercado com indicadores técnicos: "
-            "RSI, MACD, Bollinger Bands, médias móveis (SMA20/50/200) e suporte/resistência por pivots reais.\n\n"
-            "Pergunta-me: _\"Melhores oportunidades hoje\"_ ou _\"O que está barato agora?\"_\n\n"
+            "### 📊 Análise técnica diária do Top 100\n"
+            "Todos os dias analiso as 100 maiores criptomoedas com indicadores técnicos reais: "
+            "RSI, MACD, Bollinger Bands, médias móveis (SMA20/50/200) e suporte/resistência por swing pivots. "
+            "Digo-te quais estão perto de zonas de compra, quais têm momentum a favor, e qual a leitura técnica de cada uma.\n\n"
+            "_Pergunta-me: \"Melhores oportunidades hoje\" ou \"O que está barato agora?\"_\n\n"
             "---\n\n"
-            "### 🔍 Análise técnica individual\n"
-            "Posso analisar qualquer moeda do mercado em detalhe — zonas de compra/venda, stop loss, targets, RSI, tendência e Fibonacci.\n\n"
-            "Pergunta-me: _\"Analisa BTC\"_, _\"Analisa SOL\"_, _\"Analisa NEAR\"_\n\n"
+            "### 🔍 Análise individual de qualquer moeda\n"
+            "Posso analisar qualquer criptomoeda em detalhe — zonas de entrada, stop loss, targets, RSI, tendência macro e micro.\n\n"
+            "_Pergunta-me: \"Analisa BTC\", \"Analisa SOL\", \"Analisa NEAR\"_\n\n"
             "---\n\n"
-            "**Importante:** Tudo o que vês aqui é informação de mercado, não aconselhamento financeiro. "
-            "Usa os dados para informares a tua própria análise — nunca como única razão para comprar ou vender."
+            "**Nota:** Tudo o que vês é informação de mercado, não aconselhamento financeiro. "
+            "Usa os dados para informares a tua própria análise."
         )
     return generate
 
