@@ -4,20 +4,18 @@ type Props = { visible: boolean; onSelect: (text: string) => void };
 
 const SUGGESTIONS: Record<'pt' | 'en', { label: string; prompt: string }[]> = {
   pt: [
-    { label: '📊 Top100 perto do suporte', prompt: 'Quais do top100 estao perto do suporte?' },
-    { label: '🛡️ Top100 menor risco', prompt: 'Quais do top100 tem menos risco?' },
-    { label: '🔍 RSI mais baixo agora', prompt: 'Quais do top100 tem RSI mais baixo?' },
-    { label: '🏦 Tokens com listing previsto', prompt: 'Que tokens achas que vao ser listados em breve?' },
+    { label: '📊 Perto do suporte', prompt: 'Quais do top100 estao perto do suporte?' },
+    { label: '🔍 RSI mais baixo', prompt: 'Quais do top100 tem RSI mais baixo?' },
+    { label: '🏦 Potencial de listing', prompt: 'Que tokens as exchanges estao a acumular que ainda nao foram listados?' },
     { label: '📈 Analisa BTC', prompt: 'Analisa BTC' },
-    { label: '🔎 Analisa SOL', prompt: 'Analisa SOL' },
+    { label: '📈 Analisa ETH', prompt: 'Analisa ETH' },
   ],
   en: [
-    { label: '📊 Top100 near support', prompt: 'Which top 100 coins are near support?' },
-    { label: '🛡️ Top100 lower risk', prompt: 'Which top 100 coins have lower risk?' },
-    { label: '🔍 Lowest RSI now', prompt: 'Which top 100 coins have the lowest RSI?' },
-    { label: '🏦 Upcoming listings', prompt: 'Which tokens look close to a major exchange listing?' },
+    { label: '📊 Near support', prompt: 'Which top 100 coins are near support?' },
+    { label: '🔍 Lowest RSI', prompt: 'Which top 100 coins have the lowest RSI?' },
+    { label: '🏦 Listing potential', prompt: 'Which tokens are exchanges accumulating that are not yet listed?' },
     { label: '📈 Analyze BTC', prompt: 'Analyze BTC' },
-    { label: '🔎 Analyze SOL', prompt: 'Analyze SOL' },
+    { label: '📈 Analyze ETH', prompt: 'Analyze ETH' },
   ],
 };
 

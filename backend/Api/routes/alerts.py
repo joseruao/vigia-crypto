@@ -213,10 +213,8 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-    lines = [
-        f"{_top100_title(mode, len(rows))}\n",
-        "_Score tecnico diario — nao e recomendacao de compra._\n",
-    ]
+    header = f"{_top100_title(mode, len(rows))}\n_Score tecnico diario — nao e recomendacao de compra._"
+    coin_blocks = []
     for i, item in enumerate(rows, 1):
         symbol = item.get("symbol") or "N/A"
         name = item.get("name") or symbol
@@ -225,19 +223,13 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         signal = item.get("signal") or "N/A"
         risk = item.get("risk") or "N/A"
 
-        # Linha 1: identidade + score
-        line = f"**{i}. {symbol}** ({name})\n"
-
-        # Linha 2: preco + variações
-        line += (
-            f"   {price} · 24h {_fmt_pct(item.get('change_24h'))} · "
+        block = f"**{i}. {symbol}** ({name})\n"
+        block += (
+            f"{price} · 24h {_fmt_pct(item.get('change_24h'))} · "
             f"7d {_fmt_pct(item.get('change_7d'))} · 30d {_fmt_pct(item.get('change_30d'))}\n"
         )
+        block += f"Score {score:.0f}/100 · {signal} · Risco {risk}"
 
-        # Linha 3: score + sinal + risco
-        line += f"   Score {score:.0f}/100 · {signal} · Risco {risk}\n"
-
-        # Linha 4: indicadores técnicos (se disponíveis)
         if item.get("rsi") is not None:
             rsi = float(item.get("rsi"))
             trend = item.get("trend") or "N/A"
@@ -247,28 +239,28 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
             macd_sig = item.get("macd_signal") or ""
             bb_pos = item.get("bb_position") or ""
 
-            tech_parts = [
-                f"RSI {rsi:.0f}",
-                f"{trend}{sma_tag}",
-                f"range {position}",
-            ]
+            tech_parts = [f"RSI {rsi:.0f}", f"{trend}{sma_tag}", f"range {position}"]
             if macd_sig and macd_sig != "NEUTRO":
                 tech_parts.append(f"MACD {macd_sig.replace('_', ' ').title()}")
             if bb_pos and bb_pos != "NEUTRO":
                 tech_parts.append(f"BB {bb_pos.replace('_', ' ').lower()}")
-            line += f"   {' · '.join(tech_parts)}\n"
+            block += f"\n{' · '.join(tech_parts)}"
 
-        # Linha 5: suporte / resistência
         if item.get("support") is not None and item.get("resistance") is not None:
-            line += f"   Sup {_fmt_money(item.get('support'))} → Res {_fmt_money(item.get('resistance'))}"
+            block += f"\nSup {_fmt_money(item.get('support'))} → Res {_fmt_money(item.get('resistance'))}"
 
-        lines.append(line.rstrip())
+        coin_blocks.append(block)
 
     examples = ", ".join(str(row.get("symbol") or "").upper() for row in rows[:3] if row.get("symbol"))
+    footer = ""
     if examples:
         first_symbol = examples.split(", ")[0]
-        lines.append(f"\n_Pede_ `analisa {first_symbol}` _para analise detalhada. Sugestoes: {examples}._")
-    return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
+        footer = f"_Pede_ `analisa {first_symbol}` _para analise detalhada._"
+
+    answer = header + "\n\n" + "\n\n---\n\n".join(coin_blocks)
+    if footer:
+        answer += "\n\n" + footer
+    return {"ok": True, "answer": answer, "count": len(rows), "items": rows}
 
 def _is_test_token(row: Dict[str, Any]) -> bool:
     token = str(row.get("token") or "").strip().upper()
