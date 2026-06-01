@@ -78,22 +78,23 @@ HOLDING_THRESHOLDS = {
     "Bitget": 100000,         # $100k+
     "MEXC": 50000,            # $50k+
     
-    # ETHEREUM WALLETS
-    "Binance 8": 500000,      # $500k+
-    "Binance 14": 500000,     # $500k+
-    "Binance 7": 500000,      # $500k+
-    "Binance 16": 500000,     # $500k+
-    "Kraken": 300000,         # $300k+
-    "OKX 73": 200000,         # $200k+
-    "OKX 93": 200000,         # $200k+
-    "Coinbase 10": 300000,    # $300k+
-    "Gate.io": 150000,        # $150k+
-    "Bitget Hot Wallet 1": 100000, # $100k+
-    "Bitfinex 2": 150000,     # $150k+
-    "Bitfinex 19": 150000,    # $150k+
-    "Gemini 3": 100000,       # $100k+
-    "Robinhood": 200000,      # $200k+
-    "Upbit": 150000,          # $150k+
+    # ETHEREUM WALLETS — thresholds mais baixos que Solana porque ETH tem tokens
+    # de médio porte que ainda não chegaram às exchanges mas já têm valor real
+    "Binance 8": 200000,      # $200k+
+    "Binance 14": 200000,     # $200k+
+    "Binance 7": 200000,      # $200k+
+    "Binance 16": 200000,     # $200k+
+    "Kraken": 100000,         # $100k+
+    "OKX 73": 75000,          # $75k+
+    "OKX 93": 75000,          # $75k+
+    "Coinbase 10": 100000,    # $100k+
+    "Gate.io": 50000,         # $50k+
+    "Bitget Hot Wallet 1": 50000,  # $50k+
+    "Bitfinex 2": 75000,      # $75k+
+    "Bitfinex 19": 75000,     # $75k+
+    "Gemini 3": 50000,        # $50k+
+    "Robinhood": 75000,       # $75k+
+    "Upbit": 50000,           # $50k+
 }
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima

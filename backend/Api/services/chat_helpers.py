@@ -108,6 +108,10 @@ def _should_use_coin_analysis(prompt: str) -> bool:
         return False
     if any(t in q for t in ["listing", "listado", "vao ser", "vão ser", "previsao", "previsão"]):
         return False
+    # Perguntas educativas ("o que é o RSI?") não devem disparar análise de moeda
+    educational = ["o que é", "what is", "what are", "explica o que", "define ", "o que significa", "o que sao"]
+    if any(t in q for t in educational):
+        return False
     analysis_kw = [
         "analisa", "analise", "analyze", "análise", "análise gráfica",
         "gráfico", "gráfica", "técnica", "rsi", "médias móveis", "analisa-me",
@@ -746,24 +750,39 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     return generate
 
 
+def _rsi_label_analysis(rsi: float) -> str:
+    if rsi < 28:
+        return "Oversold extremo — possível bounce forte"
+    if rsi < 38:
+        return "Oversold — vendedores enfraquecidos"
+    if rsi < 50:
+        return "Neutro baixo — equilíbrio pendendo para baixo"
+    if rsi < 62:
+        return "Neutro — equilíbrio"
+    if rsi < 70:
+        return "Neutro alto — compradores dominam"
+    return "Overbought — evitar novas compras"
+
+
 def _format_coin_analysis(coin: str, result: dict):
     if result.get("snapshot_only"):
         changes = result.get("price_change") or {}
-        yield f"# Snapshot de mercado de {coin}\n\n"
-        yield "Nao encontrei candles historicos suficientes nos providers principais, por isso isto e uma leitura rapida via DexScreener.\n\n"
-        yield "## Dados rapidos\n\n"
-        yield f"- Preco atual: **{_fmt_price(result.get('current_price'))}**\n"
-        yield f"- Chain/DEX: **{result.get('chain') or 'N/A'} / {result.get('dex') or 'N/A'}**\n"
-        yield f"- Liquidez: **{_fmt_money(result.get('liquidity_usd'))}**\n"
-        yield f"- Volume 24h: **{_fmt_money(result.get('volume_24h'))}**\n"
-        yield f"- Variação 24h: **{_fmt_percent(changes.get('h24'))}**\n"
+        yield f"## 📊 {coin} — Snapshot de mercado\n\n"
+        yield "_Sem candles históricos suficientes — leitura rápida via DexScreener._\n\n"
+        yield f"**Preço:** {_fmt_price(result.get('current_price'))} · "
+        yield f"24h {_fmt_percent(changes.get('h24'))}\n\n"
+        chain = result.get('chain') or 'N/A'
+        dex = result.get('dex') or 'N/A'
+        yield f"**Chain/DEX:** {chain} / {dex}\n"
+        yield f"**Liquidez:** {_fmt_money(result.get('liquidity_usd'))}\n"
+        yield f"**Volume 24h:** {_fmt_money(result.get('volume_24h'))}\n"
         if result.get("market_cap"):
-            yield f"- Market cap: **{_fmt_money(result.get('market_cap'))}**\n"
+            yield f"**Market cap:** {_fmt_money(result.get('market_cap'))}\n"
         elif result.get("fdv"):
-            yield f"- FDV: **{_fmt_money(result.get('fdv'))}**\n"
+            yield f"**FDV:** {_fmt_money(result.get('fdv'))}\n"
         if result.get("pair_url"):
-            yield f"\nPar: {result.get('pair_url')}\n"
-        yield "\nSem candles fiaveis, eu nao calcularia RSI, suportes ou targets tecnicos aqui. Para estes tokens pequenos, o proximo passo e confirmar liquidez, holders e contrato antes de qualquer decisao."
+            yield f"\n[Ver par no DexScreener]({result.get('pair_url')})\n"
+        yield "\n⚠️ Sem candles fiáveis não há RSI, suportes ou targets calculáveis. Confirma liquidez, holders e contrato antes de qualquer decisão."
         return
 
     analysis = result.get("analysis", {}) or {}
@@ -774,74 +793,99 @@ def _format_coin_analysis(coin: str, result: dict):
     ma = analysis.get("moving_averages", {}) or {}
     trend = analysis.get("trend", {}) or {}
     volume = analysis.get("volume", {}) or {}
+    fib = analysis.get("fibonacci", {}) or {}
+    fib_levels = fib.get("levels", {}) or {}
 
     action, summary = _analysis_stance(analysis, zones, recs)
-    confidence = recs.get("confianca", "N/A")
     current_zone = _human_zone(zones.get("posicao_atual"))
+    rsi_val = analysis.get("rsi")
+    price = result.get("current_price")
+    support = sr.get("dynamic_support")
+    resistance = sr.get("dynamic_resistance")
+    position_pct = sr.get("current_position")
+    trend_dir = trend.get("direction", "")
+    stop = strategy.get("stop_loss")
+    targets = strategy.get("targets") or []
+    risk_alert = recs.get("alerta_risco", "")
 
-    yield f"# Analise tecnica de {coin}\n\n"
-    yield f"**Resumo:** {action} com confianca {confidence}. {summary} O preco esta em **{current_zone}**.\n\n"
-    yield "## Leitura rapida\n\n"
-    yield f"- Preco atual: **{_fmt_price(result.get('current_price'))}**\n"
-    yield f"- RSI 14: **{analysis.get('rsi', 'N/A')}**\n"
-    yield f"- Tendencia: **{trend.get('direction', 'N/A')}**"
-    if trend.get("strength") is not None:
-        yield f" ({_fmt_percent(trend.get('strength'))})"
-    yield "\n"
-    yield f"- Volatilidade: **{_fmt_percent(analysis.get('volatility'))}**\n"
-    if volume:
-        yield f"- Volume: **{volume.get('trend', 'N/A')}**, {volume.get('ratio_20d', 'N/A')}x vs media 20d\n"
+    yield f"## 🎯 {coin} — Análise Técnica\n\n"
+
+    # Zonas de Preço
+    yield "**Zonas de Preço:**\n"
+    if support:
+        zone_tag = f" ({current_zone.upper()})" if current_zone else ""
+        pct_tag = f" — {position_pct:.0f}% acima do suporte" if position_pct is not None else ""
+        yield f"🟢 Suporte: **{_fmt_price(support)}**{zone_tag}{pct_tag}\n"
+    if resistance:
+        yield f"🔴 Resistência: **{_fmt_price(resistance)}**\n"
+    if price and resistance:
+        upside = ((float(resistance) - float(price)) / float(price)) * 100
+        if upside > 0:
+            yield f"📈 Upside até resistência: **+{upside:.1f}%**\n"
+    if stop:
+        yield f"🛡️ Stop loss: **{_fmt_price(stop)}**\n"
+    if targets:
+        yield "🎯 Targets:\n"
+        for t in targets[:3]:
+            yield f"   · {t}\n"
     yield "\n"
 
-    if sr:
-        yield "## Zonas principais\n\n"
-        yield f"- Suporte dinamico: **{_fmt_price(sr.get('dynamic_support'))}**\n"
-        yield f"- Resistencia dinamica: **{_fmt_price(sr.get('dynamic_resistance'))}**\n"
-        if sr.get("current_position") is not None:
-            yield f"- Posicao no range: **{sr.get('current_position')}%** entre suporte e resistencia\n"
-        yield "\n"
+    # Status Técnico
+    yield "**Status Técnico:**\n"
+    if rsi_val is not None:
+        rsi_f = float(rsi_val)
+        rsi_emoji = "✅" if rsi_f < 55 else ("⚠️" if rsi_f < 70 else "🔴")
+        yield f"{rsi_emoji} RSI **{rsi_f:.1f}** — {_rsi_label_analysis(rsi_f)}\n"
+
+    if trend_dir:
+        trend_emoji = "📈" if trend_dir == "UPTREND" else "📉"
+        strength = trend.get("strength")
+        strength_txt = f" ({_fmt_percent(strength)} de divergência)" if strength else ""
+        yield f"{trend_emoji} Tendência: **{trend_dir}**{strength_txt}\n"
 
     if ma:
-        yield "## Medias moveis\n\n"
-        yield f"- SMA 20: {_fmt_price(ma.get('sma_20'))}\n"
-        yield f"- SMA 50: {_fmt_price(ma.get('sma_50'))}\n"
-        yield f"- SMA 200: {_fmt_price(ma.get('sma_200'))}\n\n"
+        price_f = float(price or 0)
+        sma20 = float(ma.get("sma_20") or 0)
+        sma50 = float(ma.get("sma_50") or 0)
+        sma200 = float(ma.get("sma_200") or 0)
+        above_all = price_f > sma20 > 0 and price_f > sma50 > 0 and price_f > sma200 > 0
+        below_all = sma200 > 0 and price_f < sma200
+        if above_all:
+            yield f"✅ Preço acima das SMA20/50/200 — alinhamento bullish completo\n"
+        elif below_all:
+            yield f"⚠️ Preço abaixo da SMA200 — pressão macro vendedora\n"
+        yield f"SMA20 **{_fmt_price(sma20)}** · SMA50 **{_fmt_price(sma50)}** · SMA200 **{_fmt_price(sma200)}**\n"
 
-    if strategy:
-        yield "## Plano\n\n"
-        yield f"- Estrategia: **{strategy.get('estrategia', 'N/A')}**\n"
-        if action.startswith("AGUARDAR"):
-            support_text = _fmt_price(sr.get("dynamic_support")) if sr.get("dynamic_support") is not None else None
-            if support_text:
-                yield f"- Acao: esperar pullback para perto de **{support_text}** ou confirmacao antes de nova entrada\n"
-            else:
-                yield "- Acao: esperar pullback ou confirmacao antes de nova entrada\n"
-        else:
-            yield f"- Acao: {strategy.get('plano') or strategy.get('acao') or 'Aguardar confirmacao'}\n"
-        if strategy.get("stop_loss"):
-            yield f"- Stop loss: {_fmt_price(strategy.get('stop_loss'))}\n"
-        targets = strategy.get("targets") or []
-        if targets:
-            yield "- Targets:\n"
-            for target in targets[:3]:
-                yield f"  - {target}\n"
-        if strategy.get("recompra"):
-            yield f"- Recompra: {strategy.get('recompra')}\n"
-        yield "\n"
+    if volume:
+        vol_trend = volume.get("trend", "")
+        vol_ratio = volume.get("ratio_20d", 1)
+        vol_emoji = "✅" if vol_trend == "HIGH" else ("⚠️" if vol_trend == "LOW" else "📊")
+        yield f"{vol_emoji} Volume: **{vol_trend}** ({vol_ratio}x vs média 20d)\n"
 
-    raw_actions = recs.get("acoes_recomendadas") or []
-    actions_out = []
-    for action_item in raw_actions:
-        text = str(action_item)
-        if action.startswith("AGUARDAR") and "FAVOR" in text.upper() and "COMPRA" in text.upper():
-            text = "TENDENCIA DE ALTA - CONTEXTO POSITIVO, MAS AGUARDAR PULLBACK"
-        actions_out.append(text)
-    if actions_out:
-        yield "## Sinais detectados\n\n"
-        for action_item in actions_out[:4]:
-            yield f"- {action_item}\n"
-        yield "\n"
+    if fib_levels:
+        fib_618 = fib_levels.get("0.618")
+        fib_382 = fib_levels.get("0.382")
+        if fib_618 and fib_382:
+            yield f"📐 Fibonacci: 38.2% em **{_fmt_price(fib_618)}** · 61.8% em **{_fmt_price(fib_382)}**\n"
 
-    risk = recs.get("alerta_risco")
-    if risk:
-        yield f"**Risco:** {risk}\n\n"
+    yield "\n"
+
+    # Leitura e Plano
+    yield "**🎯 Leitura:**\n"
+    yield f"{summary}\n\n"
+
+    if action.startswith("AGUARDAR"):
+        if support:
+            yield f"Aguardar pullback para zona de **{_fmt_price(support)}** antes de considerar entrada. "
+        yield "Não perseguir o preço atual.\n"
+    elif "COMPRA" in action.upper():
+        if support and resistance:
+            yield f"Entrada faseada perto de **{_fmt_price(support)}** com alvo **{_fmt_price(resistance)}**"
+            if stop:
+                yield f" e stop em **{_fmt_price(stop)}**"
+            yield ".\n"
+    elif action == "REALIZAR / AGUARDAR":
+        yield "Preço perto da resistência — considerar realizar parte da posição. Não abrir novas compras aqui.\n"
+
+    if risk_alert and "MODERADO" not in risk_alert.upper():
+        yield f"\n⚠️ {risk_alert}\n"
