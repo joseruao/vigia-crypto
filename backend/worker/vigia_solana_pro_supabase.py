@@ -2,6 +2,7 @@
 Cron job: atualiza o ranking tecnico diario do top100.
 Configurado no Render como: python worker/vigia_solana_pro_supabase.py
 Schedule: render.yaml (0 8 * * *)
+v2: Wilder RSI, MACD, Bollinger Bands, SMA200, pivot support/resistance
 """
 import asyncio
 import os
