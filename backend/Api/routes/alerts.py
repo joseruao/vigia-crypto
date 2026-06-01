@@ -1,12 +1,14 @@
 # backend/Api/routes/alerts.py
 from __future__ import annotations
-import os, time, math
+import os, time, math, logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import sys
 from pathlib import Path
+
+log = logging.getLogger("vigia")
 
 # Garante que o diretório backend está no path para imports absolutos
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
