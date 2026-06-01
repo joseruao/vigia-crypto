@@ -51,7 +51,11 @@ def supabase_upsert_many(table: str, rows: list, conflict_cols: list) -> int:
         return 0
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     params = {"on_conflict": ",".join(conflict_cols)}
-    r = requests.post(url, json=rows, params=params, headers=SUPABASE_HEADERS, timeout=30)
+    headers = {
+        **SUPABASE_HEADERS,
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+    r = requests.post(url, json=rows, params=params, headers=headers, timeout=30)
     if r.status_code in (200, 201):
         return len(rows)
     print(f"Supabase bulk upsert falhou: HTTP {r.status_code} — {r.text[:300]}", flush=True)

@@ -727,23 +727,23 @@ async def update_top100_rankings(
     rows = await enrich_rows_with_technical(rows, max_symbols=100)
 
     if bulk_upsert_func:
-        saved = bulk_upsert_func(TOP100_TABLE, rows, ["date", "symbol"])
-        if saved == 0 and rows and any("rsi" in row for row in rows):
-            # ✅ FIX: Se falhar com colunas técnicas, remover também "targets" string
-            legacy_rows = [
-                {
-                    key: value
-                    for key, value in row.items()
-                    if key not in {
-                        "rsi", "trend", "trend_strength", "volatility", "volume_ratio_20d",
-                        "support", "resistance", "current_position", "entry_zone", "stop_loss",
-                        "targets", "technical_action", "technical_confidence",
-                        "macd_signal", "macd_hist", "above_sma200", "bb_position", "bb_width",
-                    }
-                }
-                for row in rows
-            ]
-            print("Top100 tecnico: retry sem colunas novas para manter compatibilidade Supabase", flush=True)
+        # Supabase bulk upsert exige que todas as rows tenham exactamente os mesmos campos.
+        # Normalizamos para a união de todas as keys, preenchendo None onde falta.
+        all_keys = set()
+        for row in rows:
+            all_keys.update(row.keys())
+        normalized = [{k: row.get(k) for k in all_keys} for row in rows]
+
+        saved = bulk_upsert_func(TOP100_TABLE, normalized, ["date", "symbol"])
+        if saved == 0 and rows:
+            legacy_keys = all_keys - {
+                "rsi", "trend", "trend_strength", "volatility", "volume_ratio_20d",
+                "support", "resistance", "current_position", "entry_zone", "stop_loss",
+                "targets", "technical_action", "technical_confidence",
+                "macd_signal", "macd_hist", "above_sma200", "bb_position", "bb_width",
+            }
+            legacy_rows = [{k: row.get(k) for k in legacy_keys} for row in rows]
+            print("Top100 tecnico: retry sem colunas tecnicas para manter compatibilidade Supabase", flush=True)
             saved = bulk_upsert_func(TOP100_TABLE, legacy_rows, ["date", "symbol"])
         print(f"Top100 atualizado em lote: {saved}/{len(rows)} moedas guardadas", flush=True)
         return saved
