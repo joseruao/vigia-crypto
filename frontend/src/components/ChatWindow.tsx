@@ -3,10 +3,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Suggestions } from '@/components/Suggestions';
+import { TradingViewChart } from '@/components/TradingViewChart';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 import { CircleStop, Send } from 'lucide-react';
+
+function extractCoinFromAnalysis(content: string): string | null {
+  const match = content.match(/##\s+🎯\s+([A-Z0-9]+)\s+[—–-]/);
+  if (match) return match[1];
+  const match2 = content.match(/Analise tecnica de\s+([A-Z0-9]+)/i);
+  if (match2) return match2[1];
+  return null;
+}
 
 export function ChatWindow() {
   const {
@@ -289,16 +298,22 @@ export function ChatWindow() {
                   key={i}
                   className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div
-                    className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm sm:max-w-[85%] ${
-                      m.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-50 text-gray-800 border border-gray-200'
-                    }`}
-                  >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {m.content}
-                    </ReactMarkdown>
+                  <div className={`max-w-[92%] sm:max-w-[85%] ${m.role === 'user' ? '' : 'w-full'}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm ${
+                        m.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-50 text-gray-800 border border-gray-200'
+                      }`}
+                    >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
+                    {m.role === 'assistant' && (() => {
+                      const coin = extractCoinFromAnalysis(m.content);
+                      return coin ? <TradingViewChart coin={coin} /> : null;
+                    })()}
                   </div>
                 </div>
               ))}
