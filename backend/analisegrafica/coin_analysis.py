@@ -777,12 +777,32 @@ class AdvancedCoinAnalyzer:
                 "observacao": "Não vender tudo de uma vez - fazer scale"
             }
         else:
-            return {
+            # Even in neutral zone, provide stop and targets based on support/resistance
+            sr = trading_zones.get("compra", {})
+            stop_val = None
+            targets = []
+            try:
+                stop_val = self._format_price_value(
+                    trading_zones['compra']['zona_compra_agressiva']['alvo_stop_loss']
+                )
+                targets = [
+                    f"{trading_zones['venda']['zona_venda_parcial']['range']} (30%)",
+                    f"{trading_zones['venda']['zona_venda_principal']['range']} (50%)",
+                    f"{trading_zones['venda']['zona_venda_agressiva']['range']} (20%)",
+                ]
+            except (KeyError, TypeError):
+                pass
+            result = {
                 "estrategia": "WAIT_AND_SEE",
                 "plano": "Aguardar confirmação de direção",
                 "acao": "Não entrar em novas posições",
-                "observacao": "Mercado em consolidação - esperar breakout"
+                "observacao": "Mercado em consolidação - esperar breakout",
             }
+            if stop_val:
+                result["stop_loss"] = stop_val
+            if targets:
+                result["targets"] = targets
+            return result
     
     def _get_main_action(self, score: int) -> str:
         if score >= 70: return "COMPRA FORTE"

@@ -119,6 +119,7 @@ from Api.services.chat_helpers import (
     _format_coin_analysis,
     _format_onboarding,
     _format_comparison_followup,
+    _portfolio_context_line,
 )
 
 _KNOWN_COIN_NAMES = {
@@ -173,7 +174,9 @@ async def chat_stream(req: ChatRequest):
         if _is_onboarding_question(req.prompt):
             return StreamingResponse(_format_onboarding()(), media_type="text/plain")
 
-        if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt):
+        _q = req.prompt.lower()
+        _is_delta_q = any(t in _q for t in ["mudou", "mudança", "ontem", "subiu mais", "desceu mais", "novidades top"])
+        if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q:
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():
                 yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."
@@ -255,6 +258,7 @@ async def chat_stream(req: ChatRequest):
                         "Responde sempre em português europeu quando o utilizador escrever em português. "
                         "O teu estilo é direto, técnico mas acessível — sem jargão desnecessário.\n\n"
                         f"Data de hoje: {_date.today().isoformat()}. Usa esta data como referência — nunca inventes datas futuras ou passadas.\n\n"
+                        + (f"{_portfolio_context_line(req.history)}\n\n" if _portfolio_context_line(req.history) else "")
                         "O que sabes fazer:\n"
                         "- Explicar conceitos de análise técnica (RSI, MACD, Bollinger, suporte/resistência, médias móveis)\n"
                         "- Interpretar setups de mercado e dar contexto sobre o que os indicadores significam\n"

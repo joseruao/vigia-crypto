@@ -19,6 +19,44 @@ LAST_COIN_ANALYSIS: dict = {}
 
 
 # ---------------------------------------------------------------------------
+# Portfolio memory — extract and recall positions mentioned in conversation
+# ---------------------------------------------------------------------------
+_PORTFOLIO_PATTERNS = [
+    r"(?:tenho|comprei|compra|entrada|preco medio|preço médio)\s+(?:[\d,.]+\s+)?([A-Z]{2,10})\s+(?:a|ao|em|por|@)\s*\$?\s*([\d,.]+)",
+    r"([A-Z]{2,10})\s+(?:a|comprado a|entrada a|medio de)\s*\$?\s*([\d,.]+)",
+    r"(?:posicao|posição)\s+(?:de|em)\s+([A-Z]{2,10})[^\d]*([\d,.]+)",
+]
+
+def _extract_portfolio_from_history(history: list[ChatHistoryMessage]) -> dict[str, float]:
+    """Scan user messages in history for mentioned positions. Returns {coin: entry_price}."""
+    positions: dict[str, float] = {}
+    for msg in (history or []):
+        if msg.role != "user":
+            continue
+        text = msg.content or ""
+        upper = text.upper()
+        for pattern in _PORTFOLIO_PATTERNS:
+            for m in re.finditer(pattern, upper, re.IGNORECASE):
+                coin = m.group(1).upper().strip()
+                try:
+                    price = float(m.group(2).replace(",", "."))
+                    if price > 0:
+                        positions[coin] = price
+                except (ValueError, TypeError):
+                    pass
+    return positions
+
+
+def _portfolio_context_line(history: list[ChatHistoryMessage]) -> str | None:
+    """Return a one-line portfolio context string if positions found, else None."""
+    positions = _extract_portfolio_from_history(history)
+    if not positions:
+        return None
+    parts = [f"{coin} entrada {_fmt_price(price)}" for coin, price in list(positions.items())[:5]]
+    return "Posições mencionadas na conversa: " + " · ".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
 class ChatHistoryMessage(BaseModel):

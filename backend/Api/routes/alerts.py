@@ -111,8 +111,14 @@ def _fmt_pct(value: Any) -> str:
     except (TypeError, ValueError):
         return "N/A"
 
+def _human_zone_label(zone: str) -> str:
+    return {"ZONA_DE_COMPRA": "compra", "ZONA_DE_VENDA": "venda", "ZONA_NEUTRA": "neutra"}.get(zone, zone.lower() or "—")
+
+
 def _top100_mode(prompt: str) -> str:
     q = (prompt or "").lower()
+    if any(t in q for t in ["mudou", "mudança", "mudancas", "ontem", "subiu mais", "desceu mais", "novidades", "o que e novo", "o que é novo"]):
+        return "delta"
     if "risco" in q or "segura" in q or "seguro" in q or "menos risco" in q:
         return "low_risk"
     if "risco/retorno" in q or "risco retorno" in q or "relacao risco" in q or "relação risco" in q:
@@ -349,6 +355,45 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
     mode = _top100_mode(prompt)
+
+    # Delta mode: compare today vs yesterday
+    if mode == "delta":
+        raw_yesterday, _ = _fetch_top100_rows(yesterday, log)
+        yest_by_symbol = {
+            str(r.get("symbol") or "").upper(): r
+            for r in (raw_yesterday or [])
+            if str(r.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
+        }
+        delta_rows = []
+        for row in raw:
+            sym = str(row.get("symbol") or "").upper()
+            if sym in TOP100_EXCLUDED_SYMBOLS or not float(row.get("score") or 0):
+                continue
+            yest = yest_by_symbol.get(sym)
+            score_now = float(row.get("score") or 0)
+            score_then = float(yest.get("score") or 0) if yest else score_now
+            row["score_delta"] = round(score_now - score_then, 1)
+            row["zone_yesterday"] = str(yest.get("entry_zone") or "") if yest else ""
+            delta_rows.append(row)
+        # Show biggest positive movers first
+        delta_rows.sort(key=lambda r: -float(r.get("score_delta") or 0))
+        rows = delta_rows[:10]
+        if rows:
+            lines = [f"**O que mudou no top100 desde ontem ({len(rows)} moedas com maior variação)**\n"]
+            for i, r in enumerate(rows, 1):
+                sym = str(r.get("symbol") or "")
+                delta = float(r.get("score_delta") or 0)
+                score = float(r.get("score") or 0)
+                zone = str(r.get("entry_zone") or "")
+                zone_y = str(r.get("zone_yesterday") or "")
+                arrow = "📈" if delta > 0 else ("📉" if delta < 0 else "➡️")
+                zone_change = ""
+                if zone != zone_y and zone_y:
+                    zone_change = f" · zona: {_human_zone_label(zone_y)} → {_human_zone_label(zone)}"
+                lines.append(f"{i}. **{sym}** {arrow} score {score:.0f} ({'+' if delta >= 0 else ''}{delta:.1f} vs ontem){zone_change}")
+            return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
+        return {"ok": True, "answer": "Ainda não tenho dados de ontem para comparar.", "count": 0, "items": []}
+
     rows = [
         row for row in raw
         if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
