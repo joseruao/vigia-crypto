@@ -111,6 +111,7 @@ from Api.services.chat_helpers import (
     _is_entry_price_followup,
     _is_analysis_detail_followup,
     _is_onboarding_question,
+    _is_top100_recommendation_followup,
     _should_use_coin_analysis,
     _normalize_coin_symbol,
     _format_trade_followup,
@@ -119,6 +120,7 @@ from Api.services.chat_helpers import (
     _format_coin_analysis,
     _format_onboarding,
     _format_comparison_followup,
+    _format_top100_recommendation,
     _portfolio_context_line,
 )
 
@@ -181,6 +183,11 @@ async def chat_stream(req: ChatRequest):
             def _top100():
                 yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."
             return StreamingResponse(_top100(), media_type="text/plain")
+
+        if _is_top100_recommendation_followup(req.prompt):
+            fn = _format_top100_recommendation(req.history or [])
+            if fn:
+                return StreamingResponse(fn(), media_type="text/plain")
 
         if _is_trade_followup(req.prompt):
             fn = _format_trade_followup(req.prompt, req.history)

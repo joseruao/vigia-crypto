@@ -27,6 +27,14 @@ _PORTFOLIO_PATTERNS = [
     r"(?:posicao|posição)\s+(?:de|em)\s+([A-Z]{2,10})[^\d]*([\d,.]+)",
 ]
 
+# Minimum plausible prices for known coins — catches "65" when user means "65000"
+_COIN_MIN_PRICE: dict[str, float] = {
+    "BTC": 1_000, "ETH": 100, "BNB": 10, "SOL": 1,
+    "XRP": 0.01, "ADA": 0.01, "AVAX": 1, "DOT": 0.1,
+    "LINK": 0.5, "MATIC": 0.01, "NEAR": 0.1, "ATOM": 0.5,
+}
+
+
 def _extract_portfolio_from_history(history: list[ChatHistoryMessage]) -> dict[str, float]:
     """Scan user messages in history for mentioned positions. Returns {coin: entry_price}."""
     positions: dict[str, float] = {}
@@ -40,7 +48,8 @@ def _extract_portfolio_from_history(history: list[ChatHistoryMessage]) -> dict[s
                 coin = m.group(1).upper().strip()
                 try:
                     price = float(m.group(2).replace(",", "."))
-                    if price > 0:
+                    min_price = _COIN_MIN_PRICE.get(coin, 0)
+                    if price > 0 and price >= min_price:
                         positions[coin] = price
                 except (ValueError, TypeError):
                     pass
@@ -115,6 +124,51 @@ def _is_onboarding_question(prompt: str) -> bool:
         "what is this", "how does this work", "what can you do",
         "what is vigia", "how can you help", "what do you do",
     ])
+
+
+def _is_top100_recommendation_followup(prompt: str) -> bool:
+    q = prompt.lower()
+    return any(t in q for t in [
+        "recomenda-me uma", "recomenda uma", "qual compras", "qual escolhes",
+        "qual das anteriores", "qual dessas", "qual delas", "qual compro",
+        "qual seria", "escolhe uma", "qual a melhor", "qual preferes",
+        "qual me recomendas",
+    ])
+
+
+def _format_top100_recommendation(history: list[ChatHistoryMessage]):
+    """If last assistant message was a top100 list, recommend the best coin from it."""
+    for msg in reversed(history or []):
+        if msg.role != "assistant":
+            continue
+        content = msg.content or ""
+        # Detect top100 responses
+        if not any(marker in content for marker in [
+            "top100", "score", "mudou no top100", "Melhores setups", "Perto do suporte",
+            "maior variação", "moedas com maior",
+        ]):
+            break  # last assistant msg wasn't top100, don't try
+        # Extract coin symbols and scores — format: "**SYM**" or "1. **SYM**"
+        coins = re.findall(r"\*\*([A-Z]{2,10})\*\*.*?score\s+(\d+)", content)
+        if not coins:
+            coins_raw = re.findall(r"\d+\.\s+\*\*([A-Z]{2,10})\*\*", content)
+            coins = [(c, "0") for c in coins_raw]
+        if not coins:
+            break
+        # Pick highest score
+        best = max(coins, key=lambda x: int(x[1]) if x[1].isdigit() else 0)
+        best_coin, best_score = best[0], best[1]
+
+        def generate():
+            yield f"Das moedas listadas, **{best_coin}** tem o score mais alto"
+            if best_score and best_score != "0":
+                yield f" ({best_score}/100)"
+            yield ".\n\n"
+            yield f"Para uma análise detalhada com entrada, alvo e stop, pede:\n"
+            yield f"`analisa {best_coin}`\n"
+
+        return generate
+    return None
 
 
 def _is_comparison_question(prompt: str) -> bool:
