@@ -53,11 +53,18 @@ TELEGRAM_CHAT_ID = (
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
     "Binance 7": "Binance", "Binance 8": "Binance", "Binance 14": "Binance", "Binance 16": "Binance",
-    "Binance BNB 51": "Binance", "Binance AVAX 74": "Binance",
+    "Binance BNB 7": "Binance", "Binance BNB 28": "Binance", "Binance BNB 51": "Binance", "Binance BNB 70": "Binance",
+    "Binance BNB Hot Wallet 20": "Binance",
+    "Binance AVAX 74": "Binance", "Binance AVAX Cold Wallet 2": "Binance",
+    "Binance AVAX Cold Wallet 5": "Binance", "Binance AVAX Hot Wallet 10": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
     "Coinbase 10": "Coinbase",
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
     "OKX 73": "OKX", "OKX 93": "OKX",
+    "OKX BNB 35": "OKX",
+    "Bybit BNB 17": "Bybit",
+    "Gate BNB Deposit Funder": "Gate.io",
+    "Huobi BNB 1": "Huobi",
     "Bitget Hot Wallet 1": "Bitget",
 }
 
@@ -117,13 +124,24 @@ HOLDING_THRESHOLDS = {
     "Upbit": 50000,           # $50k+
 
     # BNB Chain / Avalanche C-Chain exchange wallets
+    "Binance BNB 7": 200000,
+    "Binance BNB 28": 200000,
     "Binance BNB 51": 200000,
+    "Binance BNB 70": 200000,
+    "Binance BNB Hot Wallet 20": 200000,
+    "Huobi BNB 1": 75000,
+    "OKX BNB 35": 75000,
+    "Bybit BNB 17": 75000,
+    "Gate BNB Deposit Funder": 50000,
     "Binance AVAX 74": 50000,
+    "Binance AVAX Cold Wallet 2": 75000,
+    "Binance AVAX Cold Wallet 5": 75000,
+    "Binance AVAX Hot Wallet 10": 50000,
 }
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
 MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
-MIN_SCORE_SAVE = 60      # Guardar mais candidatos para o painel de predictions
+MIN_SCORE_SAVE = 50      # Guardar mais candidatos para o painel de predictions
 MIN_SCORE_ALERT = 80     # Telegram so para candidatos fortes e ainda nao listados
 _LIVE_LISTING_CACHE = {}
 
@@ -164,13 +182,24 @@ ETHEREUM_WALLETS = {
 }
 
 BNB_WALLETS = {
+    "Binance BNB 7": "0xBE0eB53F3423E596e0C4977B08C8DCfff7B2404d33E8",
     # BscScan tag: Binance 51 / Binance Exchange / Binance hot wallet.
     "Binance BNB 51": "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3",
+    "Binance BNB 70": "0x835678a611B28684005a5e2233695fB6cbbB0007",
+    "Binance BNB Hot Wallet 20": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+    "Binance BNB 28": "0x5a52E96B87444Bf81417417a7EC579E2E0Bbb42D",
+    "Huobi BNB 1": "0xE5b3D8f7480D0e591C626A61C8F991f08F58f15d",
+    "OKX BNB 35": "0x3b5a23f6207D87b423c6789d2625ea620423b32d",
+    "Bybit BNB 17": "0x318d2aAe4C99c2e74F7B5949fa1C34DF837789B8",
+    "Gate BNB Deposit Funder": "0x8Ef254930467Ad31cE808139f43D88f08F340699",
 }
 
 AVALANCHE_WALLETS = {
     # SnowScan tag: Binance 74 on Avalanche C-Chain.
     "Binance AVAX 74": "0xa7C0D36c4698981FAb42a7d8c783674c6Fe2592d",
+    "Binance AVAX Cold Wallet 5": "0x4aeB5F0743a6fB50C6ea232403c6a013E8a9A65E",
+    "Binance AVAX Cold Wallet 2": "0x4360Cb47210Ad5B885dF5c667574416026F04204",
+    "Binance AVAX Hot Wallet 10": "0x9F8E59D4A052F9ED22D2D10db0Fe18328248Ac8B",
 }
 
 
@@ -770,6 +799,40 @@ def _normalize_exchange_name(raw: str) -> str:
     return EXCHANGE_NORMALIZE.get(raw, raw.split(" ")[0])
 
 
+def _chain_label(chain: str) -> str:
+    return {
+        "solana": "Solana",
+        "ethereum": "Ethereum",
+        "bsc": "BNB Chain",
+        "avalanche": "Avalanche C-Chain",
+    }.get(str(chain or "").lower(), str(chain or "").capitalize() or "N/A")
+
+
+def _explorer_url(chain: str, token_address: str) -> str:
+    if not token_address:
+        return ""
+    chain = str(chain or "").lower()
+    if chain == "solana":
+        return f"https://solscan.io/token/{token_address}"
+    if chain == "bsc":
+        return f"https://bscscan.com/token/{token_address}"
+    if chain == "avalanche":
+        return f"https://snowtrace.io/token/{token_address}"
+    if chain == "ethereum":
+        return f"https://etherscan.io/token/{token_address}"
+    return ""
+
+
+def _listing_confidence(score: float):
+    if score >= 90:
+        return "Muito alta", "Alta", "URGENTE"
+    if score >= 80:
+        return "Alta", "Media-alta", "ALTA"
+    if score >= 70:
+        return "Boa", "Media", "POTENCIAL"
+    return "Moderada", "Baixa-media", "OBSERVAR"
+
+
 def send_telegram_alert(holding: dict, exchange_name: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
@@ -779,39 +842,58 @@ def send_telegram_alert(holding: dict, exchange_name: str) -> None:
         value    = holding.get("value_usd", 0)
         liquidity= holding.get("liquidity", 0)
         volume   = holding.get("volume_24h", 0)
-        chain    = holding.get("chain", "").capitalize()
+        chain_raw= holding.get("chain", "")
+        chain    = _chain_label(chain_raw)
         pair_url = holding.get("pair_url", "")
+        token_address = holding.get("address", "")
+        price = float(holding.get("price") or 0)
+        price_change = holding.get("price_change_24h")
         exchange = _normalize_exchange_name(exchange_name)
+        probability, confidence, urgency = _listing_confidence(float(score or 0))
+        explorer_url = _explorer_url(chain_raw, token_address)
 
         if score >= 90:
-            badge = "🔥 Score muito alto"
-            verdict = "Forte candidato a listing"
+            title = "POTENCIAL NOVO LISTING DETETADO"
         elif score >= 80:
-            badge = "✅ Score alto"
-            verdict = "Bom sinal — merece atenção"
+            title = "EXCHANGE WALLET ALERT"
         else:
-            badge = "📊 Score moderado"
-            verdict = "Em monitorização"
+            title = "TOKEN EM OBSERVACAO"
 
-        sep = "─" * 22
+        change_text = "N/A"
+        try:
+            if price_change is not None:
+                change_text = f"{float(price_change):+.2f}%"
+        except (TypeError, ValueError):
+            pass
+
         lines = [
-            f"🏦 *Novo token detetado*",
-            sep,
-            f"*{symbol}*  ·  {exchange}  ·  {chain}",
-            sep,
-            f"*{badge}*   {score:.0f}/100",
-            f"",
-            f"💰 Valor na wallet    *${value:,.0f}*",
-            f"💧 Liquidez no par    *${liquidity:,.0f}*",
+            f"🔥✨ *{title}* 🔥✨",
+            "",
+            f"🏦 *Exchange:* {exchange}",
+            f"💎 *Token:* {symbol}",
+            f"🔗 *Chain:* {chain}",
+            f"👛 *Wallet:* {exchange_name}",
+            f"💰 *Valor na wallet:* ${value:,.0f}",
+            f"💵 *Preço atual:* ${price:,.8f}" if price else "💵 *Preço atual:* N/A",
+            f"📈 *24h Change:* {change_text}",
+            f"💧 *Liquidez:* ${liquidity:,.0f}",
         ]
         if volume:
-            lines.append(f"📈 Volume 24h         *${volume:,.0f}*")
+            lines.append(f"📊 *Volume 24h:* ${volume:,.0f}")
         lines += [
-            f"",
-            f"_{verdict}_",
+            "",
+            "🤖 *ANALISE DE LISTING*",
+            f"⭐ *Score:* {score:.0f}/100",
+            f"🎯 *Probabilidade:* {probability}",
+            f"📈 *Confiança:* {confidence}",
+            f"🚨 *Urgência:* {urgency}",
+            "",
+            "_Sistema de detecao de potenciais listings on-chain_",
         ]
         if pair_url:
-            lines.append(f"[🔗 Ver no DexScreener]({pair_url})")
+            lines.append(f"[🔗 DexScreener]({pair_url})")
+        if explorer_url:
+            lines.append(f"[🔎 Explorer]({explorer_url})")
 
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",

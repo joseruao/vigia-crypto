@@ -358,8 +358,12 @@ def test_daily_holdings_upsert_falls_back_before_schema_migration(monkeypatch):
 def test_daily_holdings_has_bnb_and_avax_wallets_configured():
     from dailyworker import daily_holdings_worker as worker
 
+    assert worker.MIN_SCORE_SAVE == 50
     assert worker.BNB_WALLETS["Binance BNB 51"].lower() == "0x8894e0a0c962cb723c1976a4421c95949be2d4e3"
+    assert worker.BNB_WALLETS["Binance BNB 7"].lower() == "0xbe0eb53f3423e596e0c4977b08c8dcfff7b2404d33e8"
+    assert worker.BNB_WALLETS["Gate BNB Deposit Funder"].lower() == "0x8ef254930467ad31ce808139f43d88f08f340699"
     assert worker.AVALANCHE_WALLETS["Binance AVAX 74"].lower() == "0xa7c0d36c4698981fab42a7d8c783674c6fe2592d"
+    assert worker.AVALANCHE_WALLETS["Binance AVAX Hot Wallet 10"].lower() == "0x9f8e59d4a052f9ed22d2d10db0fe18328248ac8b"
     assert worker._evm_api_config("bsc")[2] == "56"
     assert worker._evm_api_config("avalanche")[2] == "43114"
     assert worker.EXCHANGE_NORMALIZE["Binance 8"] == "Binance"
@@ -431,6 +435,23 @@ def test_predictions_filter_uses_live_binance_fallback(monkeypatch):
     assert listed["Binance"] == {"TRUMP"}
     assert alerts._filter_prediction_rows(rows, listed) == []
 
+def test_predictions_filter_only_blocks_own_exchange_listing():
+    listed = {
+        "Binance": {"TRUMP"},
+        "Gate.io": {"BTC"},
+    }
+    rows = [{
+        "exchange": "Gate.io",
+        "token": "TRUMP",
+        "token_address": "TRUMPGATE",
+        "chain": "solana",
+        "score": 95,
+        "value_usd": 1000000,
+        "liquidity": 5000000,
+    }]
+
+    assert len(alerts._filter_prediction_rows(rows, listed)) == 1
+
 def test_predictions_listing_map_falls_back_when_supabase_fails(monkeypatch):
     monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {"Binance": {"BTC", "TRUMP"}})
 
@@ -443,3 +464,46 @@ def test_predictions_listing_map_falls_back_when_supabase_fails(monkeypatch):
     monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
 
     assert alerts._load_listed_tokens_map()["Binance"] == {"BTC", "TRUMP"}
+
+def test_daily_holdings_telegram_alert_has_richer_listing_format(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    posted = {}
+    monkeypatch.setattr(worker, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(worker, "TELEGRAM_CHAT_ID", "chat")
+
+    def fake_post(url, json, timeout):
+        posted["url"] = url
+        posted["json"] = json
+        posted["timeout"] = timeout
+        class Response:
+            status_code = 200
+        return Response()
+
+    monkeypatch.setattr(worker.requests, "post", fake_post)
+
+    worker.send_telegram_alert(
+        {
+            "symbol": "DOOD",
+            "score": 86,
+            "value_usd": 226762,
+            "liquidity": 1134402,
+            "volume_24h": 619714,
+            "price": 0.00862,
+            "price_change_24h": 7.38,
+            "chain": "bsc",
+            "address": "0xabc",
+            "pair_url": "https://dexscreener.com/bsc/example",
+        },
+        "Bybit BNB 17",
+    )
+
+    text = posted["json"]["text"]
+    assert "EXCHANGE WALLET ALERT" in text
+    assert "Exchange:* Bybit" in text
+    assert "Token:* DOOD" in text
+    assert "BNB Chain" in text
+    assert "Preço atual" in text
+    assert "+7.38%" in text
+    assert "Score:* 86/100" in text
+    assert "bscscan.com/token/0xabc" in text

@@ -39,12 +39,42 @@ function displayExchange(exchange: string) {
     'Binance 1': 'Binance',
     'Binance 2': 'Binance',
     'Binance 3': 'Binance',
+    'Binance 7': 'Binance',
+    'Binance 8': 'Binance',
+    'Binance 14': 'Binance',
+    'Binance 16': 'Binance',
+    'Binance BNB 7': 'Binance',
+    'Binance BNB 28': 'Binance',
+    'Binance BNB 51': 'Binance',
+    'Binance BNB 70': 'Binance',
+    'Binance BNB Hot Wallet 20': 'Binance',
+    'Binance AVAX 74': 'Binance',
+    'Binance AVAX Cold Wallet 2': 'Binance',
+    'Binance AVAX Cold Wallet 5': 'Binance',
+    'Binance AVAX Hot Wallet 10': 'Binance',
     'Coinbase 1': 'Coinbase',
     'Coinbase Hot': 'Coinbase',
+    'Coinbase 10': 'Coinbase',
     'Kraken Cold 1': 'Kraken',
     'Kraken Cold 2': 'Kraken',
+    'OKX 73': 'OKX',
+    'OKX 93': 'OKX',
+    'OKX BNB 35': 'OKX',
+    'Bybit BNB 17': 'Bybit',
+    'Gate BNB Deposit Funder': 'Gate.io',
+    'Huobi BNB 1': 'Huobi',
+    'Bitget Hot Wallet 1': 'Bitget',
   };
   return map[exchange] || exchange;
+}
+
+function explorerFor(chain?: string, tokenAddress?: string) {
+  if (!tokenAddress) return null;
+  const c = (chain || '').toLowerCase();
+  if (c === 'solana') return { label: 'Solscan', href: `https://solscan.io/token/${tokenAddress}` };
+  if (c === 'bsc') return { label: 'BscScan', href: `https://bscscan.com/token/${tokenAddress}` };
+  if (c === 'avalanche') return { label: 'SnowTrace', href: `https://snowtrace.io/token/${tokenAddress}` };
+  return { label: 'Etherscan', href: `https://etherscan.io/token/${tokenAddress}` };
 }
 
 function scoreTone(score?: number) {
@@ -138,6 +168,7 @@ export function PredictionsPanel() {
             items.map((h) => {
               const updatedAt = shortDate(h.ts);
               const exchange = displayExchange(h.exchange);
+              const explorer = explorerFor(h.chain, h.token_address);
               const metrics = [
                 metric('Valor', h.value_usd),
                 metric('Liquidez', h.liquidity),
@@ -182,14 +213,14 @@ export function PredictionsPanel() {
                         DexScreener
                       </a>
                     )}
-                    {h.token_address && (
+                    {explorer && (
                       <a
-                        href={h.chain === 'solana' ? `https://solscan.io/token/${h.token_address}` : `https://etherscan.io/token/${h.token_address}`}
+                        href={explorer.href}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[10px] underline text-emerald-600"
                       >
-                        {h.chain === 'solana' ? 'Solscan' : 'Etherscan'}
+                        {explorer.label}
                       </a>
                     )}
                     <a

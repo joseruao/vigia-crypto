@@ -40,12 +40,19 @@ router = APIRouter(tags=["alerts"])
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
     "Binance 7": "Binance", "Binance 8": "Binance", "Binance 14": "Binance", "Binance 16": "Binance",
-    "Binance BNB 51": "Binance", "Binance AVAX 74": "Binance",
+    "Binance BNB 7": "Binance", "Binance BNB 28": "Binance", "Binance BNB 51": "Binance", "Binance BNB 70": "Binance",
+    "Binance BNB Hot Wallet 20": "Binance",
+    "Binance AVAX 74": "Binance", "Binance AVAX Cold Wallet 2": "Binance",
+    "Binance AVAX Cold Wallet 5": "Binance", "Binance AVAX Hot Wallet 10": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase", "Coinbase 10": "Coinbase",
     "Bybit": "Bybit", "Gate.io": "Gate.io", "Bitget": "Bitget",
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
     "OKX": "OKX", "OKX 73": "OKX", "OKX 93": "OKX",
+    "OKX BNB 35": "OKX",
     "MEXC": "MEXC", "Bitget Hot Wallet 1": "Bitget",
+    "Bybit BNB 17": "Bybit",
+    "Gate BNB Deposit Funder": "Gate.io",
+    "Huobi BNB 1": "Huobi",
 }
 
 TEST_TOKENS = {"TEST", "FOO", "PNUT"}
