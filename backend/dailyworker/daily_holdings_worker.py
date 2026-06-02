@@ -119,7 +119,9 @@ HOLDING_THRESHOLDS = {
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
 MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
-MIN_SCORE_ALERT = 70     # Score mínimo para alerta
+MIN_SCORE_SAVE = 60      # Guardar mais candidatos para o painel de predictions
+MIN_SCORE_ALERT = 80     # Telegram so para candidatos fortes e ainda nao listados
+_LIVE_LISTING_CACHE = {}
 
 # ===========================
 # WALLETS
@@ -384,6 +386,36 @@ def get_token_data_dexscreener(token_address, chain=None):
         print(f"   ❌ Erro DexScreener: {e}")
     return {'symbol': 'UNKNOWN', 'price': 0, 'liquidity': 0, 'volume_24h': 0, 'price_change_24h': 0}
 
+
+def _fetch_live_exchange_tokens(exchange):
+    exchange = EXCHANGE_NORMALIZE.get(exchange, exchange)
+    if exchange in _LIVE_LISTING_CACHE:
+        return _LIVE_LISTING_CACHE[exchange]
+
+    tokens = set()
+    if exchange == "Binance":
+        for url in (
+            "https://data-api.binance.vision/api/v3/exchangeInfo",
+            "https://api.binance.com/api/v3/exchangeInfo",
+        ):
+            try:
+                r = requests.get(url, timeout=15)
+                if r.status_code == 200:
+                    data = r.json()
+                    tokens = {
+                        str(s.get("baseAsset") or "").upper()
+                        for s in data.get("symbols", [])
+                        if s.get("status") == "TRADING" and s.get("baseAsset")
+                    }
+                    if tokens:
+                        break
+            except Exception:
+                continue
+
+    _LIVE_LISTING_CACHE[exchange] = tokens
+    return tokens
+
+
 def is_token_listed_on_exchange(token_symbol, exchange_name):
     """Verifica se o token já está listado na exchange"""
     try:
@@ -396,7 +428,10 @@ def is_token_listed_on_exchange(token_symbol, exchange_name):
             "token": f"in.({','.join(candidates)})"
         }
         result = supabase_query("exchange_tokens", query_params)
-        return len(result) > 0
+        if len(result) > 0:
+            return True
+        live_tokens = _fetch_live_exchange_tokens(exchange)
+        return bool(live_tokens and set(candidates).intersection(live_tokens))
     except Exception as e:
         print(f"   ❌ Erro ao verificar listing: {e}")
         return False
@@ -820,13 +855,16 @@ async def analyze_wallet_holdings(wallet_name, wallet_address, chain="solana"):
             continue
             
         # Só guardar holdings com score ALTO
-        if holding['score'] >= MIN_SCORE_ALERT:
+        if holding['score'] >= MIN_SCORE_SAVE:
             if save_holding_to_supabase(holding, wallet_name):
                 saved_count += 1
                 metrics.holdings_saved += 1
                 print(f"   💾 Guardado: {holding['symbol']} (Score: {holding['score']})")
-                if holding['score'] >= 80:
+                listed_on_own_exchange = is_token_listed_on_exchange(holding['symbol'], wallet_name)
+                if holding['score'] >= MIN_SCORE_ALERT and not listed_on_own_exchange:
                     send_telegram_alert(holding, wallet_name)
+                elif listed_on_own_exchange:
+                    print(f"   🔕 Sem Telegram: {holding['symbol']} ja esta listado na {_normalize_exchange_name(wallet_name)}")
         
         if holding['score'] >= 70:
             high_score_count += 1
@@ -842,14 +880,7 @@ async def update_listed_tokens():
     
     # Funções de coleta (simplificadas)
     def fetch_binance_tokens():
-        try:
-            r = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                return list({s['baseAsset'].upper() for s in data.get('symbols', []) if s.get('status') == 'TRADING'})
-        except:
-            return []
-        return []
+        return sorted(_fetch_live_exchange_tokens("Binance"))
 
     def fetch_coinbase_tokens():
         try:
@@ -956,7 +987,7 @@ async def main():
     print("🤖 WORKER DIÁRIO UNIFICADO - INICIADO")
     print("==================================================")
     print(f"🎯 Thresholds: Liquidez ${MIN_LIQUIDITY:,}+ | Volume ${MIN_VOLUME_24H:,}+")
-    print(f"🎯 Score mínimo: {MIN_SCORE_ALERT} | Análise REALISTA")
+    print(f"🎯 Score minimo guardar: {MIN_SCORE_SAVE} | Telegram: {MIN_SCORE_ALERT}+ nao listado | Analise REALISTA")
     print(f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     print("==================================================")
     

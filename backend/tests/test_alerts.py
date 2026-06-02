@@ -362,3 +362,44 @@ def test_daily_holdings_has_bnb_and_avax_wallets_configured():
     assert worker.AVALANCHE_WALLETS["Binance AVAX 74"].lower() == "0xa7c0d36c4698981fab42a7d8c783674c6fe2592d"
     assert worker._evm_api_config("bsc")[2] == "56"
     assert worker._evm_api_config("avalanche")[2] == "43114"
+
+def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    worker._LIVE_LISTING_CACHE.clear()
+    monkeypatch.setattr(worker, "supabase_query", lambda *args, **kwargs: [])
+    monkeypatch.setattr(worker, "_fetch_live_exchange_tokens", lambda exchange: {"TRUMP", "BTC"})
+
+    assert worker.is_token_listed_on_exchange("TRUMP", "Binance 2") is True
+
+def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
+    import asyncio
+    from dailyworker import daily_holdings_worker as worker
+
+    sent = []
+    saved = []
+    monkeypatch.setattr(
+        worker,
+        "get_solana_holdings",
+        lambda wallet, name: [{
+            "symbol": "TRUMP",
+            "balance": 1,
+            "value_usd": 1_000_000,
+            "address": "TRUMPADDR",
+            "liquidity": 5_000_000,
+            "volume_24h": 1_000_000,
+            "price": 1,
+            "pair_url": "",
+            "score": 91,
+            "chain": "solana",
+        }],
+    )
+    monkeypatch.setattr(worker, "save_holding_to_supabase", lambda holding, wallet: saved.append(holding) or True)
+    monkeypatch.setattr(worker, "is_token_listed_on_exchange", lambda symbol, wallet: True)
+    monkeypatch.setattr(worker, "send_telegram_alert", lambda holding, wallet: sent.append(holding))
+
+    result = asyncio.run(worker.analyze_wallet_holdings("Binance 2", "wallet", "solana"))
+
+    assert result == 1
+    assert saved
+    assert sent == []
