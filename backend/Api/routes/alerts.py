@@ -367,6 +367,79 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
 
     return "\n".join(lines)
 
+
+def _wants_english(prompt: str) -> bool:
+    q = (prompt or "").lower()
+    return any(t in q for t in ["which ", "what ", "show ", "changed", "since yesterday", "near support", "lowest rsi", "risk reward"])
+
+
+def _delta_reason(row: Dict[str, Any], yest: Dict[str, Any] | None, english: bool = False) -> str:
+    zone = str(row.get("entry_zone") or "")
+    zone_y = str((yest or {}).get("entry_zone") or "")
+    macd = str(row.get("macd_signal") or "")
+    rsi = row.get("rsi")
+    pos = row.get("current_position")
+    reasons = []
+    if zone != zone_y and zone_y:
+        before = _human_zone_label(zone_y)
+        after = _human_zone_label(zone)
+        reasons.append(f"zone changed from {before} to {after}" if english else f"zona passou de {before} para {after}")
+    if macd in ("BULLISH", "BULLISH_STRONG"):
+        reasons.append("momentum turned bullish" if english else "momentum virou para cima")
+    elif macd in ("BEARISH", "BEARISH_STRONG"):
+        reasons.append("momentum still weak" if english else "momentum ainda fraco")
+    try:
+        rsi_f = float(rsi)
+        if rsi_f < 35:
+            reasons.append(f"RSI oversold ({rsi_f:.0f})" if english else f"RSI sobrevendido ({rsi_f:.0f})")
+        elif rsi_f > 70:
+            reasons.append(f"RSI stretched ({rsi_f:.0f})" if english else f"RSI esticado ({rsi_f:.0f})")
+    except (TypeError, ValueError):
+        pass
+    try:
+        pos_f = float(pos)
+        if pos_f <= 35:
+            reasons.append("close to support" if english else "perto do suporte")
+        elif pos_f >= 75:
+            reasons.append("close to resistance" if english else "perto da resistencia")
+    except (TypeError, ValueError):
+        pass
+    if not reasons:
+        reasons.append("technical score improved vs yesterday" if english else "score tecnico melhorou face a ontem")
+    return "; ".join(reasons[:2])
+
+
+def _format_top100_block_en(i: int, item: Dict[str, Any], mode: str) -> str:
+    symbol = item.get("symbol") or "N/A"
+    name = item.get("name") or symbol
+    score = float(item.get("score") or 0)
+    support = item.get("support")
+    resistance = item.get("resistance")
+    rsi = item.get("rsi")
+    risk = item.get("risk") or "N/A"
+    entry_zone = item.get("entry_zone") or ""
+    macd = item.get("macd_signal") or "NEUTRAL"
+    lines = [f"**{i}. {symbol} - {name}**"]
+    if support and resistance:
+        lines.append(f"Entry area: **{_fmt_money(support)}** - Target area: **{_fmt_money(resistance)}** - R/R {_risk_reward_ratio(item):.1f}x")
+    elif item.get("price"):
+        lines.append(f"Current price: **{_fmt_money(item.get('price'))}**")
+    details = []
+    if rsi is not None:
+        details.append(f"RSI {float(rsi):.0f}")
+    details.append(f"risk {risk}")
+    details.append(f"score {score:.0f}/100")
+    lines.append("Signals: " + " - ".join(details))
+    if entry_zone == "ZONA_DE_COMPRA" and macd in ("BULLISH", "BULLISH_STRONG"):
+        lines.append("Read: close to support with bullish momentum confirmation.")
+    elif entry_zone == "ZONA_DE_COMPRA":
+        lines.append("Read: close to support, but waiting for momentum confirmation.")
+    elif entry_zone == "ZONA_DE_VENDA":
+        lines.append("Read: close to resistance; avoid chasing, wait for pullback.")
+    else:
+        lines.append("Read: neutral area; wait for a clearer setup.")
+    return "\n".join(lines)
+
 def _fetch_top100_rows(date_filter: str | None, log=None) -> tuple[list, bool]:
     """Fetch top100 rows from Supabase. Returns (rows, has_technical_cols)."""
     base_select = "date,rank,coin_id,symbol,name,price,market_cap,volume_24h,change_24h,change_7d,change_30d,volume_ratio,score,risk,signal,rationale,ts"
@@ -412,6 +485,7 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
     mode = _top100_mode(prompt)
+    english = _wants_english(prompt)
 
     # Delta mode: compare today vs yesterday
     if mode == "delta":
@@ -436,6 +510,21 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         delta_rows.sort(key=lambda r: -float(r.get("score_delta") or 0))
         rows = delta_rows[:10]
         if rows:
+            if english:
+                lines = [f"**What changed in the top100 since yesterday ({len(rows)} biggest movers)**\n"]
+                for i, r in enumerate(rows, 1):
+                    sym = str(r.get("symbol") or "")
+                    delta = float(r.get("score_delta") or 0)
+                    score = float(r.get("score") or 0)
+                    zone = str(r.get("entry_zone") or "")
+                    zone_y = str(r.get("zone_yesterday") or "")
+                    zone_change = ""
+                    if zone != zone_y and zone_y:
+                        zone_change = f" - zone: {_human_zone_label(zone_y)} -> {_human_zone_label(zone)}"
+                    reason = _delta_reason(r, yest_by_symbol.get(sym), english=True)
+                    direction = "up" if delta > 0 else ("down" if delta < 0 else "flat")
+                    lines.append(f"{i}. **{sym}** {direction} - score {score:.0f} ({'+' if delta >= 0 else ''}{delta:.1f} vs yesterday){zone_change}\n   Why: {reason}.")
+                return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
             lines = [f"**O que mudou no top100 desde ontem ({len(rows)} moedas com maior variação)**\n"]
             for i, r in enumerate(rows, 1):
                 sym = str(r.get("symbol") or "")
@@ -448,6 +537,7 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
                 if zone != zone_y and zone_y:
                     zone_change = f" · zona: {_human_zone_label(zone_y)} → {_human_zone_label(zone)}"
                 lines.append(f"{i}. **{sym}** {arrow} score {score:.0f} ({'+' if delta >= 0 else ''}{delta:.1f} vs ontem){zone_change}")
+            lines.append("\nNota: o valor entre parenteses e a diferenca do score tecnico face a ontem. O score combina zona tecnica, RSI, momentum, proximidade ao suporte/resistencia e risco.")
             return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
         return {"ok": True, "answer": "Ainda não tenho dados de ontem para comparar.", "count": 0, "items": []}
 
@@ -465,11 +555,22 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-    header = _top100_title(mode, len(rows))
-    coin_blocks = [_format_top100_block(i, item, mode) for i, item in enumerate(rows, 1)]
+    if english:
+        titles = {
+            "near_support": f"**Near support - possible entries ({len(rows)} coins)**",
+            "low_rsi": f"**Lowest RSI / most punished prices ({len(rows)} coins)**",
+            "low_risk": f"**Lowest technical risk now ({len(rows)} coins)**",
+            "risk_reward": f"**Best risk/reward setups ({len(rows)} coins)**",
+            "bounce": f"**Possible confirmed reversals ({len(rows)} coins)**",
+        }
+        header = titles.get(mode, f"**Best technical setups today ({len(rows)} coins)**")
+        coin_blocks = [_format_top100_block_en(i, item, mode) for i, item in enumerate(rows, 1)]
+    else:
+        header = _top100_title(mode, len(rows))
+        coin_blocks = [_format_top100_block(i, item, mode) for i, item in enumerate(rows, 1)]
 
     examples = ", ".join(str(r.get("symbol") or "").upper() for r in rows[:3] if r.get("symbol"))
-    footer = f"_Pede_ `analisa {examples.split(', ')[0]}` _para analise tecnica detalhada._" if examples else ""
+    footer = f"_Ask_ `analyze {examples.split(', ')[0]}` _for detailed technical analysis._" if english and examples else (f"_Pede_ `analisa {examples.split(', ')[0]}` _para analise tecnica detalhada._" if examples else "")
 
     answer = header + "\n\n" + "\n\n---\n\n".join(coin_blocks)
     if footer:
