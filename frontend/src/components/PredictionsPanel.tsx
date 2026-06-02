@@ -89,6 +89,12 @@ function scoreLabel(score?: number) {
   return 'Observação';
 }
 
+function scoreAccent(score?: number) {
+  if ((score ?? 0) >= 80) return 'border-l-emerald-500';
+  if ((score ?? 0) >= 65) return 'border-l-blue-500';
+  return 'border-l-zinc-300';
+}
+
 function shortDate(value?: string) {
   if (!value) return null;
   const date = new Date(value);
@@ -127,10 +133,12 @@ export function PredictionsPanel() {
   const [items, setItems] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState<'pt' | 'en'>('pt');
+  const [expanded, setExpanded] = useState(false);
   const { active } = useChatHistoryContext();
 
   const hasMessages = (active?.messages?.length ?? 0) > 0;
   const title = lang === 'pt' ? 'Previsões de Listing' : 'Listing Predictions';
+  const visibleItems = expanded ? items : items.slice(0, 3);
 
   useEffect(() => {
     let mounted = true;
@@ -155,17 +163,31 @@ export function PredictionsPanel() {
   return (
     <div className="fixed right-4 top-4 z-30 hidden w-80 sm:block">
       <div aria-label={title} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md">
-        <div className="border-b border-zinc-100 px-3 py-2">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">{title}</div>
+        <div className="border-b border-zinc-100 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-700">{title}</div>
+              <div className="mt-0.5 text-[10px] text-zinc-500">
+                {lang === 'pt' ? 'Sinais on-chain em exchanges' : 'On-chain exchange signals'}
+              </div>
+            </div>
+            {items.length > 0 ? (
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                {items.length}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="max-h-56 space-y-2 overflow-auto p-3 sm:max-h-80">
           {loading ? (
             <div className="text-xs text-zinc-500">A carregar...</div>
           ) : items.length === 0 ? (
-            <div className="text-xs text-zinc-500">Sem holdings detetados.</div>
+            <div className="text-xs text-zinc-500">
+              {lang === 'pt' ? 'Sem sinais novos.' : 'No fresh signals.'}
+            </div>
           ) : (
-            items.map((h) => {
+            visibleItems.map((h) => {
               const updatedAt = shortDate(h.ts);
               const exchange = displayExchange(h.exchange);
               const explorer = explorerFor(h.chain, h.token_address);
@@ -178,7 +200,7 @@ export function PredictionsPanel() {
               return (
                 <div
                   key={h.id || `${h.token}-${h.exchange}`}
-                  className="rounded-lg border border-zinc-200 bg-white p-2.5 text-xs shadow-sm"
+                  className={`rounded-lg border border-l-4 border-zinc-200 bg-white p-2.5 text-xs shadow-sm ${scoreAccent(h.score)}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -207,7 +229,7 @@ export function PredictionsPanel() {
                     </div>
                   )}
 
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap gap-2 border-t border-zinc-100 pt-2">
                     {h.pair_url && (
                       <a href={h.pair_url} target="_blank" rel="noopener noreferrer" className="text-[10px] underline text-emerald-600">
                         DexScreener
@@ -236,6 +258,17 @@ export function PredictionsPanel() {
               );
             })
           )}
+          {!loading && items.length > 3 ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+            >
+              {expanded
+                ? (lang === 'pt' ? 'Ver menos' : 'Show less')
+                : (lang === 'pt' ? `Ver mais ${items.length - 3}` : `Show ${items.length - 3} more`)}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

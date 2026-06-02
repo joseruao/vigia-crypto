@@ -102,8 +102,43 @@ def test_listing_answer_uses_onchain_signal_language(monkeypatch):
     assert r.status_code == 200
     answer = r.json()["answer"]
     assert "Sinais on-chain de possíveis listings" in answer
-    assert "Sinal detetado em **Gate.io**" in answer
-    assert "Exposição on-chain" in answer
+    assert "Sinal:** posição relevante detetada numa wallet monitorizada da Gate.io" in answer
+    assert "Exposição:** $250,000" in answer
+
+def test_listing_answer_limits_initial_results_and_supports_more(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    rows = [
+        {
+            "exchange": "Gate.io",
+            "token": f"TOK{i}",
+            "token_address": f"addr{i}",
+            "chain": "solana",
+            "score": 80 - i,
+            "ts": "2026-06-02T12:00:00+00:00",
+            "value_usd": 250000 + i,
+            "liquidity": 3000000,
+            "volume_24h": 800000,
+            "pair_url": f"https://dexscreener.com/solana/example{i}",
+        }
+        for i in range(6)
+    ]
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return rows
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+
+    first = client.post("/alerts/ask", json={"prompt": "que tokens achas que vao ser listados?"}).json()["answer"]
+    more = client.post("/alerts/ask", json={"prompt": "ver mais listings"}).json()["answer"]
+
+    assert "Mostro os 4" in first
+    assert "+ 2 sinais ocultos" in first
+    assert "Mostro os 6" in more
 
 def test_top100_buy_question_uses_ranking_table(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)

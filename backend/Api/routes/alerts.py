@@ -1203,13 +1203,15 @@ def ask_alerts(payload: AskIn):
                 answer = "Nao encontrei tokens que correspondam a tua pesquisa."
             return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-        shown = out[:8]
+        wants_more = any(t in q for t in ["ver mais", "mais listings", "mais sinais", "mostrar mais", "show more", "more listings"])
+        display_limit = 12 if wants_more else 4
+        shown = out[:display_limit]
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
-            header = f"**Sinais on-chain de possíveis listings ({len(shown)})**"
+            header = f"**Sinais on-chain de possíveis listings**\n\n{len(out)} candidatos filtrados. Mostro os {len(shown)} com melhor sinal."
         elif is_buy_watchlist_question:
-            header = f"**Watchlist proprietária de hoje — sinais on-chain em exchanges ({len(shown)})**"
+            header = f"**Watchlist proprietária de hoje**\n\n{len(out)} sinais on-chain filtrados. Mostro os {len(shown)} mais relevantes."
         else:
-            header = f"**Top {len(shown)} sinais on-chain detetados**"
+            header = f"**Top sinais on-chain detetados**\n\n{len(out)} sinais filtrados. Mostro os {len(shown)} mais relevantes."
 
         def _fmt_ts(ts_val) -> str:
             try:
@@ -1249,53 +1251,44 @@ def ask_alerts(payload: AskIn):
             value_usd = item.get("value_usd") or 0
             liquidity = item.get("liquidity") or 0
             pair_url = item.get("pair_url", "")
-            analysis = item.get("ai_analysis") or item.get("analysis_text", "")
             ts = item.get("last_seen_ts") or item.get("ts")
             chain = (item.get("chain") or "").capitalize()
 
-            block = f"**{i}. {token}**"
+            block = f"### {i}. {token}"
+            block += f" · {exchange}"
             if chain:
                 block += f" · {chain}"
-            block += "\n"
+            block += "\n\n"
 
             # Contexto principal: onde apareceu o sinal e quanto vale.
-            block += f"Sinal detetado em **{exchange}**"
+            block += f"**Sinal:** posição relevante detetada numa wallet monitorizada da {exchange}"
             when = _fmt_ts(ts)
             if when:
                 block += f" ({when})"
-            block += "\n"
+            block += ".\n"
 
             if value_usd and float(value_usd) > 0:
-                block += f"Exposição on-chain: **${float(value_usd):,.0f}**"
+                block += f"**Exposição:** ${float(value_usd):,.0f}"
                 if liquidity and float(liquidity) > 0:
-                    block += f" · Liquidez no par: **${float(liquidity):,.0f}**"
+                    block += f" · **Liquidez:** ${float(liquidity):,.0f}"
                 block += "\n"
 
             # Probabilidade de listing
             conf = _confidence_label(score)
-            block += f"Probabilidade de listing: **{conf}**"
+            block += f"**Leitura:** probabilidade {conf}"
             if score:
                 block += f" (score {float(score):.0f}/100)"
             block += "\n"
 
-            # Análise curta — remove emojis e caracteres especiais do texto armazenado
-            if analysis:
-                import re as _re
-                clean = _re.sub(r'[^\w\s\.,;:\-\(\)%$€£\+\/]', '', analysis).strip()
-                clean = _re.sub(r'\s+', ' ', clean)
-                if len(clean) > 20:
-                    snippet = clean[:180] + ("…" if len(clean) > 180 else "")
-                    block += f"_{snippet}_\n"
-
             # Link
             if pair_url:
-                block += f"[Ver no DexScreener]({pair_url})"
+                block += f"[DexScreener]({pair_url})"
 
             blocks.append(block)
 
-        answer = header + "\n\n" + "\n\n---\n\n".join(blocks)
+        answer = header + "\n\n" + "\n\n".join(blocks)
         if len(out) > len(shown):
-            answer += f"\n\n_...e mais {len(out) - len(shown)} tokens filtrados._"
+            answer += f"\n\n_+ {len(out) - len(shown)} sinais ocultos. Escreve **ver mais listings** para expandir._"
 
         return {"ok": True, "answer": answer, "count": len(out), "items": out}
 
