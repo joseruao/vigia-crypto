@@ -881,16 +881,16 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
 
 def _rsi_label_analysis(rsi: float) -> str:
     if rsi < 28:
-        return "Oversold extremo — possível bounce forte"
+        return "preço muito castigado — caiu demais, estatisticamente tende a recuperar"
     if rsi < 38:
-        return "Oversold — vendedores enfraquecidos"
+        return "preço sobrevendido — vendedores a perder força"
     if rsi < 50:
-        return "Neutro baixo — equilíbrio pendendo para baixo"
+        return "equilíbrio frágil — ligeira pressão de venda"
     if rsi < 62:
-        return "Neutro — equilíbrio"
+        return "mercado equilibrado — sem pressão clara"
     if rsi < 70:
-        return "Neutro alto — compradores dominam"
-    return "Overbought — evitar novas compras"
+        return "compradores dominam — atenção se subir mais"
+    return "preço esticado — risco de correção, evitar novas compras"
 
 
 def _format_coin_analysis(coin: str, result: dict):
@@ -1003,44 +1003,41 @@ def _format_coin_analysis(coin: str, result: dict):
 
     yield f"\n{sep}\n\n"
 
-    # ── PORQUÊ — indicadores em linguagem simples ─────────────
+    # ── PORQUÊ — linguagem simples, sem jargão ───────────────
     yield "**Porquê esta leitura:**\n"
 
     if rsi_f is not None:
         rsi_emoji = "✅" if rsi_f < 45 else ("⚠️" if rsi_f < 70 else "🔴")
-        yield f"{rsi_emoji} RSI {rsi_f:.1f} — {_rsi_label_analysis(rsi_f)}\n"
+        yield f"{rsi_emoji} {_rsi_label_analysis(rsi_f)}\n"
 
     if trend_dir:
-        trend_emoji = "📈" if trend_dir == "UPTREND" else "📉"
-        yield f"{trend_emoji} Tendência de curto prazo: **{trend_dir}**"
-        strength = trend.get("strength")
-        if strength:
-            yield f" ({_fmt_percent(strength)} divergência)"
-        yield "\n"
+        if trend_dir == "UPTREND":
+            yield "📈 A subir no curto prazo — compradores a ganhar terreno\n"
+        else:
+            yield "📉 Ainda a cair no curto prazo — sem sinal de inversão confirmada\n"
 
     if ma and sma200 > 0:
         if price_f > sma200:
-            yield f"✅ Acima da SMA200 — tendência macro bullish\n"
+            yield "✅ Tendência de longo prazo positiva — mercado ainda favorece compradores\n"
         else:
-            yield f"⚠️ Abaixo da SMA200 — pressão macro vendedora\n"
+            yield "⚠️ Tendência de longo prazo negativa — mercado ainda favorece vendedores\n"
         sma20 = float(ma.get("sma_20") or 0)
         sma50 = float(ma.get("sma_50") or 0)
         if sma20 and sma50:
-            yield f"   SMA20 {_fmt_price(sma20)} · SMA50 {_fmt_price(sma50)} · SMA200 {_fmt_price(sma200)}\n"
+            yield f"   _(médias: {_fmt_price(sma20)} · {_fmt_price(sma50)} · {_fmt_price(sma200)})_\n"
 
     if volume:
         vol_trend = volume.get("trend", "")
-        vol_ratio = volume.get("ratio_20d", 1)
         if vol_trend == "LOW":
-            yield f"⚠️ Volume baixo ({vol_ratio}x média) — confirmar antes de entrar\n"
+            yield "⚠️ Poucos compradores activos agora — esperar mais movimento antes de entrar\n"
         elif vol_trend == "HIGH":
-            yield f"✅ Volume alto ({vol_ratio}x média) — momentum confirmado\n"
+            yield "✅ Muita actividade de compra — momentum confirmado\n"
 
     if fib_levels:
         fib_618 = fib_levels.get("0.618")
         fib_382 = fib_levels.get("0.382")
         if fib_618 and fib_382:
-            yield f"📐 Fibonacci: 61.8% → {_fmt_price(fib_618)} · 38.2% → {_fmt_price(fib_382)}\n"
+            yield f"📐 Zonas de recuperação habitual: {_fmt_price(fib_618)} e {_fmt_price(fib_382)}\n"
 
     if risk_alert and "MODERADO" not in risk_alert.upper():
         yield f"\n⚠️ {risk_alert}\n"
