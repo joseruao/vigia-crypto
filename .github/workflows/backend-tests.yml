@@ -11,11 +11,15 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: dummy_key
+      OPENAI_API_KEY: dummy_key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
+          python-version: '3.12'
+      - run: pip install -r requirements.txt pytest pytest-asyncio httpx
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --tb=short
