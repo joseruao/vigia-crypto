@@ -101,6 +101,7 @@ def version():
 # ---------------------------------------------------------------------------
 # Chat endpoint
 # ---------------------------------------------------------------------------
+from datetime import date as _date
 from Api.services.chat_helpers import (
     ChatRequest,
     LAST_COIN_ANALYSIS,
@@ -116,6 +117,7 @@ from Api.services.chat_helpers import (
     _format_text_analysis_detail_followup,
     _format_coin_analysis,
     _format_onboarding,
+    _format_comparison_followup,
 )
 
 _KNOWN_COIN_NAMES = {
@@ -195,12 +197,15 @@ async def chat_stream(req: ChatRequest):
         _prompt_upper = req.prompt.upper()
         _mentioned_coins = [s for s in _KNOWN_SYMBOLS if re.search(rf"(?<![A-Z0-9]){re.escape(s)}(?![A-Z0-9])", _prompt_upper)]
         if len(_mentioned_coins) >= 2:
+            fn = _format_comparison_followup(_mentioned_coins[:3], req.history or [])
+            if fn:
+                return StreamingResponse(fn(), media_type="text/plain")
             _coins_hint = " e ".join(f"`analisa {c}`" for c in _mentioned_coins[:3])
             def _comparison_hint():
                 yield (
                     f"Para comparar {' vs '.join(_mentioned_coins[:3])}, o melhor é analisares cada uma em separado e depois comparares os resultados.\n\n"
                     f"Experimenta:\n"
-                    + "\n".join(f"- {f'`analisa {c}`'}" for c in _mentioned_coins[:3])
+                    + "\n".join(f"- `analisa {c}`" for c in _mentioned_coins[:3])
                     + "\n\nDepois diz-me o que vês em cada uma e ajudo-te a interpretar qual está em melhor posição técnica."
                 )
             return StreamingResponse(_comparison_hint(), media_type="text/plain")
@@ -248,7 +253,7 @@ async def chat_stream(req: ChatRequest):
                         "És um assistente especializado em análise de mercado de criptomoedas. "
                         "Responde sempre em português europeu quando o utilizador escrever em português. "
                         "O teu estilo é direto, técnico mas acessível — sem jargão desnecessário.\n\n"
-                        "Data de hoje: 2026-06-01. Usa esta data como referência — nunca inventes datas futuras ou passadas.\n\n"
+                        f"Data de hoje: {_date.today().isoformat()}. Usa esta data como referência — nunca inventes datas futuras ou passadas.\n\n"
                         "O que sabes fazer:\n"
                         "- Explicar conceitos de análise técnica (RSI, MACD, Bollinger, suporte/resistência, médias móveis)\n"
                         "- Interpretar setups de mercado e dar contexto sobre o que os indicadores significam\n"

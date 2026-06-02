@@ -86,6 +86,108 @@ def _is_comparison_question(prompt: str) -> bool:
     return len(found) >= 2
 
 
+def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessage]):
+    """Compare coins using analyses already present in history. Returns None if data is missing."""
+    coin_data: dict[str, dict] = {}
+    for msg in reversed(history or []):
+        if msg.role != "assistant":
+            continue
+        content = msg.content or ""
+        for coin in coins:
+            if coin in coin_data:
+                continue
+            if not re.search(rf"📊\s+{re.escape(coin)}\s+[—–]|Analise [Tt]ecnica de\s+\**{re.escape(coin)}\**", content):
+                continue
+            rsi = _extract_markdown_value(content, "RSI 14")
+            if rsi == "N/A":
+                rsi = _extract_markdown_value(content, "RSI")
+            verdict_match = re.search(r"(?:🔥|🟢|🔴|🟡)\s+\*\*([^*\n]+)\*\*", content)
+            entry_match = re.search(r"🎯 \*\*Entrada:\*\* perto de ([^\n]+)", content)
+            target_match = re.search(r"🚀 \*\*Alvo:\*\* ([^\n]+)", content)
+            stop_match = re.search(r"🛡️ \*\*Stop:\*\* ([^\n]+)", content)
+            price_match = re.search(r"\*\*Preço atual:\*\* ([^\n]+)", content)
+            sma200_match = re.search(r"(Acima|Abaixo) da SMA200", content)
+            trend_match = re.search(r"Tendência de curto prazo: \*\*(\w+)\*\*", content)
+            try:
+                rsi_f: float | None = float(rsi)
+            except (TypeError, ValueError):
+                rsi_f = None
+            coin_data[coin] = {
+                "rsi": rsi, "rsi_f": rsi_f,
+                "verdict": verdict_match.group(1) if verdict_match else None,
+                "entry": entry_match.group(1).strip() if entry_match else "N/A",
+                "target": target_match.group(1).strip() if target_match else "N/A",
+                "stop": stop_match.group(1).strip() if stop_match else "N/A",
+                "price": price_match.group(1).strip() if price_match else "N/A",
+                "sma200": sma200_match.group(1) if sma200_match else None,
+                "trend": trend_match.group(1) if trend_match else None,
+            }
+        if len(coin_data) >= 2:
+            break
+
+    present = [c for c in coins if c in coin_data]
+    if len(present) < 2:
+        return None
+
+    def generate():
+        yield "**Comparação técnica** com base nas análises anteriores:\n\n"
+        for coin in present:
+            d = coin_data[coin]
+            verdict = d.get("verdict") or ""
+            icon = "🔥" if "FORTE" in verdict else ("🟢" if "COMPRA" in verdict else ("🔴" if "VENDA" in verdict else "🟡"))
+            yield f"{icon} **{coin}** — {d['price']}\n"
+            yield f"RSI {d['rsi']} · Tendência: {d.get('trend') or 'N/A'} · {'Acima' if d.get('sma200') == 'Acima' else 'Abaixo'} SMA200\n"
+            if d["entry"] != "N/A":
+                yield f"Entrada {d['entry']} · Alvo {d['target']} · Stop {d['stop']}\n"
+            yield "\n"
+
+        a_coin, b_coin = present[0], present[1]
+        a, b = coin_data[a_coin], coin_data[b_coin]
+        a_rsi, b_rsi = a.get("rsi_f"), b.get("rsi_f")
+        a_above = a.get("sma200") == "Acima"
+        b_above = b.get("sma200") == "Acima"
+
+        yield "**Leitura comparativa:**\n"
+
+        if a_rsi is not None and b_rsi is not None:
+            if abs(a_rsi - b_rsi) > 4:
+                more = a_coin if a_rsi < b_rsi else b_coin
+                less = b_coin if a_rsi < b_rsi else a_coin
+                more_rsi = min(a_rsi, b_rsi)
+                yield f"- RSI: {more} mais sobrevendido ({more_rsi:.1f}) — maior potencial de bounce, mas confirmar antes de entrar\n"
+            else:
+                yield f"- RSI semelhante: {a_coin} {a_rsi:.1f} vs {b_coin} {b_rsi:.1f} — ambos em oversold\n"
+
+        if a_above != b_above:
+            above = a_coin if a_above else b_coin
+            below = b_coin if a_above else a_coin
+            yield f"- SMA200: {above} acima (macro bullish), {below} abaixo (pressão vendedora macro)\n"
+        else:
+            yield f"- SMA200: ambos {'acima' if a_above else 'abaixo'} — mesmo contexto macro\n"
+
+        a_score = sum([
+            1 if (a_rsi or 99) < (b_rsi or 99) else 0,
+            1 if a_above and not b_above else 0,
+            1 if a.get("trend") == "UPTREND" and b.get("trend") != "UPTREND" else 0,
+        ])
+        b_score = sum([
+            1 if (b_rsi or 99) < (a_rsi or 99) else 0,
+            1 if b_above and not a_above else 0,
+            1 if b.get("trend") == "UPTREND" and a.get("trend") != "UPTREND" else 0,
+        ])
+
+        yield "\n"
+        if a_score > b_score:
+            yield f"**Setup ligeiramente mais favorável: {a_coin}** — melhor combinação de RSI, tendência e SMA200.\n"
+        elif b_score > a_score:
+            yield f"**Setup ligeiramente mais favorável: {b_coin}** — melhor combinação de RSI, tendência e SMA200.\n"
+        else:
+            yield f"**Setup equivalente** entre {a_coin} e {b_coin} — sem vantagem clara de um sobre o outro agora.\n"
+        yield "Ambos têm plano definido (entrada/alvo/stop). Se diversificares, ambos têm setup válido.\n"
+
+    return generate
+
+
 def _format_onboarding() -> callable:
     def generate():
         yield (
