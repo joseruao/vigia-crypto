@@ -101,6 +101,11 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
             rsi = _extract_markdown_value(content, "RSI 14")
             if rsi == "N/A":
                 rsi = _extract_markdown_value(content, "RSI")
+            # new format: "✅ RSI 25.8 — Oversold..."
+            if rsi == "N/A":
+                rsi_inline = re.search(r"RSI (\d+\.?\d*)\s+[—–]", content)
+                if rsi_inline:
+                    rsi = rsi_inline.group(1)
             verdict_match = re.search(r"(?:🔥|🟢|🔴|🟡)\s+\*\*([^*\n]+)\*\*", content)
             entry_match = re.search(r"🎯 \*\*Entrada:\*\* perto de ([^\n]+)", content)
             target_match = re.search(r"🚀 \*\*Alvo:\*\* ([^\n]+)", content)
@@ -960,6 +965,9 @@ def _format_coin_analysis(coin: str, result: dict):
     elif awaiting:
         verdict_icon = "🟡"
         verdict = "AGUARDAR — preço em zona neutra, sem entrada clara"
+    elif is_oversold:
+        verdict_icon = "🟡"
+        verdict = "OVERSOLD — RSI em mínimos, aguardar confirmação de reversão"
     else:
         verdict_icon = "🟡"
         verdict = "ZONA NEUTRA — sem sinal claro agora"
