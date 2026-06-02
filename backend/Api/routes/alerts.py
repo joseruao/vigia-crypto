@@ -187,7 +187,9 @@ def _is_top100_buy_question(q: str) -> bool:
         "recomendas", "oportunidade", "oportunidades", "analisar",
         "analisa", "melhor", "melhores", "risco", "suporte", "rsi",
         "oversold", "sobrevend", "pullback", "hoje", "today", "support",
-        "risk", "lowest", "near", "changed", "change", "yesterday",
+        "risk", "lowest", "near", "mudou", "mudanca", "mudança", "mudancas",
+        "mudanças", "ontem", "subiu mais", "desceu mais", "novidades",
+        "changed", "change", "yesterday",
     )
     return _is_buy_watchlist_question(q) or any(term in q for term in top100_terms)
 
@@ -1039,6 +1041,7 @@ def ask_alerts(payload: AskIn):
     q = (payload.prompt or "").lower()
     log.info("/alerts/ask: %s", payload.prompt)
 
+    is_top100_context = "top100" in q or "top 100" in q
     if _is_top100_buy_question(q):
         return _answer_top100_buy_watchlist(log, payload.prompt)
 
@@ -1049,7 +1052,7 @@ def ask_alerts(payload: AskIn):
         "ultima hora", "última hora", "ultimas horas", "últimas horas",
         "hoje cedo", "ontem", "recente", "recentes",
     ])
-    if is_recent_transfer_q and not any(t in q for t in ["acumul", "holding", "detém", "detem"]):
+    if is_recent_transfer_q and not is_top100_context and not any(t in q for t in ["acumul", "holding", "detém", "detem"]):
         since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         r_recent = supa.rest_get("transacted_tokens", params={
             "select": "exchange,token,chain,score,ts,value_usd,pair_url",

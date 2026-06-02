@@ -101,6 +101,20 @@ def test_top100_buy_question_uses_ranking_table(monkeypatch):
     assert "Bitcoin" in data["answer"]
     assert "analisa BTC" in data["answer"]
 
+def test_top100_delta_question_does_not_route_to_recent_holdings(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(
+        alerts,
+        "_answer_top100_buy_watchlist",
+        lambda log=None, prompt="": {"ok": True, "answer": "TOP100 DELTA TESTE", "count": 1, "items": []},
+    )
+
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "O que mudou no top100 desde ontem?"})
+
+    assert r.status_code == 200
+    assert r.json()["answer"] == "TOP100 DELTA TESTE"
+
 def test_top100_answer_filters_stablecoins(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
