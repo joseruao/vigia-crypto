@@ -10,6 +10,7 @@ services:
     runtime: python
     region: oregon
     rootDir: backend
+    pythonVersion: "3.12"
     buildCommand: pip install -r requirements.txt
     startCommand: python worker/vigia_solana_pro_supabase.py
     schedule: "0 8 * * *"
