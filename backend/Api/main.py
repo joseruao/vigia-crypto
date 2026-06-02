@@ -71,6 +71,7 @@ from Api.routes.alerts import (
     router as alerts_router,
     _answer_top100_buy_watchlist as answer_top100_buy_watchlist,
     _is_top100_buy_question as is_top100_buy_question,
+    _is_buy_watchlist_question as _is_opportunity_question,
 )
 app.include_router(alerts_router, prefix="")
 
@@ -172,7 +173,7 @@ async def chat_stream(req: ChatRequest):
         if _is_onboarding_question(req.prompt):
             return StreamingResponse(_format_onboarding()(), media_type="text/plain")
 
-        if is_top100_buy_question(req.prompt):
+        if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt):
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():
                 yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."

@@ -102,7 +102,9 @@ export function ChatWindow() {
       q.includes('rsi') ||
       q.includes('oversold') ||
       q.includes('oportunidade');
-    const isTop100Question = q.includes('top100') || q.includes('top 100') || (hasMarketUniverse && top100Intent);
+    // Only route to alerts/ask for explicit top100 keyword or very specific opportunity phrases
+    // General "melhores oportunidades hoje" should go to chat/stream (backend handles top100 routing)
+    const isTop100Question = q.includes('top100') || q.includes('top 100');
     const isListingQuestion =
       q.includes('listado') ||
       q.includes('listing') ||
