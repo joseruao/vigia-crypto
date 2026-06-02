@@ -92,6 +92,8 @@ def test_onboarding_classifier(prompt, expected):
         ("analise tecnica de SOL", True),
         ("analisa-me graficamente PEPE", True),
         ("quero ver o grafico de NEAR", True),
+        ("explica-me a diferenca entre RSI e MACD", False),
+        ("explica o que e suporte e resistencia", False),
         ("que moedas do top100 analiso?", False),
         ("que tokens vao ser listados?", False),
         ("achas boa compra?", False),
@@ -156,4 +158,3 @@ def test_extract_targets_from_plain_block():
     content = "Targets:\n10.71 - 10.93 (30%)\n10.93 - 11.48 (50%)\n"
 
     assert ch._extract_targets(content) == ["10.71 - 10.93 (30%)", "10.93 - 11.48 (50%)"]
-

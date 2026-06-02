@@ -332,6 +332,13 @@ def _format_onboarding() -> callable:
 
 def _should_use_coin_analysis(prompt: str) -> bool:
     q = prompt.lower()
+    indicator_terms = ["rsi", "macd", "bollinger", "media movel", "medias moveis", "suporte", "resistencia"]
+    educational_terms = ["diferenca", "diferen", "explica", "como funciona", "o que e", "o que sao", "define"]
+    known = ["BTC","ETH","SOL","BNB","XRP","ADA","AVAX","DOGE","DOT","LINK","NEAR","APT","ARB","OP","SUI","ATOM","UNI","AAVE","FIL","WIF"]
+    upper = prompt.upper()
+    has_coin = any(re.search(rf"(?<![A-Z0-9]){c}(?![A-Z0-9])", upper) for c in known)
+    if any(t in q for t in indicator_terms) and any(t in q for t in educational_terms) and not has_coin:
+        return False
     if any(t in q for t in ["grafico", "grafica", "tecnica"]) and "top100" not in q and "top 100" not in q:
         return True
     if "top100" in q or "top 100" in q:
