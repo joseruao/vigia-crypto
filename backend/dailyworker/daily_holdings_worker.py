@@ -713,8 +713,12 @@ def save_holding_to_supabase(holding_data, exchange_name):
             "ts": datetime.now(timezone.utc).isoformat(),
         }
         
-        # ✅ Usar conflict_columns que correspondem ao UNIQUE constraint
-        success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])
+        # Guardar um snapshot por token/exchange. Se a migration ainda nao tiver
+        # sido aplicada no Supabase, mantemos fallback para nao partir o cron.
+        success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain", "exchange"])
+        if not success:
+            print("   ⚠️ Upsert com exchange falhou; fallback para unique antiga token/type/chain")
+            success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])
         if success:
             print(f"   💾 GUARDADO: {holding_data['symbol']} (Score: {holding_data['score']})")
         return success

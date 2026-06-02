@@ -298,3 +298,59 @@ def test_top100_technical_enrichment_reorders_by_setup(monkeypatch):
     assert enriched[0]["symbol"] == "GOOD"
     assert enriched[0]["rsi"] == 34
     assert enriched[1]["signal"] == "AGUARDAR"
+
+def test_daily_holdings_upsert_keeps_exchange_dimension(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    calls = []
+    monkeypatch.setattr(worker, "supabase_upsert", lambda *args: calls.append(args) or True)
+
+    ok = worker.save_holding_to_supabase(
+        {
+            "symbol": "MEW",
+            "balance": 10,
+            "value_usd": 1000,
+            "address": "MEW1",
+            "liquidity": 5000000,
+            "volume_24h": 100000,
+            "price": 0.1,
+            "pair_url": "https://dexscreener.com/solana/example",
+            "score": 84,
+            "chain": "solana",
+        },
+        "Bitget",
+    )
+
+    assert ok is True
+    assert calls
+    assert calls[0][2] == ["token_address", "type", "chain", "exchange"]
+
+def test_daily_holdings_upsert_falls_back_before_schema_migration(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    calls = []
+    monkeypatch.setattr(
+        worker,
+        "supabase_upsert",
+        lambda *args: calls.append(args) or len(calls) > 1,
+    )
+
+    ok = worker.save_holding_to_supabase(
+        {
+            "symbol": "MEW",
+            "balance": 10,
+            "value_usd": 1000,
+            "address": "MEW1",
+            "liquidity": 5000000,
+            "volume_24h": 100000,
+            "price": 0.1,
+            "pair_url": "https://dexscreener.com/solana/example",
+            "score": 84,
+            "chain": "solana",
+        },
+        "Bitget",
+    )
+
+    assert ok is True
+    assert calls[0][2] == ["token_address", "type", "chain", "exchange"]
+    assert calls[1][2] == ["token_address", "type", "chain"]
