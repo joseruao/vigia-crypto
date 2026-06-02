@@ -34,6 +34,8 @@ _helius_raw = (os.getenv("HELIUS_API_KEY") or os.getenv("HELIUS_KEYS") or "").st
 HELIUS_API_KEY = _helius_raw.split(",")[0].strip() if _helius_raw else ""
 HELIUS_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
+BSCSCAN_API_KEY = os.getenv("BSCSCAN_API_KEY", "")
+SNOWSCAN_API_KEY = os.getenv("SNOWSCAN_API_KEY", "") or os.getenv("SNOWTRACE_API_KEY", "")
 
 TELEGRAM_BOT_TOKEN = (
     os.getenv("TELEGRAM_BOT_TOKEN_SOL")
@@ -50,6 +52,7 @@ TELEGRAM_CHAT_ID = (
 
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
+    "Binance BNB 51": "Binance", "Binance AVAX 74": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
 }
@@ -108,6 +111,10 @@ HOLDING_THRESHOLDS = {
     "Gemini 3": 50000,        # $50k+
     "Robinhood": 75000,       # $75k+
     "Upbit": 50000,           # $50k+
+
+    # BNB Chain / Avalanche C-Chain exchange wallets
+    "Binance BNB 51": 200000,
+    "Binance AVAX 74": 50000,
 }
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
@@ -149,6 +156,34 @@ ETHEREUM_WALLETS = {
     "Gate.io": "0xc882b111a75c0c657fc507c04fbfcd2cc984f071",
     "Bitget Hot Wallet 1": "0xe6a421f24d330967a3af2f4cdb5c34067e7e4d75"
 }
+
+BNB_WALLETS = {
+    # BscScan tag: Binance 51 / Binance Exchange / Binance hot wallet.
+    "Binance BNB 51": "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3",
+}
+
+AVALANCHE_WALLETS = {
+    # SnowScan tag: Binance 74 on Avalanche C-Chain.
+    "Binance AVAX 74": "0xa7C0D36c4698981FAb42a7d8c783674c6Fe2592d",
+}
+
+
+def _load_extra_wallets(env_name):
+    """Optional env format: Name=0xabc,Other Name=0xdef"""
+    out = {}
+    for item in (os.getenv(env_name, "") or "").split(","):
+        if "=" not in item:
+            continue
+        name, address = item.split("=", 1)
+        name = name.strip()
+        address = address.strip()
+        if name and address.startswith("0x"):
+            out[name] = address
+    return out
+
+
+BNB_WALLETS.update(_load_extra_wallets("BNB_WALLETS"))
+AVALANCHE_WALLETS.update(_load_extra_wallets("AVAX_WALLETS"))
 
 # ===========================
 # MONITORIZAÇÃO E RESILIÊNCIA
@@ -314,6 +349,19 @@ def get_token_data_dexscreener(token_address, chain=None):
         if response.status_code == 200:
             data = response.json()
             pairs = data.get('pairs', [])
+            if chain:
+                chain_aliases = {
+                    "ethereum": {"ethereum", "ether"},
+                    "bsc": {"bsc", "bnb", "binance-smart-chain"},
+                    "avalanche": {"avalanche", "avax"},
+                }
+                allowed = chain_aliases.get(chain, {chain})
+                filtered_pairs = [
+                    p for p in pairs
+                    if str(p.get("chainId") or "").lower() in allowed
+                ]
+                if filtered_pairs:
+                    pairs = filtered_pairs
             if pairs:
                 # Escolher o par com maior liquidez
                 best_pair = max(pairs, key=lambda x: float(x.get('liquidity', {}).get('usd', 0)))
@@ -498,11 +546,28 @@ async def get_solana_holdings(wallet_address, wallet_name):
 # ===========================
 # ETHEREUM HOLDINGS
 # ===========================
-async def get_ethereum_holdings(wallet_address, wallet_name):
-    """Busca holdings de uma wallet Ethereum"""
+def _evm_api_config(chain):
+    chain = chain or "ethereum"
+    if chain == "bsc":
+        if ETHERSCAN_API_KEY:
+            return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "56"
+        return "https://api.bscscan.com/api", BSCSCAN_API_KEY, None
+    if chain == "avalanche":
+        if ETHERSCAN_API_KEY:
+            return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "43114"
+        return "https://api.snowscan.xyz/api", SNOWSCAN_API_KEY, None
+    return "https://api.etherscan.io/api", ETHERSCAN_API_KEY, None
+
+
+async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
+    """Busca holdings de uma wallet EVM (Ethereum, BNB Chain ou Avalanche C-Chain)."""
     try:
         holdings = []
         processed_tokens = set()
+        api_url, api_key, chain_id = _evm_api_config(chain)
+        if not api_key:
+            print(f"   ⚠️ Sem API key para {chain}. Define ETHERSCAN_API_KEY ou key especifica da chain.")
+            return []
         
         # Obter tokens ERC-20
         params = {
@@ -512,10 +577,12 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
             "page": 1,
             "offset": 100,
             "sort": "desc",
-            "apikey": ETHERSCAN_API_KEY
+            "apikey": api_key
         }
+        if chain_id:
+            params["chainid"] = chain_id
         
-        response = requests.get("https://api.etherscan.io/api", params=params, timeout=20)
+        response = requests.get(api_url, params=params, timeout=20)
         
         if response.status_code == 200:
             data = response.json()
@@ -527,7 +594,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
                         
                         # Ignorar tokens já processados, ETH e stablecoins
                         if (not token_address or token_address in processed_tokens or
-                            symbol.upper() in ["ETH", "USDT", "USDC", "DAI", "BUSD", "TUSD"]):
+                            symbol.upper() in ["ETH", "BNB", "AVAX", "USDT", "USDC", "DAI", "BUSD", "TUSD"]):
                             continue
                         
                         # Obter balanço atual
@@ -537,10 +604,12 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
                             "contractaddress": token_address,
                             "address": wallet_address,
                             "tag": "latest",
-                            "apikey": ETHERSCAN_API_KEY
+                            "apikey": api_key
                         }
+                        if chain_id:
+                            balance_params["chainid"] = chain_id
                         
-                        balance_response = requests.get("https://api.etherscan.io/api", params=balance_params, timeout=15)
+                        balance_response = requests.get(api_url, params=balance_params, timeout=15)
                         if balance_response.status_code == 200:
                             balance_data = balance_response.json()
                             if balance_data.get('status') == '1':
@@ -548,7 +617,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
                                 balance = int(balance_data['result']) / 10**decimals
                                 
                                 if balance > 0:
-                                    token_data = get_token_data_dexscreener(token_address)
+                                    token_data = get_token_data_dexscreener(token_address, chain=chain)
                                     if token_data["price"] > 0:
                                         value_usd = balance * token_data["price"]
                                         
@@ -580,7 +649,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name):
                                                 "price_change_24h": token_data['price_change_24h'],
                                                 "pair_url": token_data['pair_url'],
                                                 "score": score,
-                                                "chain": "ethereum"
+                                                "chain": chain
                                             }
                                             
                                             holdings.append(holding_info)
@@ -734,7 +803,7 @@ async def analyze_wallet_holdings(wallet_name, wallet_address, chain="solana"):
     if chain == "solana":
         holdings = await safe_api_call(get_solana_holdings, wallet_address, wallet_name)
     else:
-        holdings = await safe_api_call(get_ethereum_holdings, wallet_address, wallet_name)
+        holdings = await safe_api_call(get_ethereum_holdings, wallet_address, wallet_name, chain)
     
     if not holdings:
         print(f"   ℹ️  Nenhum holding significativo encontrado em {wallet_name}")
@@ -929,6 +998,40 @@ async def main():
                 total_saved += saved
                 metrics.wallets_processed += 1
                 await asyncio.sleep(3)  # Rate limiting
+            except Exception as e:
+                print(f"❌ Erro em {wallet_name}: {e}")
+                metrics.errors += 1
+
+        # 4. Analisar BNB Chain
+        print("\n🟡 FASE 4: ANALISAR BNB CHAIN WALLETS")
+        for wallet_name, wallet_address in BNB_WALLETS.items():
+            try:
+                saved = await safe_api_call(
+                    analyze_wallet_holdings,
+                    wallet_name,
+                    wallet_address,
+                    "bsc"
+                )
+                total_saved += saved
+                metrics.wallets_processed += 1
+                await asyncio.sleep(3)
+            except Exception as e:
+                print(f"❌ Erro em {wallet_name}: {e}")
+                metrics.errors += 1
+
+        # 5. Analisar Avalanche C-Chain
+        print("\n🔴 FASE 5: ANALISAR AVALANCHE C-CHAIN WALLETS")
+        for wallet_name, wallet_address in AVALANCHE_WALLETS.items():
+            try:
+                saved = await safe_api_call(
+                    analyze_wallet_holdings,
+                    wallet_name,
+                    wallet_address,
+                    "avalanche"
+                )
+                total_saved += saved
+                metrics.wallets_processed += 1
+                await asyncio.sleep(3)
             except Exception as e:
                 print(f"❌ Erro em {wallet_name}: {e}")
                 metrics.errors += 1

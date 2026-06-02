@@ -354,3 +354,11 @@ def test_daily_holdings_upsert_falls_back_before_schema_migration(monkeypatch):
     assert ok is True
     assert calls[0][2] == ["token_address", "type", "chain", "exchange"]
     assert calls[1][2] == ["token_address", "type", "chain"]
+
+def test_daily_holdings_has_bnb_and_avax_wallets_configured():
+    from dailyworker import daily_holdings_worker as worker
+
+    assert worker.BNB_WALLETS["Binance BNB 51"].lower() == "0x8894e0a0c962cb723c1976a4421c95949be2d4e3"
+    assert worker.AVALANCHE_WALLETS["Binance AVAX 74"].lower() == "0xa7c0d36c4698981fab42a7d8c783674c6fe2592d"
+    assert worker._evm_api_config("bsc")[2] == "56"
+    assert worker._evm_api_config("avalanche")[2] == "43114"
