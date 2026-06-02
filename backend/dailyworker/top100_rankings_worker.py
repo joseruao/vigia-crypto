@@ -187,6 +187,16 @@ def _technical_score(technical: Dict[str, Any] | None, fallback_score: float) ->
     elif volume_ratio < 0.4:
         score -= 3
 
+    # Bounce confirmation bonus: near support + RSI recovering + MACD turning bullish
+    # Signals "bateu no suporte e virou" — highest conviction setup
+    near_support = 8 <= position <= 38
+    rsi_recovering = 28 <= rsi <= 48
+    macd_bullish = macd_sig in ("BULLISH", "BULLISH_STRONG")
+    if near_support and rsi_recovering and macd_bullish:
+        score += 12  # confirmed bounce off support
+    elif near_support and rsi_recovering:
+        score += 5   # near support + RSI ok but no MACD confirmation yet
+
     score = score * 0.72 + fallback_score * 0.28
     return round(min(max(score, 0), 100), 1)
 

@@ -13,3 +13,4 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python worker/vigia_solana_pro_supabase.py
     schedule: "0 8 * * *"
+    autoDeploy: yes
