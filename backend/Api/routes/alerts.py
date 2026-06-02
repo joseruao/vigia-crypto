@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import sys
 from pathlib import Path
+import requests
 
 log = logging.getLogger("vigia")
 
@@ -38,10 +39,13 @@ router = APIRouter(tags=["alerts"])
 # Normalização de exchanges (p/ “listado noutra”)
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
-    "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
+    "Binance 7": "Binance", "Binance 8": "Binance", "Binance 14": "Binance", "Binance 16": "Binance",
+    "Binance BNB 51": "Binance", "Binance AVAX 74": "Binance",
+    "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase", "Coinbase 10": "Coinbase",
     "Bybit": "Bybit", "Gate.io": "Gate.io", "Bitget": "Bitget",
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
-    "OKX": "OKX", "MEXC": "MEXC"
+    "OKX": "OKX", "OKX 73": "OKX", "OKX 93": "OKX",
+    "MEXC": "MEXC", "Bitget Hot Wallet 1": "Bitget",
 }
 
 TEST_TOKENS = {"TEST", "FOO", "PNUT"}
@@ -53,6 +57,7 @@ TOP100_EXCLUDED_SYMBOLS = {
 }
 DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 36
 PREDICTIONS_LIMIT = 10
+_LIVE_LISTING_CACHE: Dict[str, set] = {}
 
 def _prediction_max_age_hours() -> int:
     try:
@@ -703,7 +708,7 @@ def _load_listed_tokens_map(log=None) -> Dict[str, set]:
             if r.status_code != 200:
                 if log:
                     log.warning("Nao foi possivel carregar exchange_tokens: HTTP %s", r.status_code)
-                return {}
+                return _load_live_listing_fallbacks(log)
             page = r.json() or []
             rows.extend(page)
             if len(page) < page_size:
@@ -715,11 +720,47 @@ def _load_listed_tokens_map(log=None) -> Dict[str, set]:
             token = str(row.get("token") or "").strip().upper()
             if exchange and token:
                 listed.setdefault(exchange, set()).update(_token_candidates(token))
+        for exchange, tokens in _load_live_listing_fallbacks(log).items():
+            listed.setdefault(exchange, set()).update(tokens)
         return listed
     except Exception as e:
         if log:
             log.warning("Erro ao carregar exchange_tokens: %s", e)
-        return {}
+        return _load_live_listing_fallbacks(log)
+
+def _load_live_listing_fallbacks(log=None) -> Dict[str, set]:
+    """Fallback curto para evitar falsos positives quando exchange_tokens ficou incompleto."""
+    exchanges = ("Binance",)
+    out: Dict[str, set] = {}
+    for exchange in exchanges:
+        if exchange in _LIVE_LISTING_CACHE:
+            out[exchange] = _LIVE_LISTING_CACHE[exchange]
+            continue
+        tokens = set()
+        if exchange == "Binance":
+            for url in (
+                "https://data-api.binance.vision/api/v3/exchangeInfo",
+                "https://api.binance.com/api/v3/exchangeInfo",
+            ):
+                try:
+                    r = requests.get(url, timeout=8)
+                    if r.status_code != 200:
+                        continue
+                    data = r.json()
+                    tokens = {
+                        str(s.get("baseAsset") or "").upper()
+                        for s in data.get("symbols", [])
+                        if s.get("status") == "TRADING" and s.get("baseAsset")
+                    }
+                    if tokens:
+                        break
+                except Exception:
+                    continue
+        _LIVE_LISTING_CACHE[exchange] = tokens
+        out[exchange] = tokens
+        if log and tokens:
+            log.info("Fallback live listings carregado: %s (%s tokens)", exchange, len(tokens))
+    return out
 
 def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set]) -> bool:
     exchange = _normalize_exchange(str(row.get("exchange") or ""))

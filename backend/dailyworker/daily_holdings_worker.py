@@ -52,9 +52,13 @@ TELEGRAM_CHAT_ID = (
 
 EXCHANGE_NORMALIZE = {
     "Binance 1": "Binance", "Binance 2": "Binance", "Binance 3": "Binance",
+    "Binance 7": "Binance", "Binance 8": "Binance", "Binance 14": "Binance", "Binance 16": "Binance",
     "Binance BNB 51": "Binance", "Binance AVAX 74": "Binance",
     "Coinbase 1": "Coinbase", "Coinbase Hot": "Coinbase",
+    "Coinbase 10": "Coinbase",
     "Kraken Cold 1": "Kraken", "Kraken Cold 2": "Kraken",
+    "OKX 73": "OKX", "OKX 93": "OKX",
+    "Bitget Hot Wallet 1": "Bitget",
 }
 
 def token_candidates(token_symbol):
@@ -599,6 +603,17 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
     try:
         holdings = []
         processed_tokens = set()
+        stats = {
+            "token_txs": 0,
+            "unique_contracts": 0,
+            "duplicates": 0,
+            "skipped_native_stable": 0,
+            "balance_zero": 0,
+            "no_market_data": 0,
+            "below_value": 0,
+            "below_liquidity": 0,
+            "scam": 0,
+        }
         api_url, api_key, chain_id = _evm_api_config(chain)
         if not api_key:
             print(f"   ⚠️ Sem API key para {chain}. Define ETHERSCAN_API_KEY ou key especifica da chain.")
@@ -610,7 +625,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
             "action": "tokentx",
             "address": wallet_address,
             "page": 1,
-            "offset": 100,
+            "offset": int(os.getenv("EVM_TOKEN_TX_OFFSET", "500")),
             "sort": "desc",
             "apikey": api_key
         }
@@ -622,14 +637,22 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
         if response.status_code == 200:
             data = response.json()
             if data.get('status') == '1' and data.get('result'):
+                stats["token_txs"] = len(data['result'])
                 for tx in data['result']:
                     try:
                         token_address = tx.get('contractAddress', '')
                         symbol = tx.get('tokenSymbol', '')
                         
                         # Ignorar tokens já processados, ETH e stablecoins
-                        if (not token_address or token_address in processed_tokens or
-                            symbol.upper() in ["ETH", "BNB", "AVAX", "USDT", "USDC", "DAI", "BUSD", "TUSD"]):
+                        if not token_address:
+                            continue
+                        if token_address in processed_tokens:
+                            stats["duplicates"] += 1
+                            continue
+                        processed_tokens.add(token_address)
+                        stats["unique_contracts"] += 1
+                        if symbol.upper() in ["ETH", "BNB", "AVAX", "USDT", "USDC", "DAI", "BUSD", "TUSD"]:
+                            stats["skipped_native_stable"] += 1
                             continue
                         
                         # Obter balanço atual
@@ -653,16 +676,19 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                                 
                                 if balance > 0:
                                     token_data = get_token_data_dexscreener(token_address, chain=chain)
-                                    if token_data["price"] > 0:
+                                    if token_data["price"] > 0 and token_data['symbol'] != 'UNKNOWN':
                                         value_usd = balance * token_data["price"]
                                         
                                         # APLICAR FILTROS REALISTAS
                                         threshold = HOLDING_THRESHOLDS.get(wallet_name, 100000)
                                         
-                                        if (value_usd >= threshold and 
-                                            token_data['liquidity'] >= MIN_LIQUIDITY and
-                                            token_data['symbol'] != 'UNKNOWN' and
-                                            not is_scam_token(token_data, value_usd)):
+                                        if value_usd < threshold:
+                                            stats["below_value"] += 1
+                                        elif token_data['liquidity'] < MIN_LIQUIDITY:
+                                            stats["below_liquidity"] += 1
+                                        elif is_scam_token(token_data, value_usd):
+                                            stats["scam"] += 1
+                                        else:
                                             
                                             # Calcular score
                                             score = calculate_holding_score({
@@ -688,11 +714,29 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                                             }
                                             
                                             holdings.append(holding_info)
-                                            processed_tokens.add(token_address)
                                             print(f"   ✅ {token_data['symbol']}: ${value_usd:,.0f} (Score: {score})")
+                                    else:
+                                        stats["no_market_data"] += 1
+                                else:
+                                    stats["balance_zero"] += 1
                     
                     except Exception as e:
                         continue
+            else:
+                message = data.get("message") or data.get("result") or "sem resultado"
+                print(f"   ⚠️ API {chain} sem token txs validas: {message}")
+        else:
+            print(f"   ❌ Erro API {chain}: HTTP {response.status_code}")
+
+        if chain in {"bsc", "avalanche"}:
+            print(
+                "   🧭 Diagnostico EVM: "
+                f"{stats['token_txs']} txs, {stats['unique_contracts']} contratos, "
+                f"{stats['duplicates']} repetidos, {stats['skipped_native_stable']} native/stable, "
+                f"{stats['balance_zero']} sem saldo, {stats['no_market_data']} sem mercado, "
+                f"{stats['below_value']} abaixo valor, {stats['below_liquidity']} abaixo liquidez, "
+                f"{stats['scam']} scam/lixo"
+            )
         
         return holdings
         

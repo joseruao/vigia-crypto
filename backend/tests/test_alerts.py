@@ -362,6 +362,9 @@ def test_daily_holdings_has_bnb_and_avax_wallets_configured():
     assert worker.AVALANCHE_WALLETS["Binance AVAX 74"].lower() == "0xa7c0d36c4698981fab42a7d8c783674c6fe2592d"
     assert worker._evm_api_config("bsc")[2] == "56"
     assert worker._evm_api_config("avalanche")[2] == "43114"
+    assert worker.EXCHANGE_NORMALIZE["Binance 8"] == "Binance"
+    assert worker.EXCHANGE_NORMALIZE["Binance BNB 51"] == "Binance"
+    assert worker.EXCHANGE_NORMALIZE["Binance AVAX 74"] == "Binance"
 
 def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
     from dailyworker import daily_holdings_worker as worker
@@ -403,3 +406,40 @@ def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
     assert result == 1
     assert saved
     assert sent == []
+
+def test_predictions_filter_uses_live_binance_fallback(monkeypatch):
+    monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {"Binance": {"TRUMP"}})
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return []
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    listed = alerts._load_listed_tokens_map()
+    rows = [{
+        "exchange": "Binance 8",
+        "token": "TRUMP",
+        "token_address": "TRUMPADDR",
+        "chain": "solana",
+        "score": 95,
+        "value_usd": 1000000,
+        "liquidity": 5000000,
+    }]
+
+    assert listed["Binance"] == {"TRUMP"}
+    assert alerts._filter_prediction_rows(rows, listed) == []
+
+def test_predictions_listing_map_falls_back_when_supabase_fails(monkeypatch):
+    monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {"Binance": {"BTC", "TRUMP"}})
+
+    class FakeResponse:
+        status_code = 500
+        text = "boom"
+        def json(self):
+            return []
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    assert alerts._load_listed_tokens_map()["Binance"] == {"BTC", "TRUMP"}
