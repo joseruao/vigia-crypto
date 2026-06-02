@@ -332,6 +332,8 @@ def _format_onboarding() -> callable:
 
 def _should_use_coin_analysis(prompt: str) -> bool:
     q = prompt.lower()
+    if any(t in q for t in ["grafico", "grafica", "tecnica"]) and "top100" not in q and "top 100" not in q:
+        return True
     if "top100" in q or "top 100" in q:
         return False
     if any(t in q for t in ["listing", "listado", "vao ser", "vão ser", "previsao", "previsão"]):
@@ -383,6 +385,7 @@ def _parse_compact_money(value: str) -> float | None:
 # Coin / position extraction
 # ---------------------------------------------------------------------------
 def _extract_entry_price(prompt: str) -> float | None:
+    prompt = re.sub(r"\b(medio|m[eÃ©]dio)\s+de\b", r"\1", prompt or "", flags=re.IGNORECASE)
     patterns = [
         r"(?:comprei|compra|entrada|preco medio|preço médio|medio|m[eé]dio)\s*(?:a|ao|em|foi|:)?\s*\$?\s*([\d]+(?:[,.]\d+)?)",
         r"\$?\s*([\d]+(?:[,.]\d+)?)\s*(?:de entrada|preco medio|preço médio|medio|m[eé]dio)",

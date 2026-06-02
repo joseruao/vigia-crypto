@@ -132,6 +132,23 @@ def _top100_mode(prompt: str) -> str:
         return "low_rsi"
     return "score"
 
+
+def _top100_mode(prompt: str) -> str:
+    q = (prompt or "").lower()
+    if any(t in q for t in ["mudou", "mudanca", "mudancas", "ontem", "subiu mais", "desceu mais", "novidades", "o que e novo"]):
+        return "delta"
+    if "risco/retorno" in q or "risco retorno" in q or "relacao risco" in q:
+        return "risk_reward"
+    if "risco" in q or "segura" in q or "seguro" in q or "menos risco" in q:
+        return "low_risk"
+    if "melhor compra" in q or "comprar hoje" in q or "confirmado" in q or "virou" in q:
+        return "bounce"
+    if "suporte" in q or "pullback" in q or "perto" in q:
+        return "near_support"
+    if "rsi" in q or "oversold" in q or "sobrevend" in q or "barato" in q:
+        return "low_rsi"
+    return "score"
+
 def _risk_rank(value: Any) -> int:
     text = str(value or "").upper()
     if "BAIXO" in text:

@@ -4,6 +4,7 @@ import os
 import logging
 import sys
 import re
+import json
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -123,6 +124,7 @@ from Api.services.chat_helpers import (
     _format_top100_recommendation,
     _portfolio_context_line,
 )
+from Api.services.tools import TOOL_SCHEMAS, execute_tool, parse_tool_arguments
 
 _KNOWN_COIN_NAMES = {
     "BITCOIN": "BTC", "ETHEREUM": "ETH", "SOLANA": "SOL", "CARDANO": "ADA",
@@ -168,6 +170,90 @@ def _extract_coin_from_prompt(prompt: str) -> str | None:
         if 2 <= len(w) <= 10 and w.isalpha() and w not in _COIN_COMMON_WORDS:
             return _normalize_coin_symbol(w)
     return None
+
+
+def _agent_system_message(req: ChatRequest) -> str:
+    portfolio_context = _portfolio_context_line(req.history)
+    return (
+        "Es o agente do Vigia Crypto. Responde em portugues europeu quando o utilizador escreve em portugues. "
+        "Usa ferramentas sempre que a pergunta precise de dados internos, rankings, predictions, holdings ou analise tecnica. "
+        "Nao inventes precos, scores, targets, noticias ou rankings.\n\n"
+        f"Data de hoje: {_date.today().isoformat()}.\n"
+        + (f"{portfolio_context}\n" if portfolio_context else "")
+        + "\nFerramentas disponiveis:\n"
+        "- analyze_coin: para pedidos de analise tecnica de uma moeda.\n"
+        "- get_top100_rankings: para perguntas sobre top100, menor risco, suporte, RSI, risco/retorno, reversao ou melhores setups.\n"
+        "- get_listing_predictions: para potenciais listings.\n"
+        "- get_recent_holdings: para holdings recentes detectados em wallets de exchanges.\n"
+        "- get_top100_delta: para mudancas no top100 desde ontem.\n\n"
+        "Se uma ferramenta devolver uma resposta pronta no campo answer, usa essa resposta como base. "
+        "Se nao precisares de ferramenta, responde curto, tecnico e claro. "
+        "Evita aconselhamento financeiro direto: apresenta cenarios, risco e proximos passos."
+    )
+
+
+def _history_messages(req: ChatRequest) -> list[dict]:
+    return [
+        {"role": m.role, "content": m.content}
+        for m in (req.history or [])[-8:]
+        if m.role in {"user", "assistant"} and m.content
+    ]
+
+
+def _tool_call_to_dict(call) -> dict:
+    return {
+        "id": call.id,
+        "type": "function",
+        "function": {
+            "name": call.function.name,
+            "arguments": call.function.arguments or "{}",
+        },
+    }
+
+
+async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
+    messages: list[dict] = [
+        {"role": "system", "content": _agent_system_message(req)},
+        *_history_messages(req),
+        {"role": "user", "content": req.prompt},
+    ]
+    last_tool_answer = None
+
+    for _ in range(2):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            tools=TOOL_SCHEMAS,
+            tool_choice="auto",
+        )
+        message = response.choices[0].message
+        tool_calls = getattr(message, "tool_calls", None) or []
+
+        if not tool_calls:
+            return (message.content or last_tool_answer or "Nao consegui responder agora.").strip()
+
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [_tool_call_to_dict(call) for call in tool_calls],
+            }
+        )
+        for call in tool_calls[:4]:
+            result = await execute_tool(
+                call.function.name,
+                parse_tool_arguments(call.function.arguments),
+            )
+            last_tool_answer = result.get("answer") if isinstance(result, dict) else None
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": json.dumps(result, ensure_ascii=False, default=str),
+                }
+            )
+
+    return (last_tool_answer or "Nao consegui fechar a analise com as ferramentas agora.").strip()
 
 
 @app.post("/chat/stream")
@@ -261,6 +347,14 @@ async def chat_stream(req: ChatRequest):
         if openai_key:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key)
+            async def _agent_openai():
+                try:
+                    yield await _run_agent_tool_calling(client, req)
+                except Exception as exc:
+                    log.error("Erro no agente OpenAI: %s", exc)
+                    yield f"Erro ao processar: {exc}"
+            return StreamingResponse(_agent_openai(), media_type="text/plain")
+
             def _openai():
                 try:
                     system_msg = (
