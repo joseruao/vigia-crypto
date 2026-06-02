@@ -259,7 +259,7 @@ async def chat_stream(req: ChatRequest):
                         "O teu estilo é direto, técnico mas acessível — sem jargão desnecessário.\n\n"
                         f"Data de hoje: {_date.today().isoformat()}. Usa esta data como referência — nunca inventes datas futuras ou passadas.\n\n"
                         + (f"{_portfolio_context_line(req.history)}\n\n" if _portfolio_context_line(req.history) else "")
-                        "O que sabes fazer:\n"
+                        + "O que sabes fazer:\n"
                         "- Explicar conceitos de análise técnica (RSI, MACD, Bollinger, suporte/resistência, médias móveis)\n"
                         "- Interpretar setups de mercado e dar contexto sobre o que os indicadores significam\n"
                         "- Ajudar a pensar em gestão de risco: stop loss, targets, dimensionamento de posição\n"

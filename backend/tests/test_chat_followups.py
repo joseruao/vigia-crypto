@@ -1,4 +1,4 @@
-from Api.main import (
+from Api.services.chat_helpers import (
     ChatHistoryMessage,
     _extract_position_size,
     _format_text_analysis_detail_followup,

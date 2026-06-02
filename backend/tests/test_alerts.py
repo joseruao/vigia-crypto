@@ -98,7 +98,8 @@ def test_top100_buy_question_uses_ranking_table(monkeypatch):
     assert data["ok"] is True
     assert data["count"] == 1
     assert "BTC" in data["answer"]
-    assert "82.5/100" in data["answer"]
+    assert "Bitcoin" in data["answer"]
+    assert "analisa BTC" in data["answer"]
 
 def test_top100_answer_filters_stablecoins(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)

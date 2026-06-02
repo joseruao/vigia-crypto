@@ -76,32 +76,6 @@ export function ChatWindow() {
   // NÃO usar para análise de moedas (coin analysis)
   function shouldUseAlertsAPI(prompt: string) {
     const q = prompt.toLowerCase();
-    const hasMarketUniverse =
-      q.includes('top100') ||
-      q.includes('top 100') ||
-      q.includes('mercado') ||
-      q.includes('market') ||
-      q.includes('hoje') ||
-      q.includes('today') ||
-      q.includes('moeda') ||
-      q.includes('moedas') ||
-      q.includes('crypto') ||
-      q.includes('cripto');
-    const top100Intent =
-      q.includes('comprar') ||
-      q.includes('compra') ||
-      q.includes('buy') ||
-      q.includes('aconselhas') ||
-      q.includes('recomendas') ||
-      q.includes('analisar') ||
-      q.includes('melhor') ||
-      q.includes('melhores') ||
-      q.includes('risco') ||
-      q.includes('suporte') ||
-      q.includes('pullback') ||
-      q.includes('rsi') ||
-      q.includes('oversold') ||
-      q.includes('oportunidade');
     // Only route to alerts/ask for explicit top100 keyword or very specific opportunity phrases
     // General "melhores oportunidades hoje" should go to chat/stream (backend handles top100 routing)
     const isTop100Question = q.includes('top100') || q.includes('top 100');
@@ -273,9 +247,9 @@ export function ChatWindow() {
       };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="flex h-screen min-h-screen flex-col bg-white supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
       {/* Área das mensagens */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100vh-104px)] overflow-hidden px-4 py-10 sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
@@ -331,7 +305,10 @@ export function ChatWindow() {
       </div>
 
       {/* Input fixo — sticky no fundo, safe area para mobile */}
-      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70 pb-safe">
+      <div
+        className="sticky bottom-0 z-10 shrink-0 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <div className="max-w-5xl mx-auto p-3 sm:p-4">
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">
             {loading && (
