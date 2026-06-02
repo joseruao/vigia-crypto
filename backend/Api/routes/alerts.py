@@ -49,6 +49,7 @@ TOP100_EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+    "PAXG", "XAUT",
 }
 DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 36
 PREDICTIONS_LIMIT = 10
@@ -225,6 +226,14 @@ def _mode_label(mode: str) -> str:
         return "Perto de Suporte"
     if mode == "low_rsi":
         return "RSI Baixo"
+    if mode == "risk_reward":
+        return "Melhor R/R"
+    if mode == "bounce":
+        return "Reversão Confirmada"
+    if mode == "delta":
+        return "Variação Diária"
+    if mode == "low_risk":
+        return "Menor Risco"
     return "Melhor Setup"
 
 
@@ -248,7 +257,8 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
     change_30d = item.get("change_30d")
 
     mode_lbl = _mode_label(mode)
-    lines = [f"**🎯 {i}. {symbol} — {name}** ({mode_lbl})"]
+    mode_part = f" ({mode_lbl})" if mode != "score" else ""
+    lines = [f"**{i}. {symbol} — {name}**{mode_part}"]
 
     # Suporte / Resistência
     if support and resistance:

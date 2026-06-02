@@ -177,7 +177,10 @@ async def chat_stream(req: ChatRequest):
             return StreamingResponse(_format_onboarding()(), media_type="text/plain")
 
         _q = req.prompt.lower()
-        _is_delta_q = any(t in _q for t in ["mudou", "mudança", "ontem", "subiu mais", "desceu mais", "novidades top"])
+        _is_delta_q = (
+            any(t in _q for t in ["mudou", "mudança", "subiu mais", "desceu mais", "novidades top"]) or
+            ("ontem" in _q and any(t in _q for t in ["top100", "top 100", "ranking", "score", "moedas", "coins"]))
+        )
         if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q:
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():

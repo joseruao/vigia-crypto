@@ -11,7 +11,7 @@ import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 import { CircleStop, Send } from 'lucide-react';
 
 function extractCoinFromAnalysis(content: string): string | null {
-  const match = content.match(/##\s+🎯\s+([A-Z0-9]+)\s+[—–-]/);
+  const match = content.match(/(?:##\s+🎯\s+|#\s+📊\s+)([A-Z0-9]+)\s+[—–-]/);
   if (match) return match[1];
   const match2 = content.match(/Analise tecnica de\s+([A-Z0-9]+)/i);
   if (match2) return match2[1];
@@ -108,7 +108,6 @@ export function ChatWindow() {
     
     // Detectar perguntas sobre tokens/listings
     return (
-      q.includes('token') ||
       q.includes('listado') ||
       q.includes('listing') ||
       q.includes('vão ser') ||
@@ -123,7 +122,6 @@ export function ChatWindow() {
       q.includes('holders') ||
       q.includes('holding') ||
       q.includes('wallet') ||
-      q.includes('score') ||
       q.includes('scoring') ||
       isTop100Question ||
       isBuyWatchlistQuestion ||
@@ -307,7 +305,7 @@ export function ChatWindow() {
       {/* Input fixo — sticky no fundo, safe area para mobile */}
       <div
         className="sticky bottom-0 z-10 shrink-0 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         <div className="max-w-5xl mx-auto p-3 sm:p-4">
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">

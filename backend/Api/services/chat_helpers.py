@@ -22,10 +22,14 @@ LAST_COIN_ANALYSIS: dict = {}
 # Portfolio memory — extract and recall positions mentioned in conversation
 # ---------------------------------------------------------------------------
 _PORTFOLIO_PATTERNS = [
-    r"(?:tenho|comprei|compra|entrada|preco medio|preço médio)\s+(?:[\d,.]+\s+)?([A-Z]{2,10})\s+(?:a|ao|em|por|@)\s*\$?\s*([\d,.]+)",
-    r"([A-Z]{2,10})\s+(?:a|comprado a|entrada a|medio de)\s*\$?\s*([\d,.]+)",
-    r"(?:posicao|posição)\s+(?:de|em)\s+([A-Z]{2,10})[^\d]*([\d,.]+)",
+    r"(?:tenho|comprei|compra|entrada|preco medio|preço médio)\s+(?:[\d,.]+\s+)?([A-Z]{2,10})\s+(?:a|ao|em|por|@)\s*\$?\s*([\d,.]+)\s*([kKmM]|mil)?",
+    r"([A-Z]{2,10})\s+(?:a|comprado a|entrada a|medio de)\s*\$?\s*([\d,.]+)\s*([kKmM]|mil)?",
+    r"(?:posicao|posição)\s+(?:de|em)\s+([A-Z]{2,10})[^\d]*([\d,.]+)\s*([kKmM]|mil)?",
 ]
+
+_PORTFOLIO_SUFFIX_MULTIPLIERS: dict[str, float] = {
+    "k": 1_000, "m": 1_000_000, "mil": 1_000,
+}
 
 # Minimum plausible prices for known coins — catches "65" when user means "65000"
 _COIN_MIN_PRICE: dict[str, float] = {
@@ -48,6 +52,9 @@ def _extract_portfolio_from_history(history: list[ChatHistoryMessage]) -> dict[s
                 coin = m.group(1).upper().strip()
                 try:
                     price = float(m.group(2).replace(",", "."))
+                    if len(m.groups()) >= 3 and m.group(3):
+                        suffix = m.group(3).lower()
+                        price *= _PORTFOLIO_SUFFIX_MULTIPLIERS.get(suffix, 1)
                     min_price = _COIN_MIN_PRICE.get(coin, 0)
                     if price > 0 and price >= min_price:
                         positions[coin] = price
@@ -150,6 +157,14 @@ def _format_top100_recommendation(history: list[ChatHistoryMessage]):
             break  # last assistant msg wasn't top100, don't try
         # Extract coin symbols and scores — format: "**SYM**" or "1. **SYM**"
         coins = re.findall(r"\*\*([A-Z]{2,10})\*\*.*?score\s+(\d+)", content)
+        if not coins:
+            # Try delta format: "**ETC** 📈 score 84 (+4.6 vs ontem)"
+            coins = re.findall(r"\*\*([A-Z]{2,10})\*\*[^*\n]*?[Ss]core\s+(\d+)", content)
+        if not coins:
+            # Try regular top100 format: "1. **ETC** — ETC (Melhor Setup) ... Score 84/100"
+            coins_raw = re.findall(r"\d+\.\s+\*\*([A-Z]{2,10})\*\*[^\n]*\n(?:[^\n]*\n)*?[^\n]*?[Ss]core.*?(\d+)/100", content)
+            if coins_raw:
+                coins = coins_raw
         if not coins:
             coins_raw = re.findall(r"\d+\.\s+\*\*([A-Z]{2,10})\*\*", content)
             coins = [(c, "0") for c in coins_raw]
@@ -646,6 +661,11 @@ def _analysis_stance(analysis: dict, zones: dict, recs: dict) -> tuple[str, str]
             "AGUARDAR CONFIRMACAO",
             f"Tendencia positiva, mas sem zona de entrada clara. "
             f"Se corrigir, o suporte relevante abaixo esta perto de {support}. Score tecnico {score}/100.",
+        )
+    if rsi < 35:
+        return (
+            recs.get("acao_principal", "AGUARDAR"),
+            f"RSI em oversold extremo com preco em zona neutra — aguardar sinal de reversao para entrar. Score tecnico {score}/100.",
         )
     return (
         recs.get("acao_principal", "AGUARDAR"),
