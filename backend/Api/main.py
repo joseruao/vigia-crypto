@@ -174,6 +174,24 @@ def _extract_coin_from_prompt(prompt: str) -> str | None:
     return None
 
 
+def _is_listing_tool_question(prompt: str) -> bool:
+    q = (prompt or "").lower()
+    return any(t in q for t in [
+        "listing", "listado", "listados", "listagem",
+        "vao ser", "vai ser", "acumular", "acumulando",
+        "ainda nao foram listados", "unlisted",
+    ]) and any(t in q for t in ["token", "tokens", "exchange", "exchanges", "wallet", "wallets"])
+
+
+def _is_recent_holdings_tool_question(prompt: str) -> bool:
+    q = (prompt or "").lower()
+    if _is_listing_tool_question(prompt):
+        return False
+    return any(t in q for t in ["holding", "holdings", "wallet", "wallets", "acumulados", "detidos"]) and any(
+        t in q for t in ["mostra", "recentes", "top", "exchange", "exchanges"]
+    )
+
+
 def _agent_system_message(req: ChatRequest) -> str:
     portfolio_context = _portfolio_context_line(req.history)
     return (
@@ -274,6 +292,18 @@ async def chat_stream(req: ChatRequest):
             def _top100():
                 yield result.get("answer") or "Nao consegui obter o ranking tecnico top100 agora."
             return StreamingResponse(_top100(), media_type="text/plain")
+
+        if _is_listing_tool_question(req.prompt):
+            result = await execute_tool("get_listing_predictions")
+            def _listings():
+                yield result.get("answer") or "Nao consegui obter potenciais listings agora."
+            return StreamingResponse(_listings(), media_type="text/plain")
+
+        if _is_recent_holdings_tool_question(req.prompt):
+            result = await execute_tool("get_recent_holdings")
+            def _holdings():
+                yield result.get("answer") or "Nao consegui obter holdings recentes agora."
+            return StreamingResponse(_holdings(), media_type="text/plain")
 
         if _is_top100_recommendation_followup(req.prompt):
             fn = _format_top100_recommendation(req.history or [])

@@ -43,22 +43,27 @@ def test_get_top100_delta_calls_existing_alerts_code(monkeypatch):
     assert "mudou no top100" in result["answer"]
 
 
-def test_get_listing_predictions_formats_existing_predictions(monkeypatch):
+def test_get_listing_predictions_uses_existing_ask_formatter(monkeypatch):
+    calls = []
     monkeypatch.setattr(
         tools.alerts,
-        "get_predictions",
-        lambda: [{"token": "MEW", "exchange": "Gate.io", "score": 82, "value_usd": 1000, "liquidity": 2000000}],
+        "ask_alerts",
+        lambda payload: calls.append(payload.prompt) or {"ok": True, "answer": "MEW Gate.io", "count": 1},
     )
 
     result = tools.get_listing_predictions()
 
     assert result["count"] == 1
     assert "MEW" in result["answer"]
-    assert "Gate.io" in result["answer"]
+    assert "ainda nao foram listados" in calls[0]
 
 
-def test_get_listing_predictions_handles_empty_list(monkeypatch):
-    monkeypatch.setattr(tools.alerts, "get_predictions", lambda: [])
+def test_get_listing_predictions_preserves_empty_ask_response(monkeypatch):
+    monkeypatch.setattr(
+        tools.alerts,
+        "ask_alerts",
+        lambda payload: {"ok": True, "answer": "Nao encontrei tokens", "count": 0, "items": []},
+    )
 
     result = tools.get_listing_predictions()
 
@@ -66,21 +71,27 @@ def test_get_listing_predictions_handles_empty_list(monkeypatch):
     assert "Nao encontrei" in result["answer"]
 
 
-def test_get_recent_holdings_formats_existing_holdings(monkeypatch):
+def test_get_recent_holdings_uses_existing_ask_formatter(monkeypatch):
+    calls = []
     monkeypatch.setattr(
         tools.alerts,
-        "get_holdings",
-        lambda: {"items": [{"token": "ALCH", "exchange": "Gate.io", "score": 91, "value_usd": 18000000}]},
+        "ask_alerts",
+        lambda payload: calls.append(payload.prompt) or {"ok": True, "answer": "ALCH Gate.io", "count": 1},
     )
 
     result = tools.get_recent_holdings()
 
     assert result["count"] == 1
     assert "ALCH" in result["answer"]
+    assert calls == ["mostra holdings recentes"]
 
 
-def test_get_recent_holdings_handles_empty_list(monkeypatch):
-    monkeypatch.setattr(tools.alerts, "get_holdings", lambda: {"items": []})
+def test_get_recent_holdings_preserves_empty_ask_response(monkeypatch):
+    monkeypatch.setattr(
+        tools.alerts,
+        "ask_alerts",
+        lambda payload: {"ok": True, "answer": "Nao encontrei holdings", "count": 0, "items": []},
+    )
 
     result = tools.get_recent_holdings()
 
@@ -142,4 +153,3 @@ def test_analyze_coin_returns_tool_error(monkeypatch):
 
     assert result["error"] == "sem dados"
     assert "Erro ao analisar BTC" in result["answer"]
-

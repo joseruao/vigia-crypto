@@ -135,19 +135,49 @@ def _top100_mode(prompt: str) -> str:
 
 def _top100_mode(prompt: str) -> str:
     q = (prompt or "").lower()
-    if any(t in q for t in ["mudou", "mudanca", "mudancas", "ontem", "subiu mais", "desceu mais", "novidades", "o que e novo"]):
+    if any(t in q for t in ["mudou", "mudanca", "mudancas", "ontem", "yesterday", "changed", "change", "subiu mais", "desceu mais", "novidades", "o que e novo"]):
         return "delta"
-    if "risco/retorno" in q or "risco retorno" in q or "relacao risco" in q:
+    if "risco/retorno" in q or "risco retorno" in q or "relacao risco" in q or "risk/reward" in q or "risk reward" in q:
         return "risk_reward"
-    if "risco" in q or "segura" in q or "seguro" in q or "menos risco" in q:
+    if "risco" in q or "risk" in q or "safe" in q or "safer" in q or "segura" in q or "seguro" in q or "menos risco" in q:
         return "low_risk"
-    if "melhor compra" in q or "comprar hoje" in q or "confirmado" in q or "virou" in q:
+    if "melhor compra" in q or "comprar hoje" in q or "confirmed buy" in q or "best buy" in q or "confirmado" in q or "virou" in q:
         return "bounce"
-    if "suporte" in q or "pullback" in q or "perto" in q:
+    if "suporte" in q or "support" in q or "pullback" in q or "near" in q or "perto" in q:
         return "near_support"
-    if "rsi" in q or "oversold" in q or "sobrevend" in q or "barato" in q:
+    if "rsi" in q or "oversold" in q or "lowest" in q or "cheap" in q or "sobrevend" in q or "barato" in q:
         return "low_rsi"
     return "score"
+
+
+def _is_buy_watchlist_question(q: str) -> bool:
+    q = (q or "").lower()
+    buy_terms = (
+        "comprar", "compra", "buy", "entrada", "entrar", "aconselhas",
+        "recomendas", "oportunidade", "oportunidades", "analisar",
+        "melhor", "melhores", "risco", "suporte", "pullback", "rsi",
+        "opportunity", "opportunities", "analyze", "best", "risk", "support",
+        "lowest", "cheap", "near", "oversold",
+    )
+    universe_terms = (
+        "moeda", "moedas", "crypto", "cripto", "token", "tokens", "coin",
+        "coins", "top100", "top 100", "hoje", "today", "market", "mercado",
+    )
+    return any(term in q for term in buy_terms) and any(term in q for term in universe_terms)
+
+
+def _is_top100_buy_question(q: str) -> bool:
+    q = (q or "").lower()
+    if "top100" not in q and "top 100" not in q:
+        return False
+    top100_terms = (
+        "comprar", "compra", "buy", "entrada", "entrar", "aconselhas",
+        "recomendas", "oportunidade", "oportunidades", "analisar",
+        "analisa", "melhor", "melhores", "risco", "suporte", "rsi",
+        "oversold", "sobrevend", "pullback", "hoje", "today", "support",
+        "risk", "lowest", "near", "changed", "change", "yesterday",
+    )
+    return _is_buy_watchlist_question(q) or any(term in q for term in top100_terms)
 
 def _risk_rank(value: Any) -> int:
     text = str(value or "").upper()

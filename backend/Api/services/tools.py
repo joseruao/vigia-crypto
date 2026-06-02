@@ -43,35 +43,13 @@ def get_top100_rankings(mode: str = "score") -> Dict[str, Any]:
 
 
 def get_listing_predictions() -> Dict[str, Any]:
-    items = alerts.get_predictions()
-    if not items:
-        return _answer_payload("Nao encontrei potenciais listings visiveis agora.", count=0, items=[])
-
-    lines = [f"**Potenciais listings atuais ({len(items)} visiveis)**"]
-    for i, item in enumerate(items[:10], 1):
-        token = item.get("token") or "N/A"
-        exchange = alerts._normalize_exchange(item.get("exchange") or "")
-        score = float(item.get("score") or 0)
-        value = alerts._fmt_money(item.get("value_usd"))
-        liquidity = alerts._fmt_money(item.get("liquidity"))
-        lines.append(f"{i}. **{token}** - {exchange} - score {score:.0f}/100 - valor {value} - liquidez {liquidity}")
-    return _answer_payload("\n".join(lines), count=len(items), items=items)
+    return alerts.ask_alerts(
+        alerts.AskIn(prompt="Que tokens as exchanges estao a acumular que ainda nao foram listados?")
+    )
 
 
 def get_recent_holdings() -> Dict[str, Any]:
-    data = alerts.get_holdings()
-    items = data.get("items", []) if isinstance(data, dict) else []
-    if not items:
-        return _answer_payload("Nao encontrei holdings recentes visiveis agora.", count=0, items=[])
-
-    lines = [f"**Holdings recentes em wallets de exchanges ({min(len(items), 10)})**"]
-    for i, item in enumerate(items[:10], 1):
-        token = item.get("token") or "N/A"
-        exchange = alerts._normalize_exchange(item.get("exchange") or "")
-        score = float(item.get("score") or 0)
-        value = alerts._fmt_money(item.get("value_usd"))
-        lines.append(f"{i}. **{token}** - {exchange} - score {score:.0f}/100 - valor {value}")
-    return _answer_payload("\n".join(lines), count=len(items), items=items)
+    return alerts.ask_alerts(alerts.AskIn(prompt="mostra holdings recentes"))
 
 
 def get_top100_delta() -> Dict[str, Any]:

@@ -49,7 +49,7 @@ def test_chat_stream_uses_openai_tool_calling_fallback(monkeypatch):
     monkeypatch.setattr(main, "execute_tool", fake_execute_tool)
 
     client = TestClient(app)
-    response = client.post("/chat/stream", json={"prompt": "mostra holdings recentes", "history": []})
+    response = client.post("/chat/stream", json={"prompt": "faz uma leitura geral do mercado crypto", "history": []})
 
     assert response.status_code == 200
     assert "Resposta final com listings" in response.text
@@ -73,3 +73,39 @@ def test_chat_stream_keeps_top100_fast_path_without_openai(monkeypatch):
     assert response.status_code == 200
     assert "FAST TOP100" in response.text
 
+
+def test_chat_stream_routes_listing_question_to_internal_tool(monkeypatch):
+    from Api import main
+
+    async def fake_execute_tool(name, arguments=None):
+        assert name == "get_listing_predictions"
+        return {"ok": True, "answer": "FAST LISTINGS"}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "execute_tool", fake_execute_tool)
+
+    client = TestClient(app)
+    response = client.post(
+        "/chat/stream",
+        json={"prompt": "Que tokens as exchanges estao a acumular que ainda nao foram listados?", "history": []},
+    )
+
+    assert response.status_code == 200
+    assert "FAST LISTINGS" in response.text
+
+
+def test_chat_stream_routes_recent_holdings_question_to_internal_tool(monkeypatch):
+    from Api import main
+
+    async def fake_execute_tool(name, arguments=None):
+        assert name == "get_recent_holdings"
+        return {"ok": True, "answer": "FAST HOLDINGS"}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "execute_tool", fake_execute_tool)
+
+    client = TestClient(app)
+    response = client.post("/chat/stream", json={"prompt": "mostra holdings recentes", "history": []})
+
+    assert response.status_code == 200
+    assert "FAST HOLDINGS" in response.text
