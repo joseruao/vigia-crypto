@@ -72,6 +72,39 @@ def test_top100_buy_question_is_not_answered_from_listings(monkeypatch):
     assert data["count"] == 0
     assert "top100_technical_rankings" in data["answer"]
 
+def test_listing_answer_uses_onchain_signal_language(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {
+                    "exchange": "Gate.io",
+                    "token": "ALPHA",
+                    "token_address": "addr",
+                    "chain": "solana",
+                    "score": 82,
+                    "ts": "2026-06-02T12:00:00+00:00",
+                    "value_usd": 250000,
+                    "liquidity": 3000000,
+                    "volume_24h": 800000,
+                    "pair_url": "https://dexscreener.com/solana/example",
+                }
+            ]
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "que tokens achas que vao ser listados?"})
+
+    assert r.status_code == 200
+    answer = r.json()["answer"]
+    assert "Sinais on-chain de possíveis listings" in answer
+    assert "Sinal detetado em **Gate.io**" in answer
+    assert "Exposição on-chain" in answer
+
 def test_top100_buy_question_uses_ranking_table(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
@@ -378,11 +411,17 @@ def test_daily_holdings_has_bnb_and_avax_wallets_configured():
     assert worker.BNB_WALLETS["Gate BNB Deposit Funder"].lower() == "0x8ef254930467ad31ce808139f43d88f08f340699"
     assert worker.AVALANCHE_WALLETS["Binance AVAX 74"].lower() == "0xa7c0d36c4698981fab42a7d8c783674c6fe2592d"
     assert worker.AVALANCHE_WALLETS["Binance AVAX Hot Wallet 10"].lower() == "0x9f8e59d4a052f9ed22d2d10db0fe18328248ac8b"
-    assert worker._evm_api_config("bsc")[2] == "56"
-    assert worker._evm_api_config("avalanche")[2] == "43114"
     assert worker.EXCHANGE_NORMALIZE["Binance 8"] == "Binance"
     assert worker.EXCHANGE_NORMALIZE["Binance BNB 51"] == "Binance"
     assert worker.EXCHANGE_NORMALIZE["Binance AVAX 74"] == "Binance"
+
+def test_daily_holdings_etherscan_v2_chainids_are_configured(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    monkeypatch.setattr(worker, "ETHERSCAN_API_KEY", "test-key")
+
+    assert worker._evm_api_config("bsc") == ("https://api.etherscan.io/v2/api", "test-key", "56")
+    assert worker._evm_api_config("avalanche") == ("https://api.etherscan.io/v2/api", "test-key", "43114")
 
 def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
     from dailyworker import daily_holdings_worker as worker

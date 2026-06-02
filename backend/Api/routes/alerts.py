@@ -1205,11 +1205,11 @@ def ask_alerts(payload: AskIn):
 
         shown = out[:8]
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
-            header = f"**Tokens detetados em wallets de exchanges com potencial de listing ({len(shown)})**"
+            header = f"**Sinais on-chain de possíveis listings ({len(shown)})**"
         elif is_buy_watchlist_question:
-            header = f"**Watchlist de hoje — tokens em wallets de exchanges ({len(shown)})**"
+            header = f"**Watchlist proprietária de hoje — sinais on-chain em exchanges ({len(shown)})**"
         else:
-            header = f"**Top {len(shown)} holdings detetados**"
+            header = f"**Top {len(shown)} sinais on-chain detetados**"
 
         def _fmt_ts(ts_val) -> str:
             try:
@@ -1258,15 +1258,15 @@ def ask_alerts(payload: AskIn):
                 block += f" · {chain}"
             block += "\n"
 
-            # Contexto principal: quem tem e quanto
-            block += f"Detetado na wallet da **{exchange}**"
+            # Contexto principal: onde apareceu o sinal e quanto vale.
+            block += f"Sinal detetado em **{exchange}**"
             when = _fmt_ts(ts)
             if when:
                 block += f" ({when})"
             block += "\n"
 
             if value_usd and float(value_usd) > 0:
-                block += f"Valor em carteira: **${float(value_usd):,.0f}**"
+                block += f"Exposição on-chain: **${float(value_usd):,.0f}**"
                 if liquidity and float(liquidity) > 0:
                     block += f" · Liquidez no par: **${float(liquidity):,.0f}**"
                 block += "\n"
