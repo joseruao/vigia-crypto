@@ -113,11 +113,15 @@ def _fmt_pct(value: Any) -> str:
 
 def _top100_mode(prompt: str) -> str:
     q = (prompt or "").lower()
-    if "risco" in q or "segura" in q or "seguro" in q:
+    if "risco" in q or "segura" in q or "seguro" in q or "menos risco" in q:
         return "low_risk"
+    if "risco/retorno" in q or "risco retorno" in q or "relacao risco" in q or "relação risco" in q:
+        return "risk_reward"
+    if "melhor compra" in q or "comprar hoje" in q or "confirmado" in q or "virou" in q:
+        return "bounce"
     if "suporte" in q or "pullback" in q or "perto" in q:
         return "near_support"
-    if "rsi" in q or "oversold" in q or "sobrevend" in q:
+    if "rsi" in q or "oversold" in q or "sobrevend" in q or "barato" in q:
         return "low_rsi"
     return "score"
 
@@ -131,9 +135,48 @@ def _risk_rank(value: Any) -> int:
         return 3
     return 1
 
+def _risk_reward_ratio(row: Dict[str, Any]) -> float:
+    """Upside/downside ratio: (resistance-price) / (price-support). Higher = better."""
+    try:
+        price = float(row.get("price") or 0)
+        support = float(row.get("support") or 0)
+        resistance = float(row.get("resistance") or 0)
+        if price <= 0 or support <= 0 or resistance <= price:
+            return 0.0
+        upside = resistance - price
+        downside = price - support
+        return round(upside / downside, 2) if downside > 0 else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _bounce_score(row: Dict[str, Any]) -> float:
+    """Score for 'bateu no suporte e virou': near support + RSI recovering + MACD bullish."""
+    score = 0.0
+    pos = float(row.get("current_position") or 50)
+    rsi = float(row.get("rsi") or 50)
+    macd = str(row.get("macd_signal") or "")
+    entry = str(row.get("entry_zone") or "")
+    if pos <= 35:
+        score += 3
+    if 25 <= rsi <= 48:
+        score += 3
+    if "BULLISH" in macd:
+        score += 3
+        if "STRONG" in macd:
+            score += 1
+    if entry == "ZONA_DE_COMPRA":
+        score += 2
+    return score
+
+
 def _sort_top100_rows(rows: List[Dict[str, Any]], mode: str) -> List[Dict[str, Any]]:
     if mode == "low_risk":
         return sorted(rows, key=lambda row: (_risk_rank(row.get("risk")), -float(row.get("score") or 0)))
+    if mode == "risk_reward":
+        return sorted(rows, key=lambda row: -_risk_reward_ratio(row))
+    if mode == "bounce":
+        return sorted(rows, key=lambda row: (-_bounce_score(row), -float(row.get("score") or 0)))
     if mode == "near_support":
         return sorted(rows, key=lambda row: (
             abs(float(row.get("current_position") if row.get("current_position") is not None else 50) - 25),
@@ -147,25 +190,28 @@ def _sort_top100_rows(rows: List[Dict[str, Any]], mode: str) -> List[Dict[str, A
     return sorted(rows, key=lambda row: float(row.get("score") or 0), reverse=True)
 
 def _top100_title(mode: str, count: int) -> str:
-    if mode == "near_support":
-        return f"**Melhores oportunidades de entrada agora ({count} moedas)**"
-    if mode == "low_rsi":
-        return f"**Moedas mais baratas tecnicamente ({count} moedas)**"
-    return f"**Melhores setups técnicos hoje ({count} moedas)**"
+    titles = {
+        "near_support": f"**Perto do suporte — possíveis entradas ({count} moedas)**",
+        "low_rsi":      f"**Preços mais castigados agora ({count} moedas)**",
+        "low_risk":     f"**Menor risco técnico agora ({count} moedas)**",
+        "risk_reward":  f"**Melhor relação risco/retorno ({count} moedas)**",
+        "bounce":       f"**Possível reversão confirmada — bateu no suporte e virou ({count} moedas)**",
+    }
+    return titles.get(mode, f"**Melhores setups técnicos hoje ({count} moedas)**")
 
 
 def _rsi_label(rsi: float) -> str:
     if rsi < 28:
-        return "Oversold extremo — possível bounce"
+        return "preço muito castigado — tende a recuperar"
     if rsi < 38:
-        return "Vendedores enfraquecidos"
+        return "preço sobrevendido — vendedores a perder força"
     if rsi < 50:
-        return "Neutro baixo — equilibrio pendendo para baixo"
+        return "ligeira pressão de venda — equilibrio frágil"
     if rsi < 62:
-        return "Neutro — equilibrio"
+        return "mercado equilibrado"
     if rsi < 70:
-        return "Compradores dominam — cuidado com entrada"
-    return "Overbought — evitar compra"
+        return "compradores dominam — atenção se subir mais"
+    return "preço esticado — risco de correção"
 
 
 def _mode_label(mode: str) -> str:
@@ -206,67 +252,55 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
         target_mult = 1.08 + (score / 100) * 0.10
         target_fmt = _fmt_money(float(resistance) * target_mult)
 
-        zone_label = ""
-        if entry_zone == "ZONA_DE_COMPRA":
-            zone_label = " (ZONA DE COMPRA)"
-        elif entry_zone == "ZONA_DE_VENDA":
-            zone_label = " (ZONA DE VENDA)"
+        rr = _risk_reward_ratio(item)
+        rr_str = f" · R/R {rr:.1f}x" if rr >= 1 else ""
 
-        lines.append("**Zonas de Preço:**")
-        lines.append(f"🟢 Suporte: **{sup_fmt}**{zone_label}")
-        lines.append(f"🔴 Resistência: **{res_fmt}**")
-        lines.append(f"🚀 Alvo potencial: **{target_fmt}**")
+        if entry_zone == "ZONA_DE_COMPRA":
+            lines.append(f"🎯 **Entrada:** perto de {sup_fmt} · **Alvo:** {target_fmt}{rr_str}")
+            lines.append(f"🛡️ **Stop:** {_fmt_money(float(support) * 0.94)}")
+        elif entry_zone == "ZONA_DE_VENDA":
+            lines.append(f"⚠️ Perto da resistência **{res_fmt}** — não perseguir")
+        else:
+            lines.append(f"🟢 Suporte: **{sup_fmt}** · 🔴 Resistência: **{res_fmt}**{rr_str}")
     elif price:
         lines.append(f"Preço atual: **{_fmt_money(price)}**")
 
-    # Status técnico
-    lines.append("**Status Técnico:**")
+    # Sinais
+    signals = []
     if rsi is not None:
-        rsi_lbl = _rsi_label(float(rsi))
-        lines.append(f"{'✅' if float(rsi) < 55 else '⚠️'} RSI **{float(rsi):.0f}** — {rsi_lbl}")
-
+        rsi_f = float(rsi)
+        emoji = "✅" if rsi_f < 45 else ("⚠️" if rsi_f < 70 else "🔴")
+        signals.append(f"{emoji} {_rsi_label(rsi_f)}")
     if above_200 is True:
-        lines.append(f"✅ Acima da SMA200 — tendência macro bullish")
+        signals.append("✅ Tendência de longo prazo positiva")
     elif above_200 is False:
-        lines.append(f"📉 Abaixo da SMA200 — pressão macro bearish")
-
+        signals.append("⚠️ Tendência de longo prazo negativa")
     if macd_sig in ("BULLISH", "BULLISH_STRONG"):
-        strength = "forte" if "STRONG" in macd_sig else ""
-        lines.append(f"✅ MACD bullish {strength}".strip() + " — momentum a favor")
+        signals.append("✅ Momentum a virar para cima" + (" — confirmado" if "STRONG" in macd_sig else ""))
     elif macd_sig in ("BEARISH", "BEARISH_STRONG"):
-        lines.append(f"⚠️ MACD bearish — aguardar confirmação de reversão")
-
+        signals.append("⚠️ Momentum ainda em queda")
     if bb_pos == "ZONA_BAIXA":
-        lines.append(f"✅ Bollinger: perto da banda inferior — zona de bounce")
-    elif bb_pos == "ACIMA_BANDA":
-        lines.append(f"⚠️ Bollinger: acima da banda superior — preço esticado")
-
+        signals.append("✅ Preço perto da zona de bounce")
     if change_30d is not None:
         c30 = float(change_30d)
-        if c30 > 0:
-            lines.append(f"📈 +{c30:.1f}% nos últimos 30 dias")
-        else:
-            lines.append(f"📉 {c30:.1f}% nos últimos 30 dias")
+        signals.append(f"{'📈' if c30 >= 0 else '📉'} {'+' if c30 >= 0 else ''}{c30:.1f}% nos últimos 30 dias")
+    if signals:
+        lines.append("**Sinais:**")
+        lines.extend(signals)
 
-    # Recomendação
-    lines.append("**🎯 Leitura:**")
-    if entry_zone == "ZONA_DE_COMPRA" and macd_sig in ("BULLISH", "BULLISH_STRONG"):
-        if support and resistance:
-            lines.append(f"Entrada perto de **{_fmt_money(support)}** com alvo **{_fmt_money(resistance)}**. "
-                        f"Invalida se perder **{_fmt_money(float(support) * 0.94)}**.")
-        else:
-            lines.append("Setup favorável — entrada faseada perto do suporte.")
+    # Leitura
+    bounce_confirmed = entry_zone == "ZONA_DE_COMPRA" and macd_sig in ("BULLISH", "BULLISH_STRONG")
+    if bounce_confirmed:
+        lines.append("🔥 **Reversão em curso** — perto do suporte com momentum a virar. Setup de entrada válido.")
     elif entry_zone == "ZONA_DE_COMPRA":
-        lines.append(f"Perto do suporte mas sem confirmação de momentum. Aguardar MACD virar bullish antes de entrar.")
+        lines.append("🟡 **Perto do suporte** — aguardar momentum confirmar antes de entrar.")
     elif entry_zone == "ZONA_DE_VENDA":
-        lines.append(f"Preço perto da resistência — não perseguir. Esperar pullback para o suporte.")
-    elif technical_action == "AGUARDAR":
-        lines.append(f"Setup ainda não confirmado — observar. Sinal: **{signal}**.")
-    else:
+        lines.append("🔴 **Perto da resistência** — não perseguir. Esperar pullback.")
+    elif technical_action == "AGUARDAR" or not entry_zone:
         if support:
-            lines.append(f"Zona neutra. Vigiar teste ao suporte **{_fmt_money(support)}** para possível entrada.")
+            lines.append(f"⏳ Zona neutra — vigiar teste ao suporte **{_fmt_money(support)}**.")
         else:
-            lines.append(f"Zona neutra — aguardar setup mais claro. Sinal: **{signal}**.")
+            lines.append("⏳ Zona neutra — aguardar setup mais claro.")
 
     return "\n".join(lines)
 
@@ -757,12 +791,40 @@ def ask_alerts(payload: AskIn):
     if _is_top100_buy_question(q):
         return _answer_top100_buy_watchlist(log, payload.prompt)
 
+    # Transferências recentes (movimentos on-chain recentes) vs holdings acumulados
+    is_recent_transfer_q = any(t in q for t in [
+        "transferencia", "transferência", "transferencias", "transferências",
+        "movimento recente", "movimentos recentes", "enviou", "recebeu",
+        "ultima hora", "última hora", "ultimas horas", "últimas horas",
+        "hoje cedo", "ontem", "recente", "recentes",
+    ])
+    if is_recent_transfer_q and not any(t in q for t in ["acumul", "holding", "detém", "detem"]):
+        since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        r_recent = supa.rest_get("transacted_tokens", params={
+            "select": "exchange,token,chain,score,ts,value_usd,pair_url",
+            "ts": f"gte.{since_24h}",
+            "order": "ts.desc",
+            "limit": "20",
+        }, timeout=8)
+        if r_recent.status_code == 200 and r_recent.json():
+            rows = r_recent.json()
+            lines = [f"**Movimentos recentes nas wallets de exchanges (últimas 24h) — {len(rows)} entradas**\n"]
+            for i, row in enumerate(rows[:10], 1):
+                ts = str(row.get("ts") or "")[:16].replace("T", " ")
+                lines.append(
+                    f"{i}. **{row.get('token')}** · {row.get('exchange')} · {row.get('chain')}\n"
+                    f"   Valor: ${float(row.get('value_usd') or 0):,.0f} · {ts} UTC"
+                )
+            lines.append("\n_Estes são movimentos detectados nas últimas 24h. Para tokens acumulados há mais tempo usa 'tokens que exchanges estão a acumular'._")
+            return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
+        return {"ok": True, "answer": "Sem movimentos recentes detectados nas últimas 24h.", "count": 0, "items": []}
+
     # Defaults
     ex_norm = None
     min_score = 0
     chain = None
     is_buy_watchlist_question = _is_buy_watchlist_question(q)
-    
+
     # Se perguntar sobre "tokens que vão ser listados" sem exchange específica, usa score mínimo
     is_listing_question = "listados" in q or "listing" in q or "vão ser" in q or "vao ser" in q or "vai ser" in q or "achas" in q
     if is_listing_question and not any(ex in q for ex in ["binance", "gate", "bybit", "bitget", "kraken", "okx", "mexc", "coinbase"]):

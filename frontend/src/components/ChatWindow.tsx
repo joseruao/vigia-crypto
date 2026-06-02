@@ -330,8 +330,8 @@ export function ChatWindow() {
         )}
       </div>
 
-      {/* Input fixo */}
-      <div className="border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+      {/* Input fixo — sticky no fundo, safe area para mobile */}
+      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70 pb-safe">
         <div className="max-w-5xl mx-auto p-3 sm:p-4">
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">
             {loading && (
@@ -355,15 +355,14 @@ export function ChatWindow() {
               disabled={loading}
             />
 
-            {input.trim() && !loading ? (
-              <button
-                onClick={() => sendMessage()}
-                className="mb-0.5 rounded-full bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
-                title="Enviar mensagem"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            ) : null}
+            <button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || loading}
+              className="mb-0.5 rounded-full p-2 text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              title="Enviar mensagem"
+            >
+              <Send className="h-4 w-4" />
+            </button>
           </div>
 
           <div className="text-[11px] text-gray-500 text-center mt-2">

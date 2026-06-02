@@ -563,13 +563,15 @@ class AdvancedCoinAnalyzer:
         }
     
     def _analyze_volume(self, data: pd.DataFrame) -> Dict:
-        """Analisa volume"""
-        current_volume = int(data['Volume'].iloc[-1])
-        avg_volume_20 = data['Volume'].tail(20).mean()
+        """Analisa volume — usa penultima vela (completa) para evitar distorcao
+        da vela atual que pode estar incompleta (ex: calculado a meio do dia)."""
+        completed = data['Volume'].iloc[:-1] if len(data) > 1 else data['Volume']
+        current_volume = float(completed.iloc[-1])
+        avg_volume_20 = float(completed.tail(20).mean()) if len(completed) >= 2 else current_volume
         volume_ratio = current_volume / avg_volume_20 if avg_volume_20 > 0 else 1
-        
+
         return {
-            'current': current_volume,
+            'current': int(current_volume),
             'ratio_20d': round(volume_ratio, 2),
             'trend': 'HIGH' if volume_ratio > 1.5 else 'LOW' if volume_ratio < 0.7 else 'NORMAL'
         }
