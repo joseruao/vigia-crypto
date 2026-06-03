@@ -550,8 +550,13 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
                 zone_change = ""
                 if zone != zone_y and zone_y:
                     zone_change = f" · zona: {_human_zone_label(zone_y)} → {_human_zone_label(zone)}"
-                lines.append(f"{i}. **{sym}** {arrow} score {score:.0f} ({'+' if delta >= 0 else ''}{delta:.1f} vs ontem){zone_change}")
-            lines.append("\nNota: o valor entre parenteses e a diferenca do score tecnico face a ontem. O score combina zona tecnica, RSI, momentum, proximidade ao suporte/resistencia e risco.")
+                reason = _delta_reason(r, yest_by_symbol.get(sym), english=False)
+                lines.append(
+                    f"{i}. **{sym}** {arrow} score {score:.0f} "
+                    f"({'+' if delta >= 0 else ''}{delta:.1f} pontos vs ontem){zone_change}\n"
+                    f"   Porque mudou: {reason}."
+                )
+            lines.append("\nNota: a variacao e em pontos do score tecnico. O score combina zona tecnica, RSI, momentum, proximidade ao suporte/resistencia e risco.")
             return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
         return {"ok": True, "answer": "Ainda não tenho dados de ontem para comparar.", "count": 0, "items": []}
 
@@ -1243,6 +1248,32 @@ def ask_alerts(payload: AskIn):
                 return "moderada"
             return "baixa"
 
+        def _fmt_money(value) -> str:
+            try:
+                v = float(value or 0)
+            except (TypeError, ValueError):
+                return "N/A"
+            if v <= 0:
+                return "N/A"
+            if v >= 1_000_000:
+                return f"${v / 1_000_000:.1f}M"
+            if v >= 1_000:
+                return f"${v / 1_000:.0f}K"
+            return f"${v:,.0f}"
+
+        def _listing_verdict(score_val) -> str:
+            try:
+                s = float(score_val or 0)
+            except (TypeError, ValueError):
+                return "Sinal em observacao"
+            if s >= 85:
+                return "Forte candidato a listing"
+            if s >= 75:
+                return "Bom sinal, merece atencao"
+            if s >= 65:
+                return "Sinal util para acompanhar"
+            return "Sinal inicial, confirmar nos proximos ciclos"
+
         blocks = []
         for i, item in enumerate(shown, 1):
             token = item.get("token", "N/A")
@@ -1285,6 +1316,47 @@ def ask_alerts(payload: AskIn):
                 block += f"[DexScreener]({pair_url})"
 
             blocks.append(block)
+
+        pretty_blocks = []
+        for i, item in enumerate(shown, 1):
+            token = item.get("token", "N/A")
+            exchange = _normalize_exchange(item.get("exchange", "N/A"))
+            chain = (item.get("chain") or "").capitalize()
+            score = item.get("score", 0)
+            value_usd = item.get("value_usd") or 0
+            liquidity = item.get("liquidity") or 0
+            volume = item.get("volume_24h") or 0
+            pair_url = item.get("pair_url", "")
+            ts = item.get("last_seen_ts") or item.get("ts")
+
+            line = f"### {i}. {token} · {exchange}"
+            if chain:
+                line += f" · {chain}"
+            line += "\n\n"
+            line += f"**Score:** {float(score or 0):.0f}/100 · **{_listing_verdict(score)}**\n"
+            line += f"**Valor na wallet:** {_fmt_money(value_usd)}\n"
+            line += f"**Liquidez no par:** {_fmt_money(liquidity)}\n"
+            if volume and float(volume or 0) > 0:
+                line += f"**Volume 24h:** {_fmt_money(volume)}\n"
+
+            when = _fmt_ts(ts)
+            line += f"\nDetectado numa wallet monitorizada da **{exchange}**"
+            if when:
+                line += f" ({when})"
+            line += ".\n"
+            line += f"**Leitura:** probabilidade {_confidence_label(score)}; confirmar se continua fora da exchange nos proximos ciclos.\n"
+            if pair_url:
+                line += f"[Ver no DexScreener]({pair_url})"
+            pretty_blocks.append(line)
+
+        if pretty_blocks:
+            blocks = pretty_blocks
+            if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
+                header = f"**Radar on-chain de possiveis listings**\n\n{len(out)} candidatos filtrados. Mostro os {len(shown)} sinais mais fortes."
+            elif is_buy_watchlist_question:
+                header = f"**Watchlist propria de hoje**\n\n{len(out)} sinais on-chain filtrados. Mostro os {len(shown)} mais relevantes."
+            else:
+                header = f"**Top sinais on-chain detetados**\n\n{len(out)} sinais filtrados. Mostro os {len(shown)} mais relevantes."
 
         answer = header + "\n\n" + "\n\n".join(blocks)
         if len(out) > len(shown):

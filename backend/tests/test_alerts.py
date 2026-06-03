@@ -101,9 +101,9 @@ def test_listing_answer_uses_onchain_signal_language(monkeypatch):
 
     assert r.status_code == 200
     answer = r.json()["answer"]
-    assert "Sinais on-chain de possíveis listings" in answer
-    assert "Sinal:** posição relevante detetada numa wallet monitorizada da Gate.io" in answer
-    assert "Exposição:** $250,000" in answer
+    assert "Radar on-chain de possiveis listings" in answer
+    assert "Detectado numa wallet monitorizada da **Gate.io**" in answer
+    assert "Valor na wallet:** $250K" in answer
 
 def test_listing_answer_limits_initial_results_and_supports_more(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)

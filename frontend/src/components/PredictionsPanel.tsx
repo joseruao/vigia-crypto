@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, ExternalLink, Radar } from 'lucide-react';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 
 interface Holding {
@@ -14,9 +15,6 @@ interface Holding {
   score?: number;
   pair_url?: string;
   token_address?: string;
-  analysis?: string;
-  analysis_text?: string;
-  ai_analysis?: string;
   chain?: string;
   ts?: string;
 }
@@ -78,21 +76,33 @@ function explorerFor(chain?: string, tokenAddress?: string) {
 }
 
 function scoreTone(score?: number) {
-  if ((score ?? 0) >= 80) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if ((score ?? 0) >= 85) return 'bg-emerald-600 text-white border-emerald-600';
+  if ((score ?? 0) >= 75) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
   if ((score ?? 0) >= 65) return 'bg-blue-50 text-blue-700 border-blue-200';
   return 'bg-zinc-50 text-zinc-600 border-zinc-200';
 }
 
 function scoreLabel(score?: number) {
-  if ((score ?? 0) >= 80) return 'Forte';
-  if ((score ?? 0) >= 65) return 'Boa';
-  return 'Observação';
+  if ((score ?? 0) >= 85) return 'Muito forte';
+  if ((score ?? 0) >= 75) return 'Forte';
+  if ((score ?? 0) >= 65) return 'Bom';
+  return 'Observar';
 }
 
-function scoreAccent(score?: number) {
-  if ((score ?? 0) >= 80) return 'border-l-emerald-500';
-  if ((score ?? 0) >= 65) return 'border-l-blue-500';
-  return 'border-l-zinc-300';
+function scoreSurface(score?: number) {
+  if ((score ?? 0) >= 85) return 'from-emerald-50 to-white ring-emerald-200';
+  if ((score ?? 0) >= 75) return 'from-blue-50 to-white ring-blue-200';
+  if ((score ?? 0) >= 65) return 'from-slate-50 to-white ring-slate-200';
+  return 'from-white to-zinc-50 ring-zinc-200';
+}
+
+function chainLabel(chain?: string) {
+  const c = (chain || '').toLowerCase();
+  if (c === 'bsc') return 'BNB';
+  if (c === 'avalanche') return 'AVAX';
+  if (c === 'ethereum') return 'ETH';
+  if (c === 'solana') return 'Solana';
+  return chain || '';
 }
 
 function shortDate(value?: string) {
@@ -137,8 +147,8 @@ export function PredictionsPanel() {
   const { active } = useChatHistoryContext();
 
   const hasMessages = (active?.messages?.length ?? 0) > 0;
-  const title = lang === 'pt' ? 'Previsões de Listing' : 'Listing Predictions';
-  const visibleItems = expanded ? items : items.slice(0, 3);
+  const title = lang === 'pt' ? 'Radar de Listings' : 'Listing Radar';
+  const visibleItems = expanded ? items.slice(0, 10) : items.slice(0, 3);
 
   useEffect(() => {
     let mounted = true;
@@ -161,25 +171,30 @@ export function PredictionsPanel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-4 z-30 hidden w-80 sm:block">
-      <div aria-label={title} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md">
-        <div className="border-b border-zinc-100 px-3 py-2.5">
+    <div className="fixed right-4 top-4 z-30 hidden w-[21rem] sm:block">
+      <div aria-label={title} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
+        <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-700">{title}</div>
-              <div className="mt-0.5 text-[10px] text-zinc-500">
-                {lang === 'pt' ? 'Sinais on-chain em exchanges' : 'On-chain exchange signals'}
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <Radar className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">{title}</div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">
+                  {lang === 'pt' ? 'Wallets de exchanges monitorizadas' : 'Monitored exchange wallets'}
+                </div>
               </div>
             </div>
             {items.length > 0 ? (
-              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-zinc-600 ring-1 ring-zinc-200">
                 {items.length}
               </span>
             ) : null}
           </div>
         </div>
 
-        <div className="max-h-56 space-y-2 overflow-auto p-3 sm:max-h-80">
+        <div className="max-h-[22rem] space-y-2.5 overflow-auto p-3">
           {loading ? (
             <div className="text-xs text-zinc-500">A carregar...</div>
           ) : items.length === 0 ? (
@@ -191,6 +206,7 @@ export function PredictionsPanel() {
               const updatedAt = shortDate(h.ts);
               const exchange = displayExchange(h.exchange);
               const explorer = explorerFor(h.chain, h.token_address);
+              const chain = chainLabel(h.chain);
               const metrics = [
                 metric('Valor', h.value_usd),
                 metric('Liquidez', h.liquidity),
@@ -200,28 +216,29 @@ export function PredictionsPanel() {
               return (
                 <div
                   key={h.id || `${h.token}-${h.exchange}`}
-                  className={`rounded-lg border border-l-4 border-zinc-200 bg-white p-2.5 text-xs shadow-sm ${scoreAccent(h.score)}`}
+                  className={`rounded-xl bg-linear-to-br p-3 text-xs shadow-sm ring-1 ${scoreSurface(h.score)}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate font-semibold text-zinc-900">{h.token}</div>
+                      <div className="truncate text-sm font-bold text-zinc-950">{h.token}</div>
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-500">
                         <span>{exchange}</span>
+                        {chain ? <span>{chain}</span> : null}
                         {updatedAt ? <span>{updatedAt}</span> : null}
                       </div>
                     </div>
                     {h.score ? (
-                      <div className={`shrink-0 rounded-md border px-2 py-1 text-right ${scoreTone(h.score)}`}>
+                      <div className={`shrink-0 rounded-lg border px-2 py-1.5 text-right shadow-sm ${scoreTone(h.score)}`}>
                         <div className="text-[10px] font-semibold leading-none">{h.score.toFixed(0)}/100</div>
-                        <div className="mt-0.5 text-[9px] font-medium leading-none opacity-75">{scoreLabel(h.score)}</div>
+                        <div className="mt-0.5 text-[9px] font-medium leading-none opacity-80">{scoreLabel(h.score)}</div>
                       </div>
                     ) : null}
                   </div>
 
                   {metrics.length > 0 && (
-                    <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    <div className="mt-3 grid grid-cols-3 gap-1.5">
                       {metrics.map((m) => (
-                        <div key={m.label} className="rounded-md bg-zinc-50 px-2 py-1">
+                        <div key={m.label} className="rounded-lg bg-white/75 px-2 py-1.5 ring-1 ring-zinc-100">
                           <div className="text-[9px] uppercase tracking-wide text-zinc-400">{m.label}</div>
                           <div className="truncate text-[11px] font-medium text-zinc-700">{m.value}</div>
                         </div>
@@ -229,10 +246,10 @@ export function PredictionsPanel() {
                     </div>
                   )}
 
-                  <div className="mt-2 flex flex-wrap gap-2 border-t border-zinc-100 pt-2">
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-200/70 pt-2.5">
                     {h.pair_url && (
-                      <a href={h.pair_url} target="_blank" rel="noopener noreferrer" className="text-[10px] underline text-emerald-600">
-                        DexScreener
+                      <a href={h.pair_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-100">
+                        DexScreener <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     )}
                     {explorer && (
@@ -240,18 +257,18 @@ export function PredictionsPanel() {
                         href={explorer.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[10px] underline text-emerald-600"
+                        className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-medium text-zinc-700 ring-1 ring-zinc-100"
                       >
-                        {explorer.label}
+                        {explorer.label} <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     )}
                     <a
                       href={`https://www.coingecko.com/en/search?query=${encodeURIComponent(h.token)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] underline text-emerald-600"
+                      className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-medium text-zinc-700 ring-1 ring-zinc-100"
                     >
-                      CoinGecko
+                      CoinGecko <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   </div>
                 </div>
@@ -262,11 +279,12 @@ export function PredictionsPanel() {
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100"
             >
+              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               {expanded
                 ? (lang === 'pt' ? 'Ver menos' : 'Show less')
-                : (lang === 'pt' ? `Ver mais ${items.length - 3}` : `Show ${items.length - 3} more`)}
+                : (lang === 'pt' ? 'Ver mais sinais' : 'Show more signals')}
             </button>
           ) : null}
         </div>

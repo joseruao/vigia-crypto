@@ -245,7 +245,7 @@ export function ChatWindow() {
       };
 
   return (
-    <div className="flex h-screen min-h-screen flex-col bg-white supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
+    <div className="flex h-screen min-h-screen flex-col bg-[radial-gradient(circle_at_50%_12%,#f4f7fb_0,#ffffff_34rem)] supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
       {/* Área das mensagens */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!hasMessages && !loading ? (
@@ -270,10 +270,10 @@ export function ChatWindow() {
                 >
                   <div className={`max-w-[92%] sm:max-w-[85%] ${m.role === 'user' ? '' : 'w-full'}`}>
                     <div
-                      className={`rounded-2xl px-4 py-2.5 text-[0.92rem] leading-relaxed shadow-sm ${
+                      className={`chat-message rounded-2xl px-4 py-3 text-[0.92rem] leading-relaxed shadow-sm ${
                         m.role === 'user'
                           ? 'bg-blue-600 text-white'
-                          : 'bg-gray-50 text-gray-800 border border-gray-200'
+                          : 'border border-zinc-200 bg-white text-zinc-800 shadow-zinc-100'
                       }`}
                     >
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -333,7 +333,7 @@ export function ChatWindow() {
             <button
               onClick={() => sendMessage()}
               disabled={!input.trim() || loading}
-              className="mb-0.5 rounded-full p-2 text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="mb-0.5 rounded-full p-2 transition-colors enabled:bg-blue-600 enabled:text-white enabled:hover:bg-blue-700 disabled:text-gray-300 disabled:cursor-not-allowed"
               title="Enviar mensagem"
             >
               <Send className="h-4 w-4" />
