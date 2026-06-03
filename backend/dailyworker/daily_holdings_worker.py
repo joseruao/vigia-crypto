@@ -617,24 +617,24 @@ async def get_solana_holdings(wallet_address, wallet_name):
 def _evm_api_config(chain):
     chain = chain or "ethereum"
     if chain == "bsc":
-        if ETHERSCAN_API_KEY:
-            return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "56"
-        return "https://api.bscscan.com/api", BSCSCAN_API_KEY, None
+        if BSCSCAN_API_KEY:
+            return "https://api.bscscan.com/api", BSCSCAN_API_KEY, None
+        return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "56"
     if chain == "avalanche":
-        if ETHERSCAN_API_KEY:
-            return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "43114"
-        return "https://api.snowscan.xyz/api", SNOWSCAN_API_KEY, None
-    return "https://api.etherscan.io/api", ETHERSCAN_API_KEY, None
+        if SNOWSCAN_API_KEY:
+            return "https://api.snowscan.xyz/api", SNOWSCAN_API_KEY, None
+        return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "43114"
+    return "https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "1"
 
 
 def _evm_api_configs(chain):
     """Primary API plus optional fallback for chain-specific explorers."""
     primary = _evm_api_config(chain)
     configs = [primary]
-    if chain == "bsc" and ETHERSCAN_API_KEY and BSCSCAN_API_KEY:
-        configs.append(("https://api.bscscan.com/api", BSCSCAN_API_KEY, None))
-    if chain == "avalanche" and ETHERSCAN_API_KEY and SNOWSCAN_API_KEY:
-        configs.append(("https://api.snowscan.xyz/api", SNOWSCAN_API_KEY, None))
+    if chain == "bsc" and ETHERSCAN_API_KEY and primary[0] != "https://api.etherscan.io/v2/api":
+        configs.append(("https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "56"))
+    if chain == "avalanche" and ETHERSCAN_API_KEY and primary[0] != "https://api.etherscan.io/v2/api":
+        configs.append(("https://api.etherscan.io/v2/api", ETHERSCAN_API_KEY, "43114"))
     return configs
 
 
@@ -1131,6 +1131,13 @@ async def update_listed_tokens():
 async def main():
     """Worker principal melhorado com métricas e resiliência"""
     metrics.start()
+    evm_key_status = (
+        "EVM API keys: "
+        f"ETHERSCAN={'ON' if ETHERSCAN_API_KEY else 'OFF'} | "
+        f"BSCSCAN={'ON' if BSCSCAN_API_KEY else 'OFF'} | "
+        f"SNOWSCAN/SNOWTRACE={'ON' if SNOWSCAN_API_KEY else 'OFF'}"
+    )
+    print(evm_key_status)
     
     print("🤖 WORKER DIÁRIO UNIFICADO - INICIADO")
     print("==================================================")

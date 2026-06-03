@@ -458,10 +458,11 @@ def test_daily_holdings_etherscan_v2_chainids_are_configured(monkeypatch):
     monkeypatch.setattr(worker, "BSCSCAN_API_KEY", "bsc-key")
     monkeypatch.setattr(worker, "SNOWSCAN_API_KEY", "snow-key")
 
-    assert worker._evm_api_config("bsc") == ("https://api.etherscan.io/v2/api", "test-key", "56")
-    assert worker._evm_api_config("avalanche") == ("https://api.etherscan.io/v2/api", "test-key", "43114")
-    assert worker._evm_api_configs("bsc")[1] == ("https://api.bscscan.com/api", "bsc-key", None)
-    assert worker._evm_api_configs("avalanche")[1] == ("https://api.snowscan.xyz/api", "snow-key", None)
+    assert worker._evm_api_config("ethereum") == ("https://api.etherscan.io/v2/api", "test-key", "1")
+    assert worker._evm_api_config("bsc") == ("https://api.bscscan.com/api", "bsc-key", None)
+    assert worker._evm_api_config("avalanche") == ("https://api.snowscan.xyz/api", "snow-key", None)
+    assert worker._evm_api_configs("bsc")[1] == ("https://api.etherscan.io/v2/api", "test-key", "56")
+    assert worker._evm_api_configs("avalanche")[1] == ("https://api.etherscan.io/v2/api", "test-key", "43114")
 
 def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
     from dailyworker import daily_holdings_worker as worker
