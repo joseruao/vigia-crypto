@@ -72,6 +72,7 @@ def _rows():
         },
         {
             "symbol": "SAFE",
+            "coin_id": "safe-token",
             "score": 70,
             "risk": "BAIXO/MODERADO",
             "current_position": 30,
@@ -158,7 +159,9 @@ def test_format_top100_block_contains_actionable_fields():
     block = alerts._format_top100_block(1, _rows()[1], "near_support")
 
     assert "SAFE" in block
+    assert "Preço atual" in block
     assert "Entrada" in block or "Suporte" in block
+    assert "coingecko.com/en/coins/safe-token" in block
 
 
 def test_merge_prediction_backfill_deduplicates_by_exchange_token_chain():

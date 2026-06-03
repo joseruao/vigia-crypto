@@ -200,6 +200,44 @@ def test_top100_answer_filters_stablecoins(monkeypatch):
     assert "SOL" in data["answer"]
     assert "USDT" not in data["answer"]
 
+def test_predictions_filter_stable_fiat_tokens(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {
+                    "exchange": "Upbit",
+                    "token": "EURC",
+                    "token_address": "0xeurc",
+                    "chain": "ethereum",
+                    "score": 92,
+                    "ts": "2026-06-03T12:00:00+00:00",
+                    "value_usd": 1_000_000,
+                    "liquidity": 5_000_000,
+                },
+                {
+                    "exchange": "Gate.io",
+                    "token": "ALPHA",
+                    "token_address": "0xalpha",
+                    "chain": "ethereum",
+                    "score": 75,
+                    "ts": "2026-06-03T12:00:00+00:00",
+                    "value_usd": 300_000,
+                    "liquidity": 2_000_000,
+                },
+            ]
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    client = TestClient(app)
+    r = client.post("/alerts/ask", json={"prompt": "que tokens vao ser listados?"})
+    answer = r.json()["answer"]
+    assert "ALPHA" in answer
+    assert "EURC" not in answer
+
 def test_top100_risk_question_sorts_by_low_risk(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
@@ -385,7 +423,7 @@ def test_daily_holdings_upsert_keeps_exchange_dimension(monkeypatch):
     from dailyworker import daily_holdings_worker as worker
 
     calls = []
-    monkeypatch.setattr(worker, "supabase_upsert", lambda *args: calls.append(args) or True)
+    monkeypatch.setattr(worker, "supabase_upsert", lambda *args, **kwargs: calls.append(args) or True)
 
     ok = worker.save_holding_to_supabase(
         {
@@ -414,7 +452,7 @@ def test_daily_holdings_upsert_falls_back_before_schema_migration(monkeypatch):
     monkeypatch.setattr(
         worker,
         "supabase_upsert",
-        lambda *args: calls.append(args) or len(calls) > 1,
+        lambda *args, **kwargs: calls.append(args) or len(calls) > 1,
     )
 
     ok = worker.save_holding_to_supabase(
@@ -463,6 +501,27 @@ def test_daily_holdings_etherscan_v2_chainids_are_configured(monkeypatch):
     assert worker._evm_api_config("avalanche") == ("https://api.snowscan.xyz/api", "snow-key", None)
     assert worker._evm_api_configs("bsc")[1] == ("https://api.etherscan.io/v2/api", "test-key", "56")
     assert worker._evm_api_configs("avalanche")[1] == ("https://api.etherscan.io/v2/api", "test-key", "43114")
+
+def test_daily_holdings_dexscreener_handles_null_pairs(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"pairs": None}
+
+    monkeypatch.setattr(worker.requests, "get", lambda *args, **kwargs: Response())
+
+    data = worker.get_token_data_dexscreener("0xabc", chain="ethereum")
+    assert data["symbol"] == "UNKNOWN"
+    assert data["price"] == 0
+
+def test_daily_holdings_filters_stable_fiat_symbols():
+    from dailyworker import daily_holdings_worker as worker
+
+    assert worker.is_stable_or_wrapped_token("EURC") is True
+    assert worker.is_stable_or_wrapped_token("USD1") is True
+    assert worker.is_stable_or_wrapped_token("ALPHA") is False
 
 def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
     from dailyworker import daily_holdings_worker as worker

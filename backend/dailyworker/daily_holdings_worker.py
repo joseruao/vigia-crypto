@@ -144,6 +144,11 @@ MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
 MIN_SCORE_SAVE = 50      # Guardar mais candidatos para o painel de predictions
 MIN_SCORE_ALERT = 70     # Telegram para candidatos bons e ainda nao listados
 _LIVE_LISTING_CACHE = {}
+STABLE_OR_FIAT_SYMBOLS = {
+    "USDT", "USDC", "DAI", "BUSD", "TUSD", "FDUSD", "USDE", "USDS", "PYUSD",
+    "USD1", "EURC", "EUROC", "EURI", "EURT", "EURQ", "PAXG", "WBTC", "WETH",
+    "STETH", "WSTETH", "RETH", "CBETH",
+}
 
 # ===========================
 # WALLETS
@@ -313,7 +318,7 @@ def supabase_insert(table, data):
         print(f"❌ Erro Supabase insert: {e}")
         return False
 
-def supabase_upsert(table, data, conflict_columns):
+def supabase_upsert(table, data, conflict_columns, log_errors=True):
     """Upsert na Supabase"""
     try:
         url = f"{SUPABASE_URL}/rest/v1/{table}"
@@ -326,10 +331,12 @@ def supabase_upsert(table, data, conflict_columns):
         response = requests.post(url, headers=headers, json=data, timeout=10)
         if response.status_code in [200, 201, 204]:
             return True
-        print(f"Erro Supabase upsert {table}: HTTP {response.status_code} - {response.text[:200]}")
+        if log_errors:
+            print(f"Erro Supabase upsert {table}: HTTP {response.status_code} - {response.text[:200]}")
         return False
     except Exception as e:
-        print(f"❌ Erro Supabase upsert: {e}")
+        if log_errors:
+            print(f"❌ Erro Supabase upsert: {e}")
         return False
 
 # ===========================
@@ -383,7 +390,7 @@ def get_token_data_dexscreener(token_address, chain=None):
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            pairs = data.get('pairs', [])
+            pairs = data.get('pairs') or []
             if chain:
                 chain_aliases = {
                     "ethereum": {"ethereum", "ether"},
@@ -399,12 +406,21 @@ def get_token_data_dexscreener(token_address, chain=None):
                     pairs = filtered_pairs
             if pairs:
                 # Escolher o par com maior liquidez
-                best_pair = max(pairs, key=lambda x: float(x.get('liquidity', {}).get('usd', 0)))
+                def _pair_liquidity(pair):
+                    liquidity = pair.get("liquidity") or {}
+                    if not isinstance(liquidity, dict):
+                        return 0.0
+                    try:
+                        return float(liquidity.get("usd") or 0)
+                    except (TypeError, ValueError):
+                        return 0.0
+
+                best_pair = max(pairs, key=_pair_liquidity)
                 
                 # Extrair dados de forma segura
-                liquidity_data = best_pair.get('liquidity', {})
-                volume_data = best_pair.get('volume', {})
-                price_change_data = best_pair.get('priceChange', {})
+                liquidity_data = best_pair.get('liquidity') or {}
+                volume_data = best_pair.get('volume') or {}
+                price_change_data = best_pair.get('priceChange') or {}
                 
                 return {
                     'symbol': best_pair.get('baseToken', {}).get('symbol', 'UNKNOWN'),
@@ -468,6 +484,11 @@ def is_token_listed_on_exchange(token_symbol, exchange_name):
     except Exception as e:
         print(f"   ❌ Erro ao verificar listing: {e}")
         return False
+
+def is_stable_or_wrapped_token(symbol):
+    normalized = (symbol or "").strip().upper().lstrip("$")
+    return normalized in STABLE_OR_FIAT_SYMBOLS
+
 
 def calculate_holding_score(holding_data, exchange_name):
     """Calcula score REALISTA para holdings"""
@@ -565,6 +586,8 @@ async def get_solana_holdings(wallet_address, wallet_name):
                         
                         # Buscar dados do token
                         token_data = get_token_data_dexscreener(mint)
+                        if is_stable_or_wrapped_token(token_data.get("symbol")):
+                            continue
                         price = token_data['price']
                         value_usd = balance * price
                         
@@ -705,7 +728,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                             continue
                         processed_tokens.add(token_address)
                         stats["unique_contracts"] += 1
-                        if symbol.upper() in ["ETH", "BNB", "AVAX", "USDT", "USDC", "DAI", "BUSD", "TUSD"]:
+                        if symbol.upper() in ["ETH", "BNB", "AVAX"] or is_stable_or_wrapped_token(symbol):
                             stats["skipped_native_stable"] += 1
                             continue
                         
@@ -730,6 +753,9 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                                 
                                 if balance > 0:
                                     token_data = get_token_data_dexscreener(token_address, chain=chain)
+                                    if is_stable_or_wrapped_token(token_data.get("symbol")):
+                                        stats["skipped_native_stable"] += 1
+                                        continue
                                     if token_data["price"] > 0 and token_data['symbol'] != 'UNKNOWN':
                                         value_usd = balance * token_data["price"]
                                         
@@ -965,7 +991,12 @@ def save_holding_to_supabase(holding_data, exchange_name):
         
         # Guardar um snapshot por token/exchange. Se a migration ainda nao tiver
         # sido aplicada no Supabase, mantemos fallback para nao partir o cron.
-        success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain", "exchange"])
+        success = supabase_upsert(
+            "transacted_tokens",
+            payload,
+            ["token_address", "type", "chain", "exchange"],
+            log_errors=False,
+        )
         if not success:
             print("   ⚠️ Upsert com exchange falhou; fallback para unique antiga token/type/chain")
             success = supabase_upsert("transacted_tokens", payload, ["token_address", "type", "chain"])

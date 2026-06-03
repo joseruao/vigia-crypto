@@ -59,6 +59,7 @@ TEST_TOKENS = {"TEST", "FOO", "PNUT"}
 TOP100_EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
+    "EURC", "EUROC", "EURI", "EURT", "EURQ",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
     "PAXG", "XAUT",
 }
@@ -298,6 +299,16 @@ def _mode_label(mode: str) -> str:
     return "Melhor Setup"
 
 
+def _coingecko_link(item: Dict[str, Any]) -> str:
+    coin_id = str(item.get("coin_id") or "").strip()
+    symbol = str(item.get("symbol") or "").strip()
+    if coin_id:
+        return f"https://www.coingecko.com/en/coins/{coin_id}"
+    if symbol:
+        return f"https://www.coingecko.com/en/search?query={symbol}"
+    return ""
+
+
 def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
     symbol = item.get("symbol") or "N/A"
     name = item.get("name") or symbol
@@ -320,6 +331,10 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
     mode_lbl = _mode_label(mode)
     mode_part = f" ({mode_lbl})" if mode != "score" else ""
     lines = [f"**{i}. {symbol} — {name}**{mode_part}"]
+    if price:
+        lines.append(f"**Preço atual:** {_fmt_money(price)}")
+    else:
+        lines.append("**Preço atual:** N/A")
 
     # Suporte / Resistência
     if support and resistance:
@@ -339,8 +354,8 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
             lines.append(f"⚠️ Perto da resistência **{res_fmt}** — não perseguir")
         else:
             lines.append(f"🟢 Suporte: **{sup_fmt}** · 🔴 Resistência: **{res_fmt}**{rr_str}")
-    elif price:
-        lines.append(f"Preço atual: **{_fmt_money(price)}**")
+    elif not price:
+        lines.append("Sem preço suficiente para calcular entrada/alvo.")
 
     # Sinais
     signals = []
@@ -378,6 +393,10 @@ def _format_top100_block(i: int, item: Dict[str, Any], mode: str) -> str:
             lines.append(f"⏳ Zona neutra — vigiar teste ao suporte **{_fmt_money(support)}**.")
         else:
             lines.append("⏳ Zona neutra — aguardar setup mais claro.")
+
+    cg_url = _coingecko_link(item)
+    if cg_url:
+        lines.append(f"[Ver no CoinGecko]({cg_url})")
 
     return "\n".join(lines)
 
@@ -433,11 +452,14 @@ def _format_top100_block_en(i: int, item: Dict[str, Any], mode: str) -> str:
     risk = item.get("risk") or "N/A"
     entry_zone = item.get("entry_zone") or ""
     macd = item.get("macd_signal") or "NEUTRAL"
+    price = item.get("price")
     lines = [f"**{i}. {symbol} - {name}**"]
+    if price:
+        lines.append(f"Current price: **{_fmt_money(price)}**")
+    else:
+        lines.append("Current price: **N/A**")
     if support and resistance:
         lines.append(f"Entry area: **{_fmt_money(support)}** - Target area: **{_fmt_money(resistance)}** - R/R {_risk_reward_ratio(item):.1f}x")
-    elif item.get("price"):
-        lines.append(f"Current price: **{_fmt_money(item.get('price'))}**")
     details = []
     if rsi is not None:
         details.append(f"RSI {float(rsi):.0f}")
@@ -452,6 +474,9 @@ def _format_top100_block_en(i: int, item: Dict[str, Any], mode: str) -> str:
         lines.append("Read: close to resistance; avoid chasing, wait for pullback.")
     else:
         lines.append("Read: neutral area; wait for a clearer setup.")
+    cg_url = _coingecko_link(item)
+    if cg_url:
+        lines.append(f"[Open CoinGecko]({cg_url})")
     return "\n".join(lines)
 
 def _fetch_top100_rows(date_filter: str | None, log=None) -> tuple[list, bool]:
@@ -606,6 +631,7 @@ def _is_test_token(row: Dict[str, Any]) -> bool:
     )
     return (
         token in TEST_TOKENS
+        or token in TOP100_EXCLUDED_SYMBOLS
         or token_address.startswith("test")
         or "/test" in pair_url
         or "registo de teste" in analysis
