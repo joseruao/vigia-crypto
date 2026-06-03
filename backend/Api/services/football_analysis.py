@@ -127,6 +127,66 @@ def _format_api_football_fixture(fixture: dict, team_id: int | None = None) -> s
     )
 
 
+def _pick_latest_competition(leagues: list[dict] | None) -> tuple[dict, dict] | None:
+    candidates: list[tuple[int, dict, dict]] = []
+    for item in leagues or []:
+        league = item.get("league") or {}
+        seasons = item.get("seasons") or []
+        for season in seasons:
+            year = season.get("year")
+            if year:
+                current_bonus = 10_000 if season.get("current") else 0
+                candidates.append((int(year) + current_bonus, league, season))
+    if not candidates:
+        return None
+    _score, league, season = max(candidates, key=lambda item: item[0])
+    return league, season
+
+
+def _format_team_statistics(stats: dict) -> list[str]:
+    if not stats:
+        return []
+
+    fixtures = stats.get("fixtures") or {}
+    goals = stats.get("goals") or {}
+    clean_sheet = stats.get("clean_sheet") or {}
+    failed_to_score = stats.get("failed_to_score") or {}
+    cards = stats.get("cards") or {}
+    biggest = stats.get("biggest") or {}
+
+    played = (fixtures.get("played") or {}).get("total")
+    wins = (fixtures.get("wins") or {}).get("total")
+    draws = (fixtures.get("draws") or {}).get("total")
+    loses = (fixtures.get("loses") or {}).get("total")
+    goals_for = ((goals.get("for") or {}).get("total") or {}).get("total")
+    goals_against = ((goals.get("against") or {}).get("total") or {}).get("total")
+    avg_for = ((goals.get("for") or {}).get("average") or {}).get("total")
+    avg_against = ((goals.get("against") or {}).get("average") or {}).get("total")
+    clean_total = (clean_sheet or {}).get("total")
+    failed_total = (failed_to_score or {}).get("total")
+
+    lines = [
+        f"- Record: played {played or 0}, wins {wins or 0}, draws {draws or 0}, losses {loses or 0}",
+        f"- Goals: scored {goals_for or 0} ({avg_for or 'n/a'} avg), conceded {goals_against or 0} ({avg_against or 'n/a'} avg)",
+        f"- Clean sheets: {clean_total or 0}; failed to score: {failed_total or 0}",
+    ]
+
+    streak = biggest.get("streak") or {}
+    if streak:
+        lines.append(
+            f"- Streaks: wins {streak.get('wins') or 0}, draws {streak.get('draws') or 0}, losses {streak.get('loses') or 0}"
+        )
+
+    card_total = 0
+    for colour in ("yellow", "red"):
+        for bucket in (cards.get(colour) or {}).values():
+            card_total += int((bucket or {}).get("total") or 0)
+    if card_total:
+        lines.append(f"- Cards total: {card_total}")
+
+    return lines
+
+
 def _format_fixture_statistics(stats: list[dict]) -> list[str]:
     wanted = {
         "Shots on Goal",
@@ -200,9 +260,49 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
     team_id = team.get("id")
     resolved_name = team.get("name") or clean_name
     current_season = date.today().year
+    league: dict = {}
+    season: dict = {}
+    league_id = None
+    season_year = current_season
 
-    fixtures = (_api_football_get("fixtures", {"team": team_id, "last": 5}).get("response") or []) if team_id else []
-    next_fixtures = (_api_football_get("fixtures", {"team": team_id, "next": 3}).get("response") or []) if team_id else []
+    try:
+        league_items = _api_football_get("leagues", {"team": team_id}).get("response") or []
+        picked_competition = _pick_latest_competition(league_items)
+        if picked_competition:
+            league, season = picked_competition
+            league_id = league.get("id")
+            season_year = season.get("year") or current_season
+    except requests.RequestException:
+        league_items = []
+
+    fixture_params = {"team": team_id, "last": 8}
+    next_fixture_params = {"team": team_id, "next": 4}
+    if league_id:
+        fixture_params.update({"league": league_id, "season": season_year})
+        next_fixture_params.update({"league": league_id, "season": season_year})
+
+    fixtures = (_api_football_get("fixtures", fixture_params).get("response") or []) if team_id else []
+    next_fixtures = (_api_football_get("fixtures", next_fixture_params).get("response") or []) if team_id else []
+
+    if not fixtures:
+        for fallback_season in [current_season, current_season - 1, current_season - 2]:
+            fallback_params = {"team": team_id, "season": fallback_season, "last": 8}
+            if league_id:
+                fallback_params["league"] = league_id
+            fixtures = _api_football_get("fixtures", fallback_params).get("response") or []
+            if fixtures:
+                season_year = fallback_season
+                break
+
+    team_statistics: dict = {}
+    if team_id and league_id:
+        try:
+            team_statistics = _api_football_get(
+                "teams/statistics",
+                {"team": team_id, "league": league_id, "season": season_year},
+            ).get("response") or {}
+        except requests.RequestException:
+            team_statistics = {}
 
     squad: list[dict] = []
     try:
@@ -214,7 +314,10 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
 
     injuries: list[dict] = []
     try:
-        injuries = _api_football_get("injuries", {"team": team_id, "season": current_season}).get("response") or []
+        injury_params = {"team": team_id, "season": season_year}
+        if league_id:
+            injury_params["league"] = league_id
+        injuries = _api_football_get("injuries", injury_params).get("response") or []
     except requests.RequestException:
         injuries = []
 
@@ -224,8 +327,16 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
         f"Founded: {team.get('founded') or 'Unknown'}",
         f"Venue: {venue.get('name') or 'Unknown'}",
         f"Venue capacity: {venue.get('capacity') or 'Unknown'}",
+        f"Competition: {league.get('name') or 'Unknown'}",
+        f"Season: {season_year}",
         f"Data provider: API-Football/API-Sports",
     ]
+
+    team_stat_lines = _format_team_statistics(team_statistics)
+    if team_stat_lines:
+        lines.append("")
+        lines.append("Season team statistics:")
+        lines.extend(team_stat_lines)
 
     if fixtures:
         lines.append("")

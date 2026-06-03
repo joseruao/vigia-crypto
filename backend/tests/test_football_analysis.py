@@ -128,7 +128,18 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
                     }
                 ]
             }
+        if path == "leagues":
+            return {
+                "response": [
+                    {
+                        "league": {"id": 71, "name": "Brazilian Serie A"},
+                        "seasons": [{"year": 2026, "current": True}],
+                    }
+                ]
+            }
         if path == "fixtures" and (params or {}).get("last"):
+            assert (params or {}).get("league") == 71
+            assert (params or {}).get("season") == 2026
             return {
                 "response": [
                     {
@@ -141,6 +152,27 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
             }
         if path == "fixtures" and (params or {}).get("next"):
             return {"response": []}
+        if path == "teams/statistics":
+            assert (params or {}).get("league") == 71
+            assert (params or {}).get("season") == 2026
+            return {
+                "response": {
+                    "fixtures": {
+                        "played": {"total": 10},
+                        "wins": {"total": 6},
+                        "draws": {"total": 2},
+                        "loses": {"total": 2},
+                    },
+                    "goals": {
+                        "for": {"total": {"total": 18}, "average": {"total": "1.8"}},
+                        "against": {"total": {"total": 9}, "average": {"total": "0.9"}},
+                    },
+                    "clean_sheet": {"total": 4},
+                    "failed_to_score": {"total": 1},
+                    "biggest": {"streak": {"wins": 3, "draws": 1, "loses": 1}},
+                    "cards": {"yellow": {}, "red": {}},
+                }
+            }
         if path == "fixtures/statistics":
             return {
                 "response": [
@@ -175,6 +207,9 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
     context = fetch_team_context("Cruzeiro")
 
     assert context.source == "API-Football"
+    assert "Competition: Brazilian Serie A" in context.stats
+    assert "Season team statistics" in context.stats
+    assert "Record: played 10, wins 6, draws 2, losses 2" in context.stats
     assert "Last 5 matches" in context.stats
     assert "Ball Possession: 57%" in context.stats
     assert "Player Injured" in context.stats
