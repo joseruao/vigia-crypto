@@ -114,7 +114,13 @@ def _pick_api_football_team(items: list[dict] | None) -> tuple[dict, dict] | Non
 
 
 def _team_search_terms(team_name: str) -> list[str]:
-    raw = team_name.strip()
+    raw = team_name.strip().strip("'\"`´“”‘’")
+    aliases = {
+        "benfica": ["Benfica", "SL Benfica", "Sport Lisboa Benfica"],
+        "porto": ["Porto", "FC Porto"],
+        "fc porto": ["FC Porto", "Porto"],
+        "cruzeiro": ["Cruzeiro"],
+    }
     parts = [raw]
     for separator in ["/", "\\", "|", " vs ", " v ", " - ", ","]:
         if separator in raw.lower():
@@ -122,9 +128,16 @@ def _team_search_terms(team_name: str) -> list[str]:
                 split_parts = raw.lower().split(separator.strip())
             else:
                 split_parts = raw.split(separator)
-            parts.extend(part.strip() for part in split_parts if part.strip())
-    seen = []
+            parts.extend(part.strip().strip("'\"`´“”‘’") for part in split_parts if part.strip())
+
+    expanded = []
     for part in parts:
+        clean_part = part.strip()
+        expanded.append(clean_part)
+        expanded.extend(aliases.get(clean_part.lower(), []))
+
+    seen = []
+    for part in expanded:
         clean = part.strip()
         if clean and clean.lower() not in [item.lower() for item in seen]:
             seen.append(clean)
@@ -370,16 +383,26 @@ def _normalise_team_name(value: str | None) -> str:
 
 
 def _find_football_data_team_id(team_name: str) -> int | None:
+    search_terms = _team_search_terms(team_name)
     try:
         teams = _football_data_get("teams").get("teams") or []
     except Exception:
-        return None
+        teams = []
 
-    wanted = _normalise_team_name(team_name)
-    for team in teams:
-        names = [team.get("name"), team.get("shortName"), team.get("tla")]
-        if any(wanted and wanted in _normalise_team_name(name) for name in names):
-            return team.get("id")
+    competition_codes = ["PPL", "CL", "PL", "PD", "SA", "BL1", "FL1"]
+    for code in competition_codes:
+        try:
+            teams.extend((_football_data_get(f"competitions/{code}/teams").get("teams") or []))
+        except Exception:
+            continue
+
+    for term in search_terms:
+        wanted = _normalise_team_name(term)
+        for team in teams:
+            names = [team.get("name"), team.get("shortName"), team.get("tla")]
+            normalised_names = [_normalise_team_name(name) for name in names]
+            if any(wanted and (wanted in name or name in wanted) for name in normalised_names):
+                return team.get("id")
     return None
 
 

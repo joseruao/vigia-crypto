@@ -379,7 +379,11 @@ def test_fetch_team_context_uses_football_data_matches_when_api_football_fixture
 
     def fake_football_data_get(path, params=None):
         if path == "teams":
+            return {"teams": []}
+        if path == "competitions/PPL/teams":
             return {"teams": [{"id": 1903, "name": "SL Benfica", "shortName": "Benfica", "tla": "BEN"}]}
+        if path.startswith("competitions/"):
+            return {"teams": []}
         if path == "teams/1903/matches":
             return {
                 "matches": [
@@ -475,6 +479,17 @@ def test_fetch_team_context_accepts_slash_separated_team_names(monkeypatch):
     assert "Player A" in context.stats
     assert "New" in context.stats
     assert "Old" not in context.stats
+
+
+def test_team_search_terms_strip_quotes_and_expand_aliases():
+    from Api.services.football_analysis import _team_search_terms
+
+    terms = _team_search_terms("'Benfica/porto")
+
+    assert "Benfica" in terms
+    assert "SL Benfica" in terms
+    assert "porto" in terms
+    assert "FC Porto" in terms
 
 
 def test_fetch_team_context_api_football_requires_key(monkeypatch):
