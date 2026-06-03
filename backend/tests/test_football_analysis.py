@@ -210,11 +210,79 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
     assert "Competition: Brazilian Serie A" in context.stats
     assert "Season team statistics" in context.stats
     assert "Record: played 10, wins 6, draws 2, losses 2" in context.stats
-    assert "Last 5 matches" in context.stats
+    assert "Recent matches" in context.stats
     assert "Ball Possession: 57%" in context.stats
     assert "Player Injured" in context.stats
     assert "Cássio" in context.stats
     assert any(path == "injuries" for path, _params in calls)
+
+
+def test_fetch_team_context_falls_back_to_team_only_fixtures(monkeypatch):
+    from Api.services import football_analysis
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+
+    def fake_api_get(path, params=None):
+        params = params or {}
+        if path == "teams":
+            return {
+                "response": [
+                    {
+                        "team": {"id": 1, "name": "FC Porto", "country": "Portugal", "founded": 1893},
+                        "venue": {"name": "Estadio do Dragao", "capacity": 50399},
+                    }
+                ]
+            }
+        if path == "leagues":
+            return {
+                "response": [
+                    {
+                        "league": {"id": 94, "name": "Primeira Liga", "type": "League"},
+                        "seasons": [{"year": 2025, "current": True}],
+                    }
+                ]
+            }
+        if path == "fixtures" and params.get("last") and params.get("league"):
+            return {"response": []}
+        if path == "fixtures" and params.get("last") and not params.get("league"):
+            return {
+                "response": [
+                    {
+                        "fixture": {"id": 20, "date": "2026-05-18T20:00:00Z", "status": {"short": "FT"}, "venue": {"name": "Dragao"}},
+                        "league": {"id": 94, "name": "Primeira Liga", "season": 2025},
+                        "teams": {"home": {"id": 1, "name": "FC Porto"}, "away": {"id": 2, "name": "Benfica"}},
+                        "goals": {"home": 2, "away": 0},
+                    }
+                ]
+            }
+        if path == "fixtures" and params.get("next"):
+            return {"response": []}
+        if path == "teams/statistics":
+            return {
+                "response": {
+                    "fixtures": {"played": {"total": 2}, "wins": {"total": 2}, "draws": {"total": 0}, "loses": {"total": 0}},
+                    "goals": {
+                        "for": {"total": {"total": 4}, "average": {"total": "2.0"}},
+                        "against": {"total": {"total": 0}, "average": {"total": "0.0"}},
+                    },
+                    "clean_sheet": {"total": 2},
+                    "failed_to_score": {"total": 0},
+                }
+            }
+        if path == "fixtures/statistics":
+            return {"response": []}
+        if path == "players/squads":
+            return {"response": []}
+        if path == "injuries":
+            return {"response": []}
+        raise AssertionError((path, params))
+
+    monkeypatch.setattr(football_analysis, "_api_football_get", fake_api_get)
+
+    context = fetch_team_context("FC Porto")
+
+    assert "FC Porto 2-0 Benfica" in context.stats
+    assert "Record: played 2, wins 2, draws 0, losses 0" in context.stats
 
 
 def test_fetch_team_context_api_football_requires_key(monkeypatch):

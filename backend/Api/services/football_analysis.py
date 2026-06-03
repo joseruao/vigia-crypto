@@ -128,19 +128,38 @@ def _format_api_football_fixture(fixture: dict, team_id: int | None = None) -> s
 
 
 def _pick_latest_competition(leagues: list[dict] | None) -> tuple[dict, dict] | None:
-    candidates: list[tuple[int, dict, dict]] = []
+    league_priority_terms = ("liga", "league", "serie", "premier", "la liga", "bundesliga", "ligue")
+    candidates: list[tuple[int, int, dict, dict]] = []
     for item in leagues or []:
         league = item.get("league") or {}
+        league_name = (league.get("name") or "").lower()
+        league_type = (league.get("type") or "").lower()
+        priority = 1 if league_type == "league" or any(term in league_name for term in league_priority_terms) else 0
         seasons = item.get("seasons") or []
         for season in seasons:
             year = season.get("year")
             if year:
                 current_bonus = 10_000 if season.get("current") else 0
-                candidates.append((int(year) + current_bonus, league, season))
+                candidates.append((priority, int(year) + current_bonus, league, season))
     if not candidates:
         return None
-    _score, league, season = max(candidates, key=lambda item: item[0])
+    _priority, _score, league, season = max(candidates, key=lambda item: (item[0], item[1]))
     return league, season
+
+
+def _stats_played_total(stats: dict) -> int:
+    try:
+        return int((((stats.get("fixtures") or {}).get("played") or {}).get("total")) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _season_candidates(preferred: int | None, current: int) -> list[int]:
+    candidates = []
+    for value in [preferred, current, current - 1, current - 2, current - 3]:
+        if value and value not in candidates:
+            candidates.append(int(value))
+    return candidates
 
 
 def _format_team_statistics(stats: dict) -> list[str]:
@@ -285,7 +304,7 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
     next_fixtures = (_api_football_get("fixtures", next_fixture_params).get("response") or []) if team_id else []
 
     if not fixtures:
-        for fallback_season in [current_season, current_season - 1, current_season - 2]:
+        for fallback_season in _season_candidates(season_year, current_season):
             fallback_params = {"team": team_id, "season": fallback_season, "last": 8}
             if league_id:
                 fallback_params["league"] = league_id
@@ -294,15 +313,33 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
                 season_year = fallback_season
                 break
 
+    if not fixtures and team_id:
+        fixtures = _api_football_get("fixtures", {"team": team_id, "last": 8}).get("response") or []
+        if fixtures:
+            fixture_league = fixtures[0].get("league") or {}
+            league = fixture_league or league
+            league_id = fixture_league.get("id") or league_id
+            season_year = fixture_league.get("season") or season_year
+
+    if not next_fixtures and team_id:
+        next_fixtures = _api_football_get("fixtures", {"team": team_id, "next": 4}).get("response") or []
+
     team_statistics: dict = {}
     if team_id and league_id:
-        try:
-            team_statistics = _api_football_get(
-                "teams/statistics",
-                {"team": team_id, "league": league_id, "season": season_year},
-            ).get("response") or {}
-        except requests.RequestException:
-            team_statistics = {}
+        for stats_season in _season_candidates(season_year, current_season):
+            try:
+                candidate_stats = _api_football_get(
+                    "teams/statistics",
+                    {"team": team_id, "league": league_id, "season": stats_season},
+                ).get("response") or {}
+            except requests.RequestException:
+                candidate_stats = {}
+            if _stats_played_total(candidate_stats) > 0:
+                team_statistics = candidate_stats
+                season_year = stats_season
+                break
+            if candidate_stats and not team_statistics:
+                team_statistics = candidate_stats
 
     squad: list[dict] = []
     try:
@@ -340,11 +377,12 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
 
     if fixtures:
         lines.append("")
-        lines.append("Last 5 matches:")
+        lines.append("Recent matches:")
         lines.extend(f"- {_format_api_football_fixture(fixture, team_id)}" for fixture in fixtures)
 
         lines.append("")
         lines.append("Match statistics from recent fixtures:")
+        added_stats = False
         for fixture in fixtures[:3]:
             fixture_id = (fixture.get("fixture") or {}).get("id")
             if not fixture_id:
@@ -357,6 +395,12 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
             if stat_lines:
                 lines.append(f"Fixture {fixture_id}:")
                 lines.extend(stat_lines)
+                added_stats = True
+        if not added_stats:
+            lines.append("- No per-match statistics returned by provider for the recent fixtures.")
+    else:
+        lines.append("")
+        lines.append("Recent matches: none returned by provider after league/season and team-only fallbacks.")
 
     if next_fixtures:
         lines.append("")

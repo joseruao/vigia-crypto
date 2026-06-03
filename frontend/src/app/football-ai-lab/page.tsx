@@ -103,10 +103,6 @@ export default function FootballAiLabPage() {
       const context = await fetchFootballTeamContext(teamName.trim());
       setTeamName(context.team_name);
       setStats(context.stats);
-      setObservations((current) => {
-        const trimmed = current.trim();
-        return trimmed ? `${trimmed}\n\n${context.observations}` : context.observations;
-      });
       setDataSource(context.source);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not fetch public football data.';
