@@ -59,3 +59,38 @@ export async function askAlerts(prompt: string): Promise<string> {
   const data = await res.json();
   return data.answer ?? "sem resposta";
 }
+
+export type FootballAnalysisReport = {
+  executive_summary: string;
+  tactical_strengths: string[];
+  tactical_weaknesses: string[];
+  key_players_to_watch: string[];
+  recommended_match_strategy: string;
+  pressing_recommendations: string[];
+  set_piece_considerations: string[];
+  risk_assessment: string;
+};
+
+export type FootballAnalyzeResponse = {
+  team_name: string;
+  report: FootballAnalysisReport;
+};
+
+export async function analyzeFootballOpponent(input: {
+  team_name: string;
+  stats: string;
+  observations: string;
+}): Promise<FootballAnalyzeResponse> {
+  const res = await fetch(`${API_BASE}/api/football/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}

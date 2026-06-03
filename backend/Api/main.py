@@ -82,6 +82,12 @@ try:
 except ImportError as e:
     log.warning("Coin analysis router nao disponivel: %s", e)
 
+try:
+    from Api.routes.football import router as football_router
+    app.include_router(football_router, prefix="")
+except ImportError as e:
+    log.warning("Football router nao disponivel: %s", e)
+
 
 @app.get("/")
 @app.head("/")
