@@ -480,7 +480,11 @@ def is_token_listed_on_exchange(token_symbol, exchange_name):
         if len(result) > 0:
             return True
         live_tokens = _fetch_live_exchange_tokens(exchange)
-        return bool(live_tokens and set(candidates).intersection(live_tokens))
+        if live_tokens and set(candidates).intersection(live_tokens):
+            return True
+        if exchange == "Binance" and live_tokens:
+            return any(candidate in live_tokens for candidate in candidates)
+        return False
     except Exception as e:
         print(f"   ❌ Erro ao verificar listing: {e}")
         return False

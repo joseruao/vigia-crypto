@@ -528,9 +528,10 @@ def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
 
     worker._LIVE_LISTING_CACHE.clear()
     monkeypatch.setattr(worker, "supabase_query", lambda *args, **kwargs: [])
-    monkeypatch.setattr(worker, "_fetch_live_exchange_tokens", lambda exchange: {"TRUMP", "BTC"})
+    monkeypatch.setattr(worker, "_fetch_live_exchange_tokens", lambda exchange: {"TRUMP", "BTC", "BEAM"})
 
     assert worker.is_token_listed_on_exchange("TRUMP", "Binance 2") is True
+    assert worker.is_token_listed_on_exchange("BEAM", "Binance 8") is True
 
 def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
     import asyncio
@@ -617,6 +618,21 @@ def test_predictions_filter_uses_live_binance_fallback(monkeypatch):
 
     assert listed["Binance"] == {"TRUMP"}
     assert alerts._filter_prediction_rows(rows, listed) == []
+
+def test_predictions_filter_live_binance_blocks_missing_table_token(monkeypatch):
+    monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {"Binance": {"BEAM"}})
+
+    rows = [{
+        "exchange": "Binance 8",
+        "token": "BEAM",
+        "token_address": "BEAMADDR",
+        "chain": "ethereum",
+        "score": 95,
+        "value_usd": 14_000_000,
+        "liquidity": 2_600_000,
+    }]
+
+    assert alerts._filter_prediction_rows(rows, {"Binance": set()}) == []
 
 def test_predictions_filter_only_blocks_own_exchange_listing():
     listed = {

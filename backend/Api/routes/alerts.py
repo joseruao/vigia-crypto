@@ -808,7 +808,13 @@ def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set
     if not exchange or not candidates:
         return False
     listed = listed_tokens.get(exchange, set())
-    return any(token in listed for token in candidates)
+    if any(token in listed for token in candidates):
+        return True
+    live_tokens = _load_live_listing_fallbacks().get(exchange, set())
+    if live_tokens:
+        listed_tokens.setdefault(exchange, set()).update(live_tokens)
+        return any(token in live_tokens for token in candidates)
+    return False
 
 def _filter_prediction_rows(
     rows: List[Dict[str, Any]],
