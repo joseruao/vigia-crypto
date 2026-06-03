@@ -474,7 +474,7 @@ def test_fetch_team_context_accepts_slash_separated_team_names(monkeypatch):
 
     context = fetch_team_context("Benfica/Porto")
 
-    assert team_searches[:2] == ["Benfica/Porto", "Benfica"]
+    assert team_searches[:2] == ["Benfica", "Porto"]
     assert context.team_name == "Benfica"
     assert "Player A" in context.stats
     assert "New" in context.stats
@@ -482,7 +482,7 @@ def test_fetch_team_context_accepts_slash_separated_team_names(monkeypatch):
 
 
 def test_team_search_terms_strip_quotes_and_expand_aliases():
-    from Api.services.football_analysis import _normalise_team_name, _team_search_terms
+    from Api.services.football_analysis import _normalise_team_name, _team_query_parts, _team_search_terms
 
     terms = _team_search_terms("'Benfica/porto")
 
@@ -492,6 +492,7 @@ def test_team_search_terms_strip_quotes_and_expand_aliases():
     assert "FC Porto" in terms
     assert _normalise_team_name("Benfica") == "benfica"
     assert _normalise_team_name("FC Bayern München") == "bayern munchen"
+    assert _team_query_parts("Benfica/porto") == ["Benfica", "porto"]
 
 
 def test_football_data_team_matching_does_not_accept_empty_or_wrong_names():
@@ -500,6 +501,29 @@ def test_football_data_team_matching_does_not_accept_empty_or_wrong_names():
     assert _football_data_team_matches("Benfica", {"name": "SL Benfica", "shortName": "Benfica", "tla": "BEN"})
     assert not _football_data_team_matches("Benfica", {"name": "FC Bayern München", "shortName": "Bayern", "tla": "FCB"})
     assert not _football_data_team_matches("Benfica", {"name": None, "shortName": None, "tla": None})
+
+
+def test_fetch_team_context_returns_multi_team_sections(monkeypatch):
+    from Api.services import football_analysis
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+
+    def fake_single(team_name):
+        resolved = "FC Porto" if team_name.lower() == "porto" else team_name
+        return football_analysis.FootballTeamContext(
+            team_name=resolved,
+            source="API-Football",
+            stats=f"Team: {resolved}\nSeason team statistics:\n- Record: played 1",
+            observations="auto",
+        )
+
+    monkeypatch.setattr(football_analysis, "_fetch_single_team_context_api_football", fake_single)
+
+    context = fetch_team_context("Benfica/porto")
+
+    assert context.team_name == "Benfica / FC Porto"
+    assert "=== Team report: Benfica ===" in context.stats
+    assert "=== Team report: FC Porto ===" in context.stats
 
 
 def test_fetch_team_context_api_football_requires_key(monkeypatch):

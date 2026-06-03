@@ -145,6 +145,22 @@ def _team_search_terms(team_name: str) -> list[str]:
     return seen
 
 
+def _team_query_parts(team_name: str) -> list[str]:
+    raw = team_name.strip().strip("'\"`´“”‘’")
+    lower = raw.lower()
+    separators = ["/", "\\", "|", " vs ", " v ", " - ", ","]
+    for separator in separators:
+        if separator in lower:
+            if separator.strip() in {"vs", "v"}:
+                parts = raw.split(separator.strip())
+            else:
+                parts = raw.split(separator)
+            cleaned = [part.strip().strip("'\"`´“”‘’") for part in parts if part.strip()]
+            if len(cleaned) > 1:
+                return cleaned
+    return [raw] if raw else []
+
+
 def _search_api_football_team(team_name: str) -> tuple[dict, dict] | None:
     for term in _team_search_terms(team_name):
         search = _api_football_get("teams", {"search": term})
@@ -536,7 +552,7 @@ def _fetch_next_fixtures(team_id: int, league_id: int | None, season_year: int) 
     return [], diagnostics
 
 
-def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
+def _fetch_single_team_context_api_football(team_name: str) -> FootballTeamContext:
     clean_name = team_name.strip()
     if not clean_name:
         raise ValueError("team_name is required")
@@ -737,6 +753,39 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
         source="API-Football",
         stats="\n".join(lines),
         observations=observations,
+    )
+
+
+def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
+    parts = _team_query_parts(team_name)
+    if len(parts) <= 1:
+        return _fetch_single_team_context_api_football(team_name)
+
+    contexts: list[FootballTeamContext] = []
+    failures: list[str] = []
+    for part in parts:
+        try:
+            contexts.append(_fetch_single_team_context_api_football(part))
+        except Exception as exc:
+            failures.append(f"{part}: {exc}")
+
+    if not contexts:
+        raise LookupError(f"No football team found for '{team_name}'")
+
+    stats_sections = []
+    for context in contexts:
+        stats_sections.append(f"=== Team report: {context.team_name} ===\n{context.stats}")
+    if failures:
+        stats_sections.append("=== Teams not found ===\n" + "\n".join(f"- {failure}" for failure in failures))
+
+    return FootballTeamContext(
+        team_name=" / ".join(context.team_name for context in contexts),
+        source="API-Football multi-team",
+        stats="\n\n".join(stats_sections),
+        observations=(
+            "Automatic multi-team data loaded. Use this for opponent comparison or match preparation. "
+            "Add human tactical observations for each side if you want the AI report to discuss matchups."
+        ),
     )
 
 
