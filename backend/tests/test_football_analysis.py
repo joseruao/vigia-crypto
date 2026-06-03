@@ -9,6 +9,12 @@ from Api.services.football_analysis import (
 )
 
 
+def setup_function():
+    from Api.services import football_analysis
+
+    football_analysis._TEAM_CONTEXT_CACHE.clear()
+
+
 def test_football_analyze_endpoint_returns_structured_report(monkeypatch):
     from Api.routes import football
 
@@ -524,6 +530,32 @@ def test_fetch_team_context_returns_multi_team_sections(monkeypatch):
     assert context.team_name == "Benfica / FC Porto"
     assert "=== Team report: Benfica ===" in context.stats
     assert "=== Team report: FC Porto ===" in context.stats
+
+
+def test_fetch_team_context_uses_memory_cache(monkeypatch):
+    from Api.services import football_analysis
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+    football_analysis._TEAM_CONTEXT_CACHE.clear()
+
+    calls = []
+
+    def fake_fetch(team_name):
+        calls.append(team_name)
+        return football_analysis.FootballTeamContext(
+            team_name=team_name,
+            source="test",
+            stats="Team: Benfica",
+            observations="",
+        )
+
+    monkeypatch.setattr(football_analysis, "fetch_team_context_api_football", fake_fetch)
+
+    first = fetch_team_context("Benfica")
+    second = fetch_team_context(" benfica ")
+
+    assert first.stats == second.stats
+    assert calls == ["Benfica"]
 
 
 def test_fetch_team_context_api_football_requires_key(monkeypatch):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import date
 from datetime import timedelta
 import unicodedata
@@ -38,6 +39,10 @@ class FootballTeamContext(BaseModel):
     source: str
     stats: str
     observations: str
+
+
+_TEAM_CONTEXT_CACHE: dict[str, tuple[float, FootballTeamContext]] = {}
+_TEAM_CONTEXT_CACHE_TTL_SECONDS = int(os.getenv("FOOTBALL_CONTEXT_CACHE_TTL_SECONDS", "21600"))
 
 
 def _system_prompt() -> str:
@@ -90,6 +95,26 @@ def _football_data_get(path: str, params: dict | None = None) -> dict:
     )
     response.raise_for_status()
     return response.json()
+
+
+def _cache_key(team_name: str) -> str:
+    return " ".join(team_name.lower().strip().split())
+
+
+def _get_cached_team_context(team_name: str) -> FootballTeamContext | None:
+    cached = _TEAM_CONTEXT_CACHE.get(_cache_key(team_name))
+    if not cached:
+        return None
+    created_at, context = cached
+    if time.time() - created_at > _TEAM_CONTEXT_CACHE_TTL_SECONDS:
+        _TEAM_CONTEXT_CACHE.pop(_cache_key(team_name), None)
+        return None
+    return context
+
+
+def _set_cached_team_context(team_name: str, context: FootballTeamContext) -> FootballTeamContext:
+    _TEAM_CONTEXT_CACHE[_cache_key(team_name)] = (time.time(), context)
+    return context
 
 
 def _sportsdb_get(path: str) -> dict:
@@ -790,8 +815,12 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
 
 
 def fetch_team_context(team_name: str) -> FootballTeamContext:
+    cached = _get_cached_team_context(team_name)
+    if cached:
+        return cached
+
     if _api_football_key():
-        return fetch_team_context_api_football(team_name)
+        return _set_cached_team_context(team_name, fetch_team_context_api_football(team_name))
 
     clean_name = team_name.strip()
     if not clean_name:
@@ -868,12 +897,12 @@ def fetch_team_context(team_name: str) -> FootballTeamContext:
             "Add human match observations before generating a serious tactical report."
         )
 
-    return FootballTeamContext(
+    return _set_cached_team_context(team_name, FootballTeamContext(
         team_name=resolved_name,
         source="TheSportsDB",
         stats="\n".join(lines),
         observations=observations,
-    )
+    ))
 
 
 def _user_prompt(payload: FootballAnalyzeRequest) -> str:
