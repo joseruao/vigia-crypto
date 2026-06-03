@@ -16,6 +16,7 @@ import {
 import {
   FootballAnalysisReport,
   analyzeFootballOpponent,
+  fetchFootballTeamContext,
 } from '@/lib/api';
 
 function SectionCard({
@@ -64,7 +65,9 @@ export default function FootballAiLabPage() {
   const [report, setReport] = useState<FootballAnalysisReport | null>(null);
   const [reportedTeam, setReportedTeam] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetchingData, setFetchingData] = useState(false);
   const [error, setError] = useState('');
+  const [dataSource, setDataSource] = useState('');
 
   const canSubmit = useMemo(() => {
     return teamName.trim().length > 0 && (stats.trim().length > 0 || observations.trim().length > 0);
@@ -88,6 +91,28 @@ export default function FootballAiLabPage() {
       setError(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFetchData() {
+    if (!teamName.trim() || fetchingData) return;
+    setFetchingData(true);
+    setError('');
+
+    try {
+      const context = await fetchFootballTeamContext(teamName.trim());
+      setTeamName(context.team_name);
+      setStats(context.stats);
+      setObservations((current) => {
+        const trimmed = current.trim();
+        return trimmed ? `${trimmed}\n\n${context.observations}` : context.observations;
+      });
+      setDataSource(context.source);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not fetch public football data.';
+      setError(message);
+    } finally {
+      setFetchingData(false);
     }
   }
 
@@ -125,6 +150,22 @@ export default function FootballAiLabPage() {
                   className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 />
               </label>
+
+              <button
+                type="button"
+                onClick={handleFetchData}
+                disabled={!teamName.trim() || fetchingData}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                {fetchingData ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+                Fetch public data
+              </button>
+
+              {dataSource && (
+                <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
+                  Public data loaded from {dataSource}. Add human scouting notes before generating the final report.
+                </p>
+              )}
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Statistics</span>

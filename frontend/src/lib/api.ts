@@ -76,6 +76,13 @@ export type FootballAnalyzeResponse = {
   report: FootballAnalysisReport;
 };
 
+export type FootballTeamContext = {
+  team_name: string;
+  source: string;
+  stats: string;
+  observations: string;
+};
+
 export async function analyzeFootballOpponent(input: {
   team_name: string;
   stats: string;
@@ -85,6 +92,20 @@ export async function analyzeFootballOpponent(input: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchFootballTeamContext(teamName: string): Promise<FootballTeamContext> {
+  const q = new URLSearchParams({ team_name: teamName });
+  const res = await fetch(`${API_BASE}/api/football/team-context?${q.toString()}`, {
+    cache: "no-store",
   });
 
   if (!res.ok) {
