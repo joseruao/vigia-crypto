@@ -200,6 +200,43 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
                     }
                 ]
             }
+        if path == "standings":
+            return {
+                "response": [
+                    {
+                        "league": {
+                            "standings": [
+                                [
+                                    {
+                                        "rank": 2,
+                                        "team": {"id": 1, "name": "Cruzeiro"},
+                                        "points": 20,
+                                        "form": "WWDLW",
+                                        "all": {
+                                            "played": 10,
+                                            "win": 6,
+                                            "draw": 2,
+                                            "lose": 2,
+                                            "goals": {"for": 18, "against": 9},
+                                        },
+                                    }
+                                ]
+                            ]
+                        }
+                    }
+                ]
+            }
+        if path == "fixtures/lineups":
+            return {
+                "response": [
+                    {
+                        "team": {"name": "Cruzeiro"},
+                        "formation": "4-2-3-1",
+                        "coach": {"name": "Coach One"},
+                        "startXI": [{"player": {"name": "Starter One", "pos": "G"}}],
+                    }
+                ]
+            }
         raise AssertionError(path)
 
     monkeypatch.setattr(football_analysis, "_api_football_get", fake_api_get)
@@ -209,11 +246,14 @@ def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
     assert context.source == "API-Football"
     assert "Competition: Brazilian Serie A" in context.stats
     assert "Season team statistics" in context.stats
+    assert "League standing" in context.stats
     assert "Record: played 10, wins 6, draws 2, losses 2" in context.stats
     assert "Recent matches" in context.stats
     assert "Ball Possession: 57%" in context.stats
+    assert "formation 4-2-3-1" in context.stats
     assert "Player Injured" in context.stats
     assert "Cássio" in context.stats
+    assert "Provider diagnostics" in context.stats
     assert any(path == "injuries" for path, _params in calls)
 
 
@@ -271,9 +311,13 @@ def test_fetch_team_context_falls_back_to_team_only_fixtures(monkeypatch):
             }
         if path == "fixtures/statistics":
             return {"response": []}
+        if path == "fixtures/lineups":
+            return {"response": []}
         if path == "players/squads":
             return {"response": []}
         if path == "injuries":
+            return {"response": []}
+        if path == "standings":
             return {"response": []}
         raise AssertionError((path, params))
 
