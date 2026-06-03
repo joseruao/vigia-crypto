@@ -329,6 +329,82 @@ def test_fetch_team_context_falls_back_to_team_only_fixtures(monkeypatch):
     assert "Record: played 2, wins 2, draws 0, losses 0" in context.stats
 
 
+def test_fetch_team_context_uses_football_data_matches_when_api_football_fixtures_empty(monkeypatch):
+    from Api.services import football_analysis
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+    monkeypatch.setenv("FOOTBALL_DATA_API_KEY", "fd-key")
+
+    def fake_api_get(path, params=None):
+        params = params or {}
+        if path == "teams":
+            return {
+                "response": [
+                    {
+                        "team": {"id": 211, "name": "Benfica", "country": "Portugal", "founded": 1904},
+                        "venue": {"name": "Estadio da Luz", "capacity": 65647},
+                    }
+                ]
+            }
+        if path == "leagues":
+            return {
+                "response": [
+                    {
+                        "league": {"id": 94, "name": "Primeira Liga", "type": "League"},
+                        "seasons": [{"year": 2024, "current": True}],
+                    }
+                ]
+            }
+        if path == "fixtures":
+            return {"response": []}
+        if path == "teams/statistics":
+            return {
+                "response": {
+                    "fixtures": {"played": {"total": 34}, "wins": {"total": 25}, "draws": {"total": 5}, "loses": {"total": 4}},
+                    "goals": {
+                        "for": {"total": {"total": 84}, "average": {"total": "2.5"}},
+                        "against": {"total": {"total": 28}, "average": {"total": "0.8"}},
+                    },
+                    "clean_sheet": {"total": 15},
+                    "failed_to_score": {"total": 2},
+                }
+            }
+        if path == "players/squads":
+            return {"response": []}
+        if path == "injuries":
+            return {"response": []}
+        if path == "standings":
+            return {"response": []}
+        raise AssertionError((path, params))
+
+    def fake_football_data_get(path, params=None):
+        if path == "teams":
+            return {"teams": [{"id": 1903, "name": "SL Benfica", "shortName": "Benfica", "tla": "BEN"}]}
+        if path == "teams/1903/matches":
+            return {
+                "matches": [
+                    {
+                        "utcDate": "2026-05-01T20:00:00Z",
+                        "status": "FINISHED",
+                        "competition": {"name": "Primeira Liga"},
+                        "homeTeam": {"name": "SL Benfica"},
+                        "awayTeam": {"name": "FC Porto"},
+                        "score": {"fullTime": {"home": 2, "away": 1}},
+                    }
+                ]
+            }
+        raise AssertionError((path, params))
+
+    monkeypatch.setattr(football_analysis, "_api_football_get", fake_api_get)
+    monkeypatch.setattr(football_analysis, "_football_data_get", fake_football_data_get)
+
+    context = fetch_team_context("Benfica")
+
+    assert "Recent matches from football-data.org" in context.stats
+    assert "SL Benfica 2-1 FC Porto" in context.stats
+    assert "football-data.org team matches -> 1" in context.stats
+
+
 def test_fetch_team_context_api_football_requires_key(monkeypatch):
     monkeypatch.delenv("API_FOOTBALL_KEY", raising=False)
     monkeypatch.delenv("APISPORTS_KEY", raising=False)

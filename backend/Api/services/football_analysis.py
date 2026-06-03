@@ -57,6 +57,10 @@ def _api_football_key() -> str | None:
     return os.getenv("API_FOOTBALL_KEY") or os.getenv("APISPORTS_KEY")
 
 
+def _football_data_key() -> str | None:
+    return os.getenv("FOOTBALL_DATA_API_KEY")
+
+
 def _api_football_get(path: str, params: dict | None = None) -> dict:
     api_key = _api_football_key()
     if not api_key:
@@ -65,6 +69,21 @@ def _api_football_get(path: str, params: dict | None = None) -> dict:
     response = requests.get(
         f"https://v3.football.api-sports.io/{path}",
         headers={"x-apisports-key": api_key},
+        params=params or {},
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _football_data_get(path: str, params: dict | None = None) -> dict:
+    api_key = _football_data_key()
+    if not api_key:
+        raise RuntimeError("FOOTBALL_DATA_API_KEY is not configured")
+
+    response = requests.get(
+        f"https://api.football-data.org/v4/{path.lstrip('/')}",
+        headers={"X-Auth-Token": api_key},
         params=params or {},
         timeout=15,
     )
@@ -306,6 +325,77 @@ def _format_squad(players: list[dict]) -> list[str]:
     return lines
 
 
+def _normalise_team_name(value: str | None) -> str:
+    cleaned = (value or "").lower()
+    for token in ["fc", "cf", "sl", "sc", "club", "clube", ".", "-", "_"]:
+        cleaned = cleaned.replace(token, " ")
+    return " ".join(cleaned.split())
+
+
+def _find_football_data_team_id(team_name: str) -> int | None:
+    try:
+        teams = _football_data_get("teams").get("teams") or []
+    except Exception:
+        return None
+
+    wanted = _normalise_team_name(team_name)
+    for team in teams:
+        names = [team.get("name"), team.get("shortName"), team.get("tla")]
+        if any(wanted and wanted in _normalise_team_name(name) for name in names):
+            return team.get("id")
+    return None
+
+
+def _format_football_data_match(match: dict) -> str:
+    home = (match.get("homeTeam") or {}).get("name") or "Home"
+    away = (match.get("awayTeam") or {}).get("name") or "Away"
+    competition = (match.get("competition") or {}).get("name") or "competition unknown"
+    score = match.get("score") or {}
+    full_time = score.get("fullTime") or {}
+    home_goals = full_time.get("home")
+    away_goals = full_time.get("away")
+    score_text = (
+        f"{home_goals}-{away_goals}"
+        if home_goals is not None and away_goals is not None
+        else match.get("status", "score unavailable")
+    )
+    return f"{(match.get('utcDate') or '')[:10]} | {competition} | {home} {score_text} {away} | status {match.get('status') or 'unknown'}"
+
+
+def _fetch_football_data_matches(team_name: str) -> tuple[list[str], list[str]]:
+    diagnostics: list[str] = []
+    if not _football_data_key():
+        return [], ["football-data.org skipped: FOOTBALL_DATA_API_KEY not configured"]
+
+    team_id = _find_football_data_team_id(team_name)
+    diagnostics.append(f"football-data.org team lookup '{team_name}' -> {team_id or 'not found'}")
+    if not team_id:
+        return [], diagnostics
+
+    today = date.today()
+    params = {
+        "dateFrom": (today - timedelta(days=365)).isoformat(),
+        "dateTo": (today + timedelta(days=30)).isoformat(),
+    }
+    try:
+        matches = _football_data_get(f"teams/{team_id}/matches", params).get("matches") or []
+    except Exception:
+        matches = []
+    diagnostics.append(f"football-data.org team matches -> {len(matches)}")
+
+    finished = [match for match in matches if match.get("status") == "FINISHED"]
+    scheduled = [match for match in matches if match.get("status") != "FINISHED"]
+
+    lines = []
+    if finished:
+        lines.append("Recent matches from football-data.org:")
+        lines.extend(f"- {_format_football_data_match(match)}" for match in finished[-8:])
+    if scheduled:
+        lines.append("Upcoming matches from football-data.org:")
+        lines.extend(f"- {_format_football_data_match(match)}" for match in scheduled[:4])
+    return lines, diagnostics
+
+
 def _fetch_recent_fixtures(team_id: int, league_id: int | None, season_year: int, current_season: int) -> tuple[list[dict], int, list[str]]:
     diagnostics: list[str] = []
     attempts: list[dict] = []
@@ -455,6 +545,11 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
         except requests.RequestException:
             standings_lines = []
 
+    football_data_lines: list[str] = []
+    if not fixtures:
+        football_data_lines, football_data_diagnostics = _fetch_football_data_matches(resolved_name)
+        diagnostics.extend(football_data_diagnostics)
+
     lines = [
         f"Team: {resolved_name}",
         f"Country: {team.get('country') or 'Unknown'}",
@@ -524,6 +619,10 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
         lines.append("")
         lines.append("Recent matches: none returned by provider after league/season and team-only fallbacks.")
 
+    if football_data_lines:
+        lines.append("")
+        lines.extend(football_data_lines)
+
     if next_fixtures:
         lines.append("")
         lines.append("Next fixtures:")
@@ -544,7 +643,7 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
 
     lines.append("")
     lines.append("Provider diagnostics:")
-    lines.extend(f"- {item}" for item in diagnostics[:20])
+    lines.extend(f"- {item}" for item in diagnostics[:40])
 
     observations = (
         "Automatic data loaded from API-Football/API-Sports. This includes recent fixtures, available match statistics, "
