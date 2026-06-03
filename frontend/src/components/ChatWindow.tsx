@@ -8,7 +8,8 @@ import { TradingViewChart } from '@/components/TradingViewChart';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
-import { CircleStop, Send } from 'lucide-react';
+import { CircleStop, Menu, MessageSquarePlus, Send } from 'lucide-react';
+import { Sidebar } from '@/components/Sidebar';
 
 function extractCoinFromAnalysis(content: string): string | null {
   const match = content.match(/(?:##\s+🎯\s+|#\s+📊\s+)([A-Z0-9]+)\s+[—–-]/);
@@ -24,12 +25,14 @@ export function ChatWindow() {
     addMessage,
     updateLastAssistantMessage,
     activeId,
+    newConversation,
   } = useChatHistoryContext();
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [gotFirstChunk, setGotFirstChunk] = useState(false);
   const [lang, setLang] = useState<'pt' | 'en'>('pt');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -245,12 +248,48 @@ export function ChatWindow() {
       };
 
   return (
-    <div className="flex h-screen min-h-screen flex-col bg-[radial-gradient(circle_at_50%_12%,#f4f7fb_0,#ffffff_34rem)] supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
+    <div className="relative flex h-screen min-h-screen flex-col bg-white supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
+      <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2 md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(true)}
+          className="rounded-xl border border-zinc-200 p-2 text-zinc-700 shadow-sm"
+          aria-label="Abrir menu"
+          title="Abrir menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
+        <button
+          type="button"
+          onClick={() => newConversation()}
+          className="rounded-xl border border-zinc-200 p-2 text-zinc-700 shadow-sm"
+          aria-label="Novo chat"
+          title="Novo chat"
+        >
+          <MessageSquarePlus className="h-5 w-5" />
+        </button>
+      </div>
+
+      {mobileMenuOpen ? (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/30"
+            aria-label="Fechar menu"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="relative h-full">
+            <Sidebar mobile onClose={() => setMobileMenuOpen(false)} />
+          </div>
+        </div>
+      ) : null}
+
       {/* Área das mensagens */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!hasMessages && !loading ? (
-          <div className="relative min-h-[calc(100vh-104px)] overflow-hidden px-4 py-10 sm:py-14">
-            <div className="relative mx-auto flex min-h-[calc(100vh-184px)] w-full max-w-3xl flex-col items-center justify-center text-center">
+          <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
+            <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
               <img src="/logo_full.png" alt="José Ruão.com" className="mb-8 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
             <div className="w-full max-w-2xl">
               <Suggestions
