@@ -4,6 +4,7 @@ import json
 import os
 from datetime import date
 from datetime import timedelta
+import unicodedata
 from urllib.parse import quote
 
 import requests
@@ -376,10 +377,34 @@ def _format_squad(players: list[dict]) -> list[str]:
 
 
 def _normalise_team_name(value: str | None) -> str:
-    cleaned = (value or "").lower()
-    for token in ["fc", "cf", "sl", "sc", "club", "clube", ".", "-", "_"]:
-        cleaned = cleaned.replace(token, " ")
-    return " ".join(cleaned.split())
+    text = unicodedata.normalize("NFKD", value or "")
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    cleaned = text.lower()
+    for char in [".", "-", "_", "(", ")", "[", "]"]:
+        cleaned = cleaned.replace(char, " ")
+    stop_words = {"fc", "cf", "sl", "sc", "club", "clube", "sport", "sporting", "futebol"}
+    words = [word for word in cleaned.split() if word not in stop_words]
+    return " ".join(words)
+
+
+def _football_data_team_matches(search_term: str, team: dict) -> bool:
+    wanted = _normalise_team_name(search_term)
+    if not wanted:
+        return False
+
+    names = [team.get("name"), team.get("shortName")]
+    normalised_names = [_normalise_team_name(name) for name in names if _normalise_team_name(name)]
+    if wanted in normalised_names:
+        return True
+
+    wanted_words = set(wanted.split())
+    for name in normalised_names:
+        name_words = set(name.split())
+        if wanted_words and wanted_words.issubset(name_words):
+            return True
+
+    tla = (team.get("tla") or "").lower()
+    return bool(tla and tla == search_term.strip().lower())
 
 
 def _find_football_data_team_id(team_name: str) -> int | None:
@@ -397,11 +422,8 @@ def _find_football_data_team_id(team_name: str) -> int | None:
             continue
 
     for term in search_terms:
-        wanted = _normalise_team_name(term)
         for team in teams:
-            names = [team.get("name"), team.get("shortName"), team.get("tla")]
-            normalised_names = [_normalise_team_name(name) for name in names]
-            if any(wanted and (wanted in name or name in wanted) for name in normalised_names):
+            if _football_data_team_matches(term, team):
                 return team.get("id")
     return None
 

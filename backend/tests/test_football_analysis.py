@@ -482,7 +482,7 @@ def test_fetch_team_context_accepts_slash_separated_team_names(monkeypatch):
 
 
 def test_team_search_terms_strip_quotes_and_expand_aliases():
-    from Api.services.football_analysis import _team_search_terms
+    from Api.services.football_analysis import _normalise_team_name, _team_search_terms
 
     terms = _team_search_terms("'Benfica/porto")
 
@@ -490,6 +490,16 @@ def test_team_search_terms_strip_quotes_and_expand_aliases():
     assert "SL Benfica" in terms
     assert "porto" in terms
     assert "FC Porto" in terms
+    assert _normalise_team_name("Benfica") == "benfica"
+    assert _normalise_team_name("FC Bayern München") == "bayern munchen"
+
+
+def test_football_data_team_matching_does_not_accept_empty_or_wrong_names():
+    from Api.services.football_analysis import _football_data_team_matches
+
+    assert _football_data_team_matches("Benfica", {"name": "SL Benfica", "shortName": "Benfica", "tla": "BEN"})
+    assert not _football_data_team_matches("Benfica", {"name": "FC Bayern München", "shortName": "Bayern", "tla": "FCB"})
+    assert not _football_data_team_matches("Benfica", {"name": None, "shortName": None, "tla": None})
 
 
 def test_fetch_team_context_api_football_requires_key(monkeypatch):
