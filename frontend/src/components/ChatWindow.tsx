@@ -249,28 +249,6 @@ export function ChatWindow() {
 
   return (
     <div className="relative flex h-screen min-h-screen flex-col bg-white supports-[height:100dvh]:h-[100dvh] supports-[min-height:100dvh]:min-h-[100dvh]">
-      <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2 md:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(true)}
-          className="rounded-xl border border-zinc-200 p-2 text-zinc-700 shadow-sm"
-          aria-label="Abrir menu"
-          title="Abrir menu"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-        <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
-        <button
-          type="button"
-          onClick={() => newConversation()}
-          className="rounded-xl border border-zinc-200 p-2 text-zinc-700 shadow-sm"
-          aria-label="Novo chat"
-          title="Novo chat"
-        >
-          <MessageSquarePlus className="h-5 w-5" />
-        </button>
-      </div>
-
       {mobileMenuOpen ? (
         <div className="fixed inset-0 z-50 md:hidden">
           <button
@@ -290,7 +268,7 @@ export function ChatWindow() {
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
-              <img src="/logo_full.png" alt="José Ruão.com" className="mb-8 h-48 w-auto max-w-[90vw] object-contain opacity-95 sm:h-72" />
+              <img src="/logo_full.png" alt="José Ruão.com" className="mb-7 h-36 w-auto max-w-[82vw] object-contain opacity-95 sm:h-72" />
             <div className="w-full max-w-2xl">
               <Suggestions
                 visible={!hasMessages}
@@ -347,6 +325,24 @@ export function ChatWindow() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         <div className="max-w-5xl mx-auto p-3 sm:p-4">
+          <div className="mb-2 grid grid-cols-2 gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm"
+            >
+              <Menu className="h-4 w-4" />
+              Menu
+            </button>
+            <button
+              type="button"
+              onClick={() => newConversation()}
+              className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+              Novo
+            </button>
+          </div>
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">
             {loading && (
               <button

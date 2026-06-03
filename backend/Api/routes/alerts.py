@@ -1241,7 +1241,7 @@ def ask_alerts(payload: AskIn):
             return {"ok": True, "answer": answer, "count": 0, "items": []}
 
         wants_more = any(t in q for t in ["ver mais", "mais listings", "mais sinais", "mostrar mais", "show more", "more listings"])
-        display_limit = 12 if wants_more else 4
+        display_limit = 10 if wants_more else 3
         shown = out[:display_limit]
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
             header = f"**Sinais on-chain de possíveis listings**\n\n{len(out)} candidatos filtrados. Mostro os {len(shown)} com melhor sinal."
@@ -1366,17 +1366,17 @@ def ask_alerts(payload: AskIn):
                 line += f" · {chain}"
             line += "\n\n"
             line += f"**Score:** {float(score or 0):.0f}/100 · **{_listing_verdict(score)}**\n"
-            line += f"**Valor na wallet:** {_fmt_money(value_usd)}\n"
-            line += f"**Liquidez no par:** {_fmt_money(liquidity)}\n"
+            line += f"**Wallet:** {_fmt_money(value_usd)} · **Liquidez:** {_fmt_money(liquidity)}"
             if volume and float(volume or 0) > 0:
-                line += f"**Volume 24h:** {_fmt_money(volume)}\n"
+                line += f" · **Volume:** {_fmt_money(volume)}"
+            line += "\n"
 
             when = _fmt_ts(ts)
-            line += f"\nDetectado numa wallet monitorizada da **{exchange}**"
+            line += f"Detectado na wallet monitorizada da **{exchange}**"
             if when:
                 line += f" ({when})"
             line += ".\n"
-            line += f"**Leitura:** probabilidade {_confidence_label(score)}; confirmar se continua fora da exchange nos proximos ciclos.\n"
+            line += f"**Leitura:** probabilidade {_confidence_label(score)}. Monitorizar se a posicao cresce nos proximos ciclos.\n"
             if pair_url:
                 line += f"[Ver no DexScreener]({pair_url})"
             pretty_blocks.append(line)
@@ -1384,7 +1384,7 @@ def ask_alerts(payload: AskIn):
         if pretty_blocks:
             blocks = pretty_blocks
             if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
-                header = f"**Radar on-chain de possiveis listings**\n\n{len(out)} candidatos filtrados. Mostro os {len(shown)} sinais mais fortes."
+                header = f"**Radar on-chain de possiveis listings**\n\n{len(out)} candidatos filtrados. Mostro {len(shown)} sinais fortes."
             elif is_buy_watchlist_question:
                 header = f"**Watchlist propria de hoje**\n\n{len(out)} sinais on-chain filtrados. Mostro os {len(shown)} mais relevantes."
             else:
@@ -1393,6 +1393,8 @@ def ask_alerts(payload: AskIn):
         answer = header + "\n\n" + "\n\n".join(blocks)
         if len(out) > len(shown):
             answer += f"\n\n_+ {len(out) - len(shown)} sinais ocultos. Escreve **ver mais listings** para expandir._"
+        if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
+            answer += "\n\n_O radar filtra tokens ja listados na propria exchange e ignora stablecoins/wrapped assets._"
 
         return {"ok": True, "answer": answer, "count": len(out), "items": out}
 

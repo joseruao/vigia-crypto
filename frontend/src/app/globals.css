@@ -91,6 +91,27 @@ body {
   border-top: 1px solid #e5e7eb;
 }
 
+@media (max-width: 640px) {
+  .chat-message {
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .chat-message p {
+    margin: 0.25rem 0;
+  }
+
+  .chat-message h3 {
+    margin: 0.55rem 0 0.25rem;
+    padding-top: 0.5rem;
+    font-size: 0.92rem;
+  }
+
+  .chat-message a {
+    text-underline-offset: 2px;
+  }
+}
+
 /* scrollbar discreta */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }

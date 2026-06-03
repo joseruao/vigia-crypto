@@ -102,8 +102,8 @@ def test_listing_answer_uses_onchain_signal_language(monkeypatch):
     assert r.status_code == 200
     answer = r.json()["answer"]
     assert "Radar on-chain de possiveis listings" in answer
-    assert "Detectado numa wallet monitorizada da **Gate.io**" in answer
-    assert "Valor na wallet:** $250K" in answer
+    assert "Detectado na wallet monitorizada da **Gate.io**" in answer
+    assert "Wallet:** $250K" in answer
 
 def test_listing_answer_limits_initial_results_and_supports_more(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
@@ -136,9 +136,9 @@ def test_listing_answer_limits_initial_results_and_supports_more(monkeypatch):
     first = client.post("/alerts/ask", json={"prompt": "que tokens achas que vao ser listados?"}).json()["answer"]
     more = client.post("/alerts/ask", json={"prompt": "ver mais listings"}).json()["answer"]
 
-    assert "Mostro os 4" in first
-    assert "+ 2 sinais ocultos" in first
-    assert "Mostro os 6" in more
+    assert "Mostro 3" in first
+    assert "+ 3 sinais ocultos" in first
+    assert "Mostro 6" in more
 
 def test_top100_buy_question_uses_ranking_table(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
