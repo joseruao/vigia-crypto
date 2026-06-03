@@ -163,7 +163,7 @@ export default function FootballAiLabPage() {
 
               {dataSource && (
                 <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
-                  Public data loaded from {dataSource}. Add human scouting notes before generating the final report.
+                  Public data loaded from {dataSource}. API-Football gives richer stats and injuries when configured; fallback data is only club context.
                 </p>
               )}
 

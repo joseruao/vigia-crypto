@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from urllib.parse import quote
 
 import requests
@@ -51,6 +52,25 @@ def _sportsdb_key() -> str:
     return os.getenv("THESPORTSDB_API_KEY") or "123"
 
 
+def _api_football_key() -> str | None:
+    return os.getenv("API_FOOTBALL_KEY") or os.getenv("APISPORTS_KEY")
+
+
+def _api_football_get(path: str, params: dict | None = None) -> dict:
+    api_key = _api_football_key()
+    if not api_key:
+        raise RuntimeError("API_FOOTBALL_KEY is not configured")
+
+    response = requests.get(
+        f"https://v3.football.api-sports.io/{path}",
+        headers={"x-apisports-key": api_key},
+        params=params or {},
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def _sportsdb_get(path: str) -> dict:
     url = f"https://www.thesportsdb.com/api/v1/json/{_sportsdb_key()}/{path}"
     response = requests.get(url, timeout=12)
@@ -65,6 +85,14 @@ def _pick_soccer_team(teams: list[dict] | None) -> dict | None:
     return (teams or [None])[0]
 
 
+def _pick_api_football_team(items: list[dict] | None) -> tuple[dict, dict] | None:
+    for item in items or []:
+        team = item.get("team") or {}
+        if (team.get("name") or "").strip():
+            return team, item.get("venue") or {}
+    return None
+
+
 def _format_event(event: dict, team_name: str) -> str:
     home = event.get("strHomeTeam") or "Home"
     away = event.get("strAwayTeam") or "Away"
@@ -77,7 +105,184 @@ def _format_event(event: dict, team_name: str) -> str:
     return f"{date} | {league} | {home} {score} {away} | {venue}"
 
 
+def _format_api_football_fixture(fixture: dict, team_id: int | None = None) -> str:
+    fixture_meta = fixture.get("fixture") or {}
+    league = fixture.get("league") or {}
+    teams = fixture.get("teams") or {}
+    goals = fixture.get("goals") or {}
+    home = teams.get("home") or {}
+    away = teams.get("away") or {}
+    venue = fixture_meta.get("venue") or {}
+    status = (fixture_meta.get("status") or {}).get("short") or "unknown"
+    played_where = "home" if home.get("id") == team_id else ("away" if away.get("id") == team_id else "neutral/unknown")
+    score = (
+        f"{goals.get('home')}-{goals.get('away')}"
+        if goals.get("home") is not None and goals.get("away") is not None
+        else "score unavailable"
+    )
+    return (
+        f"{(fixture_meta.get('date') or '')[:10]} | {league.get('name') or 'competition unknown'} | "
+        f"{home.get('name') or 'Home'} {score} {away.get('name') or 'Away'} | "
+        f"{played_where} | status {status} | venue {venue.get('name') or 'unknown'}"
+    )
+
+
+def _format_fixture_statistics(stats: list[dict]) -> list[str]:
+    wanted = {
+        "Shots on Goal",
+        "Shots off Goal",
+        "Total Shots",
+        "Blocked Shots",
+        "Shots insidebox",
+        "Shots outsidebox",
+        "Fouls",
+        "Corner Kicks",
+        "Offsides",
+        "Ball Possession",
+        "Yellow Cards",
+        "Red Cards",
+        "Goalkeeper Saves",
+        "Total passes",
+        "Passes accurate",
+        "Passes %",
+        "expected_goals",
+    }
+    lines: list[str] = []
+    for team_stats in stats or []:
+        team = (team_stats.get("team") or {}).get("name") or "Team"
+        values = []
+        for item in team_stats.get("statistics") or []:
+            stat_type = item.get("type")
+            value = item.get("value")
+            if stat_type in wanted and value is not None:
+                values.append(f"{stat_type}: {value}")
+        if values:
+            lines.append(f"- {team}: " + " | ".join(values[:12]))
+    return lines
+
+
+def _format_injuries(injuries: list[dict]) -> list[str]:
+    lines = []
+    for injury in injuries[:10]:
+        player = injury.get("player") or {}
+        team = injury.get("team") or {}
+        fixture = injury.get("fixture") or {}
+        league = injury.get("league") or {}
+        lines.append(
+            f"- {player.get('name') or 'Unknown player'} | {team.get('name') or 'Unknown team'} | "
+            f"{injury.get('type') or 'Unavailable'} | {injury.get('reason') or 'reason unknown'} | "
+            f"{league.get('name') or 'competition unknown'} | {(fixture.get('date') or '')[:10]}"
+        )
+    return lines
+
+
+def _format_squad(players: list[dict]) -> list[str]:
+    lines = []
+    for player in players[:18]:
+        lines.append(
+            f"- {player.get('name') or 'Unknown player'} | {player.get('position') or 'Unknown position'} | "
+            f"age {player.get('age') or 'unknown'}"
+        )
+    return lines
+
+
+def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
+    clean_name = team_name.strip()
+    if not clean_name:
+        raise ValueError("team_name is required")
+
+    search = _api_football_get("teams", {"search": clean_name})
+    picked = _pick_api_football_team(search.get("response"))
+    if not picked:
+        raise LookupError(f"No football team found for '{clean_name}'")
+
+    team, venue = picked
+    team_id = team.get("id")
+    resolved_name = team.get("name") or clean_name
+    current_season = date.today().year
+
+    fixtures = (_api_football_get("fixtures", {"team": team_id, "last": 5}).get("response") or []) if team_id else []
+    next_fixtures = (_api_football_get("fixtures", {"team": team_id, "next": 3}).get("response") or []) if team_id else []
+
+    squad: list[dict] = []
+    try:
+        squad_response = _api_football_get("players/squads", {"team": team_id}).get("response") or []
+        if squad_response:
+            squad = squad_response[0].get("players") or []
+    except requests.RequestException:
+        squad = []
+
+    injuries: list[dict] = []
+    try:
+        injuries = _api_football_get("injuries", {"team": team_id, "season": current_season}).get("response") or []
+    except requests.RequestException:
+        injuries = []
+
+    lines = [
+        f"Team: {resolved_name}",
+        f"Country: {team.get('country') or 'Unknown'}",
+        f"Founded: {team.get('founded') or 'Unknown'}",
+        f"Venue: {venue.get('name') or 'Unknown'}",
+        f"Venue capacity: {venue.get('capacity') or 'Unknown'}",
+        f"Data provider: API-Football/API-Sports",
+    ]
+
+    if fixtures:
+        lines.append("")
+        lines.append("Last 5 matches:")
+        lines.extend(f"- {_format_api_football_fixture(fixture, team_id)}" for fixture in fixtures)
+
+        lines.append("")
+        lines.append("Match statistics from recent fixtures:")
+        for fixture in fixtures[:3]:
+            fixture_id = (fixture.get("fixture") or {}).get("id")
+            if not fixture_id:
+                continue
+            try:
+                stats = _api_football_get("fixtures/statistics", {"fixture": fixture_id}).get("response") or []
+            except requests.RequestException:
+                stats = []
+            stat_lines = _format_fixture_statistics(stats)
+            if stat_lines:
+                lines.append(f"Fixture {fixture_id}:")
+                lines.extend(stat_lines)
+
+    if next_fixtures:
+        lines.append("")
+        lines.append("Next fixtures:")
+        lines.extend(f"- {_format_api_football_fixture(fixture, team_id)}" for fixture in next_fixtures)
+
+    if injuries:
+        lines.append("")
+        lines.append("Injuries / suspensions / doubtful players:")
+        lines.extend(_format_injuries(injuries))
+    else:
+        lines.append("")
+        lines.append("Injuries / suspensions / doubtful players: none returned by provider for the selected team/season.")
+
+    if squad:
+        lines.append("")
+        lines.append("Squad sample:")
+        lines.extend(_format_squad(squad))
+
+    observations = (
+        "Automatic data loaded from API-Football/API-Sports. This includes recent fixtures, available match statistics, "
+        "squad sample and injury/suspension availability where the provider has coverage. Add human tactical observations "
+        "for pressing triggers, build-up patterns, transition behaviour, set pieces and individual matchups."
+    )
+
+    return FootballTeamContext(
+        team_name=resolved_name,
+        source="API-Football",
+        stats="\n".join(lines),
+        observations=observations,
+    )
+
+
 def fetch_team_context(team_name: str) -> FootballTeamContext:
+    if _api_football_key():
+        return fetch_team_context_api_football(team_name)
+
     clean_name = team_name.strip()
     if not clean_name:
         raise ValueError("team_name is required")

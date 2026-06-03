@@ -4,6 +4,7 @@ from Api.main import app
 from Api.services.football_analysis import (
     FootballAnalysisReport,
     FootballAnalyzeResponse,
+    fetch_team_context_api_football,
     fetch_team_context,
 )
 
@@ -102,6 +103,95 @@ def test_fetch_team_context_builds_stats_from_public_data(monkeypatch):
     assert "Campeonato Brasileiro Serie A" in context.stats
     assert "Cruzeiro 2-1 Atletico" in context.stats
     assert "Player One" in context.stats
+
+
+def test_fetch_team_context_uses_api_football_when_key_exists(monkeypatch):
+    from Api.services import football_analysis
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+
+    calls = []
+
+    def fake_api_get(path, params=None):
+        calls.append((path, params or {}))
+        if path == "teams":
+            return {
+                "response": [
+                    {
+                        "team": {
+                            "id": 1,
+                            "name": "Cruzeiro",
+                            "country": "Brazil",
+                            "founded": 1921,
+                        },
+                        "venue": {"name": "Mineirao", "capacity": 62547},
+                    }
+                ]
+            }
+        if path == "fixtures" and (params or {}).get("last"):
+            return {
+                "response": [
+                    {
+                        "fixture": {"id": 10, "date": "2026-05-31T20:00:00Z", "status": {"short": "FT"}, "venue": {"name": "Mineirao"}},
+                        "league": {"name": "Brazilian Serie A"},
+                        "teams": {"home": {"id": 1, "name": "Cruzeiro"}, "away": {"id": 2, "name": "Fluminense"}},
+                        "goals": {"home": 1, "away": 1},
+                    }
+                ]
+            }
+        if path == "fixtures" and (params or {}).get("next"):
+            return {"response": []}
+        if path == "fixtures/statistics":
+            return {
+                "response": [
+                    {
+                        "team": {"name": "Cruzeiro"},
+                        "statistics": [
+                            {"type": "Ball Possession", "value": "57%"},
+                            {"type": "Total Shots", "value": 14},
+                        ],
+                    }
+                ]
+            }
+        if path == "players/squads":
+            return {"response": [{"players": [{"name": "Cássio", "position": "Goalkeeper", "age": 39}]}]}
+        if path == "injuries":
+            return {
+                "response": [
+                    {
+                        "player": {"name": "Player Injured"},
+                        "team": {"name": "Cruzeiro"},
+                        "fixture": {"date": "2026-06-01T20:00:00Z"},
+                        "league": {"name": "Brazilian Serie A"},
+                        "type": "Injury",
+                        "reason": "Muscle injury",
+                    }
+                ]
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(football_analysis, "_api_football_get", fake_api_get)
+
+    context = fetch_team_context("Cruzeiro")
+
+    assert context.source == "API-Football"
+    assert "Last 5 matches" in context.stats
+    assert "Ball Possession: 57%" in context.stats
+    assert "Player Injured" in context.stats
+    assert "Cássio" in context.stats
+    assert any(path == "injuries" for path, _params in calls)
+
+
+def test_fetch_team_context_api_football_requires_key(monkeypatch):
+    monkeypatch.delenv("API_FOOTBALL_KEY", raising=False)
+    monkeypatch.delenv("APISPORTS_KEY", raising=False)
+
+    try:
+        fetch_team_context_api_football("Cruzeiro")
+    except RuntimeError as exc:
+        assert "API_FOOTBALL_KEY" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
 
 
 def test_football_team_context_endpoint_handles_missing_team(monkeypatch):
