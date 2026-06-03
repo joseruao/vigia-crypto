@@ -441,6 +441,7 @@ def test_daily_holdings_has_bnb_and_avax_wallets_configured():
     from dailyworker import daily_holdings_worker as worker
 
     assert worker.MIN_SCORE_SAVE == 50
+    assert worker.MIN_SCORE_ALERT == 70
     assert worker.BNB_WALLETS["Binance BNB 51"].lower() == "0x8894e0a0c962cb723c1976a4421c95949be2d4e3"
     assert worker.BNB_WALLETS["Binance BNB 7"].lower() == "0xbe0eb53f3423e596e0c4977b08c8dcfff7b2404d33e8"
     assert worker.BNB_WALLETS["Gate BNB Deposit Funder"].lower() == "0x8ef254930467ad31ce808139f43d88f08f340699"
@@ -454,9 +455,13 @@ def test_daily_holdings_etherscan_v2_chainids_are_configured(monkeypatch):
     from dailyworker import daily_holdings_worker as worker
 
     monkeypatch.setattr(worker, "ETHERSCAN_API_KEY", "test-key")
+    monkeypatch.setattr(worker, "BSCSCAN_API_KEY", "bsc-key")
+    monkeypatch.setattr(worker, "SNOWSCAN_API_KEY", "snow-key")
 
     assert worker._evm_api_config("bsc") == ("https://api.etherscan.io/v2/api", "test-key", "56")
     assert worker._evm_api_config("avalanche") == ("https://api.etherscan.io/v2/api", "test-key", "43114")
+    assert worker._evm_api_configs("bsc")[1] == ("https://api.bscscan.com/api", "bsc-key", None)
+    assert worker._evm_api_configs("avalanche")[1] == ("https://api.snowscan.xyz/api", "snow-key", None)
 
 def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
     from dailyworker import daily_holdings_worker as worker
@@ -498,6 +503,36 @@ def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
     assert result == 1
     assert saved
     assert sent == []
+
+def test_daily_holdings_sends_telegram_for_unlisted_score_70(monkeypatch):
+    import asyncio
+    from dailyworker import daily_holdings_worker as worker
+
+    sent = []
+    monkeypatch.setattr(
+        worker,
+        "get_solana_holdings",
+        lambda wallet, name: [{
+            "symbol": "DOGEBALL",
+            "balance": 1,
+            "value_usd": 250000,
+            "address": "DOGEBALLADDR",
+            "liquidity": 5000000,
+            "volume_24h": 1000000,
+            "price": 1,
+            "pair_url": "",
+            "score": 73.9,
+            "chain": "solana",
+        }],
+    )
+    monkeypatch.setattr(worker, "save_holding_to_supabase", lambda holding, wallet: True)
+    monkeypatch.setattr(worker, "is_token_listed_on_exchange", lambda symbol, wallet: False)
+    monkeypatch.setattr(worker, "send_telegram_alert", lambda holding, wallet: sent.append((holding, wallet)))
+
+    result = asyncio.run(worker.analyze_wallet_holdings("Bitget", "wallet", "solana"))
+
+    assert result == 1
+    assert sent[0][0]["symbol"] == "DOGEBALL"
 
 def test_predictions_filter_uses_live_binance_fallback(monkeypatch):
     monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {"Binance": {"TRUMP"}})

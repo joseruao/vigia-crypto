@@ -142,7 +142,7 @@ HOLDING_THRESHOLDS = {
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
 MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
 MIN_SCORE_SAVE = 50      # Guardar mais candidatos para o painel de predictions
-MIN_SCORE_ALERT = 80     # Telegram so para candidatos fortes e ainda nao listados
+MIN_SCORE_ALERT = 70     # Telegram para candidatos bons e ainda nao listados
 _LIVE_LISTING_CACHE = {}
 
 # ===========================
@@ -627,6 +627,17 @@ def _evm_api_config(chain):
     return "https://api.etherscan.io/api", ETHERSCAN_API_KEY, None
 
 
+def _evm_api_configs(chain):
+    """Primary API plus optional fallback for chain-specific explorers."""
+    primary = _evm_api_config(chain)
+    configs = [primary]
+    if chain == "bsc" and ETHERSCAN_API_KEY and BSCSCAN_API_KEY:
+        configs.append(("https://api.bscscan.com/api", BSCSCAN_API_KEY, None))
+    if chain == "avalanche" and ETHERSCAN_API_KEY and SNOWSCAN_API_KEY:
+        configs.append(("https://api.snowscan.xyz/api", SNOWSCAN_API_KEY, None))
+    return configs
+
+
 async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
     """Busca holdings de uma wallet EVM (Ethereum, BNB Chain ou Avalanche C-Chain)."""
     try:
@@ -643,28 +654,42 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
             "below_liquidity": 0,
             "scam": 0,
         }
-        api_url, api_key, chain_id = _evm_api_config(chain)
-        if not api_key:
+        api_configs = [cfg for cfg in _evm_api_configs(chain) if cfg[1]]
+        if not api_configs:
             print(f"   ⚠️ Sem API key para {chain}. Define ETHERSCAN_API_KEY ou key especifica da chain.")
             return []
-        
-        # Obter tokens ERC-20
-        params = {
-            "module": "account",
-            "action": "tokentx",
-            "address": wallet_address,
-            "page": 1,
-            "offset": int(os.getenv("EVM_TOKEN_TX_OFFSET", "500")),
-            "sort": "desc",
-            "apikey": api_key
-        }
-        if chain_id:
-            params["chainid"] = chain_id
-        
-        response = requests.get(api_url, params=params, timeout=20)
-        
-        if response.status_code == 200:
-            data = response.json()
+
+        data = None
+        api_url = api_key = chain_id = None
+        for candidate_url, candidate_key, candidate_chain_id in api_configs:
+            params = {
+                "module": "account",
+                "action": "tokentx",
+                "address": wallet_address,
+                "page": 1,
+                "offset": int(os.getenv("EVM_TOKEN_TX_OFFSET", "500")),
+                "sort": "desc",
+                "apikey": candidate_key
+            }
+            if candidate_chain_id:
+                params["chainid"] = candidate_chain_id
+
+            response = requests.get(candidate_url, params=params, timeout=20)
+            if response.status_code != 200:
+                print(f"   ❌ Erro API {chain}: HTTP {response.status_code}")
+                continue
+
+            candidate_data = response.json()
+            if candidate_data.get('status') == '1' and candidate_data.get('result'):
+                data = candidate_data
+                api_url, api_key, chain_id = candidate_url, candidate_key, candidate_chain_id
+                break
+
+            message = candidate_data.get("message") or "NOTOK"
+            detail = str(candidate_data.get("result") or "")[:160]
+            print(f"   ⚠️ API {chain} sem token txs validas: {message} {detail}".strip())
+
+        if data:
             if data.get('status') == '1' and data.get('result'):
                 stats["token_txs"] = len(data['result'])
                 for tx in data['result']:
@@ -751,11 +776,6 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                     
                     except Exception as e:
                         continue
-            else:
-                message = data.get("message") or data.get("result") or "sem resultado"
-                print(f"   ⚠️ API {chain} sem token txs validas: {message}")
-        else:
-            print(f"   ❌ Erro API {chain}: HTTP {response.status_code}")
 
         if chain in {"bsc", "avalanche"}:
             print(
@@ -991,6 +1011,8 @@ async def analyze_wallet_holdings(wallet_name, wallet_address, chain="solana"):
                     send_telegram_alert(holding, wallet_name)
                 elif listed_on_own_exchange:
                     print(f"   🔕 Sem Telegram: {holding['symbol']} ja esta listado na {_normalize_exchange_name(wallet_name)}")
+                else:
+                    print(f"   🔕 Sem Telegram: {holding['symbol']} score {holding['score']} < {MIN_SCORE_ALERT}")
         
         if holding['score'] >= 70:
             high_score_count += 1
