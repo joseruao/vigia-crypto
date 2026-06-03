@@ -113,6 +113,33 @@ def _pick_api_football_team(items: list[dict] | None) -> tuple[dict, dict] | Non
     return None
 
 
+def _team_search_terms(team_name: str) -> list[str]:
+    raw = team_name.strip()
+    parts = [raw]
+    for separator in ["/", "\\", "|", " vs ", " v ", " - ", ","]:
+        if separator in raw.lower():
+            if separator.strip() in {"vs", "v"}:
+                split_parts = raw.lower().split(separator.strip())
+            else:
+                split_parts = raw.split(separator)
+            parts.extend(part.strip() for part in split_parts if part.strip())
+    seen = []
+    for part in parts:
+        clean = part.strip()
+        if clean and clean.lower() not in [item.lower() for item in seen]:
+            seen.append(clean)
+    return seen
+
+
+def _search_api_football_team(team_name: str) -> tuple[dict, dict] | None:
+    for term in _team_search_terms(team_name):
+        search = _api_football_get("teams", {"search": term})
+        picked = _pick_api_football_team(search.get("response"))
+        if picked:
+            return picked
+    return None
+
+
 def _format_event(event: dict, team_name: str) -> str:
     home = event.get("strHomeTeam") or "Home"
     away = event.get("strAwayTeam") or "Away"
@@ -301,8 +328,18 @@ def _format_lineups(lineups: list[dict]) -> list[str]:
 
 
 def _format_injuries(injuries: list[dict]) -> list[str]:
+    latest_by_player: dict[str, dict] = {}
+    for injury in injuries or []:
+        player = injury.get("player") or {}
+        name = player.get("name") or "Unknown player"
+        fixture = injury.get("fixture") or {}
+        key = name.lower()
+        existing = latest_by_player.get(key)
+        if not existing or (fixture.get("date") or "") > (((existing.get("fixture") or {}).get("date")) or ""):
+            latest_by_player[key] = injury
+
     lines = []
-    for injury in injuries[:10]:
+    for injury in list(latest_by_player.values())[:10]:
         player = injury.get("player") or {}
         team = injury.get("team") or {}
         fixture = injury.get("fixture") or {}
@@ -459,8 +496,7 @@ def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
     if not clean_name:
         raise ValueError("team_name is required")
 
-    search = _api_football_get("teams", {"search": clean_name})
-    picked = _pick_api_football_team(search.get("response"))
+    picked = _search_api_football_team(clean_name)
     if not picked:
         raise LookupError(f"No football team found for '{clean_name}'")
 
