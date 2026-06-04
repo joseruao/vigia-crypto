@@ -31,11 +31,11 @@ def test_arkham_scanner_score_candidate_value_and_exchange_count():
 def test_arkham_scanner_exchange_score_uses_listing_scale():
     scanner = _load_scanner()
 
-    assert scanner.score_exchange_candidate(60_000, 1) == 50
-    assert scanner.score_exchange_candidate(600_000, 1) == 68
-    assert scanner.score_exchange_candidate(1_500_000, 1) == 76
-    assert scanner.score_exchange_candidate(10_000_000, 2) == 98
-    assert scanner.score_exchange_candidate(25_000_000, 3) == 100
+    assert scanner.score_exchange_candidate(100_000, 1, exchange="Binance") == 40
+    assert scanner.score_exchange_candidate(100_000, 1, exchange="Gate.io", market_cap_usd=1_500_000) == 91
+    assert scanner.score_exchange_candidate(1_500_000, 1, exchange="Binance") == 60
+    assert scanner.score_exchange_candidate(10_000_000, 2, exchange="Binance") == 88
+    assert scanner.score_exchange_candidate(25_000_000, 3, exchange="Coinbase") == 100
 
 
 def test_arkham_scanner_requires_real_service_role_key(monkeypatch):
@@ -54,7 +54,7 @@ def test_arkham_scanner_extracts_common_portfolio_shapes():
 
     payload = {
         "tokens": [
-            {"symbol": "ABC", "value": 100_000, "amount": 50, "chain": "eth"},
+            {"symbol": "ABC", "value": 100_000, "amount": 50, "chain": "eth", "marketCapUsd": 1_500_000, "liquidityUsd": 80_000},
             {"tokenSymbol": "LOW", "valueUsd": 10_000, "balance": 10, "network": "sol"},
         ]
     }
@@ -65,6 +65,8 @@ def test_arkham_scanner_extracts_common_portfolio_shapes():
     assert tokens[0]["symbol"] == "ABC"
     assert tokens[0]["chain"] == "ethereum"
     assert tokens[0]["value_usd"] == 100_000
+    assert tokens[0]["market_cap_usd"] == 1_500_000
+    assert tokens[0]["liquidity_usd"] == 80_000
     assert tokens[1]["symbol"] == "LOW"
     assert tokens[1]["chain"] == "solana"
 
@@ -230,6 +232,8 @@ def test_arkham_scanner_exchange_scan_uses_separate_signal_type(monkeypatch):
             "amount": 10,
             "value_usd": 200_000,
             "token_address": "0xabc",
+            "market_cap_usd": 2_000_000,
+            "liquidity_usd": 250_000,
         }],
     )
     monkeypatch.setattr(scanner, "fetch_listed_tokens", lambda exchange: set())

@@ -180,6 +180,14 @@ def _float_or_zero(value: Any) -> float:
         return 0.0
 
 
+def _first_number(*values: Any) -> float:
+    for value in values:
+        number = _float_or_zero(value)
+        if number > 0:
+            return number
+    return 0.0
+
+
 def _extract_token_rows(payload: Any, chain_hint: str | None = None) -> list[dict[str, Any]]:
     """Accept common Arkham portfolio shapes and return raw token rows."""
     if isinstance(payload, list):
@@ -289,6 +297,27 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         or row.get("holdingValue")
         or row.get("holdingValueUsd")
     )
+    market_cap_usd = _first_number(
+        row.get("marketCap"),
+        row.get("marketCapUsd"),
+        row.get("market_cap"),
+        row.get("market_cap_usd"),
+        row.get("mcap"),
+        row.get("mcapUsd"),
+        row.get("fdv"),
+        row.get("fdvUsd"),
+        token_meta.get("marketCap"),
+        token_meta.get("marketCapUsd"),
+        token_meta.get("fdv"),
+        token_meta.get("fdvUsd"),
+    )
+    liquidity_usd = _first_number(
+        row.get("liquidity"),
+        row.get("liquidityUsd"),
+        row.get("liquidity_usd"),
+        token_meta.get("liquidity"),
+        token_meta.get("liquidityUsd"),
+    )
     amount = _float_or_zero(
         row.get("amount")
         or row.get("balance")
@@ -319,6 +348,8 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         "amount": amount,
         "chain": chain,
         "token_address": token_address,
+        "market_cap_usd": market_cap_usd,
+        "liquidity_usd": liquidity_usd,
     }
 
 
@@ -458,23 +489,61 @@ def score_candidate(value_usd: float, exchange_count: int) -> int:
     return min(score, 100)
 
 
-def score_exchange_candidate(value_usd: float, exchange_count: int) -> int:
-    if value_usd >= 25_000_000:
-        score = 96
-    elif value_usd >= 10_000_000:
-        score = 90
-    elif value_usd >= 5_000_000:
-        score = 84
-    elif value_usd >= 1_000_000:
-        score = 76
-    elif value_usd >= 500_000:
-        score = 68
-    elif value_usd >= 100_000:
-        score = 58
-    elif value_usd >= VALUE_THRESHOLD_USD:
+def score_exchange_candidate(
+    value_usd: float,
+    exchange_count: int,
+    exchange: str = "",
+    market_cap_usd: float = 0,
+    liquidity_usd: float = 0,
+) -> int:
+    mcap_pct = (value_usd / market_cap_usd * 100) if market_cap_usd > 0 else 0
+    liquidity_pct = (value_usd / liquidity_usd * 100) if liquidity_usd > 0 else 0
+
+    if mcap_pct >= 10:
+        score = 95
+    elif mcap_pct >= 5:
+        score = 88
+    elif mcap_pct >= 2:
+        score = 80
+    elif mcap_pct >= 1:
+        score = 70
+    elif mcap_pct >= 0.5:
+        score = 60
+    elif mcap_pct >= 0.1:
+        score = 50
+    elif liquidity_pct >= 100:
+        score = 70
+    elif liquidity_pct >= 50:
+        score = 60
+    elif liquidity_pct >= 20:
         score = 50
     else:
-        score = 0
+        # Conservative fallback: absolute wallet value alone is a weak listing
+        # signal without token-size context.
+        if value_usd >= 25_000_000:
+            score = 85
+        elif value_usd >= 10_000_000:
+            score = 75
+        elif value_usd >= 5_000_000:
+            score = 68
+        elif value_usd >= 1_000_000:
+            score = 55
+        elif value_usd >= 500_000:
+            score = 45
+        elif value_usd >= 100_000:
+            score = 35
+        elif value_usd >= VALUE_THRESHOLD_USD:
+            score = 25
+        else:
+            score = 0
+
+    exchange_norm = str(exchange or "").strip().lower()
+    if exchange_norm in {"binance", "coinbase"}:
+        score += 5
+    elif exchange_norm in {"gate.io", "gate", "okx", "bybit"}:
+        score += 3
+    elif exchange_norm in {"kraken", "bitget", "mexc"}:
+        score += 2
 
     if exchange_count >= 2:
         score += 8
@@ -580,7 +649,13 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
                 continue
 
             exchange_count = len(token_exchanges[symbol])
-            score = score_exchange_candidate(token["value_usd"], exchange_count)
+            score = score_exchange_candidate(
+                token["value_usd"],
+                exchange_count,
+                exchange=exchange,
+                market_cap_usd=token.get("market_cap_usd", 0),
+                liquidity_usd=token.get("liquidity_usd", 0),
+            )
             if score < EXCHANGE_MIN_SAVE_SCORE:
                 continue
 
