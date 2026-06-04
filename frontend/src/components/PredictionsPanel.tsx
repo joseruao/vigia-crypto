@@ -199,7 +199,7 @@ export function PredictionsPanel() {
             <div className="text-xs text-zinc-500">Loading signals...</div>
           ) : items.length === 0 ? (
             <div className="text-xs text-zinc-500">
-              No fresh unlisted-token signals in the last 36h. Monitoring continues.
+              No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.
             </div>
           ) : (
             visibleItems.map((h) => {
