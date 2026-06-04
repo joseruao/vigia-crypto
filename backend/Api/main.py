@@ -292,7 +292,7 @@ async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
 async def chat_stream(req: ChatRequest):
     try:
         if _is_onboarding_question(req.prompt):
-            return StreamingResponse(_format_onboarding()(), media_type="text/plain")
+            return StreamingResponse(_format_onboarding(req.prompt)(), media_type="text/plain")
 
         _q = req.prompt.lower()
         _is_delta_q = (

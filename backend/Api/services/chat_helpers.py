@@ -9,6 +9,7 @@ Exported intent classifiers:
 """
 from __future__ import annotations
 import re
+from urllib.parse import quote
 from pydantic import BaseModel, Field
 
 
@@ -300,32 +301,56 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
     return generate
 
 
-def _format_onboarding() -> callable:
+def _onboarding_link(prompt: str, label: str | None = None) -> str:
+    label = label or prompt
+    return f"[{label}](/?ask={quote(prompt)})"
+
+
+def _format_onboarding(prompt: str = "") -> callable:
+    is_english = any(t in prompt.lower() for t in [
+        "what do you do", "how can you help", "what can you do",
+        "what is this", "how does this work", "start here",
+    ])
+
     def generate():
+        if is_english:
+            yield (
+                "## What I do and how I can help\n\n"
+                "I track exchange wallet activity and turn it into structured crypto market signals. "
+                "This is informational only, not financial advice.\n\n"
+                "### Exchange wallet monitoring\n"
+                "I monitor on-chain wallets from exchanges such as **Binance, Coinbase, Gate.io, Kraken, OKX and Bybit**. "
+                "When a token appears in an exchange wallet before being listed on that same exchange, it can become an early listing signal. "
+                "I show wallet value, liquidity, volume, detection time and a listing score.\n\n"
+                f"Ask: {_onboarding_link('Which tokens are in exchange wallets but not listed yet?', 'Unlisted token radar')}\n\n"
+                "### Daily Top100 technical ranking\n"
+                "A scheduled worker analyzes major crypto assets with RSI, moving averages, support/resistance, trend and risk context. "
+                "This helps identify setups near support instead of only showing the largest coins.\n\n"
+                f"Ask: {_onboarding_link('Which top 100 coins are near support?', 'Top100 setups near support')}\n\n"
+                "### Individual coin analysis\n"
+                "You can ask for a specific coin and get price, RSI, trend, support, target, stop and a TradingView chart.\n\n"
+                f"Ask: {_onboarding_link('Analyze BTC', 'Analyze BTC')} - {_onboarding_link('Analyze SOL', 'Analyze SOL')} - {_onboarding_link('Analyze NEAR', 'Analyze NEAR')}\n\n"
+                "The strongest part of the project is the listing radar: exchange-wallet signals filtered against known exchange listings."
+            )
+            return
+
         yield (
-            "## O que faço e como te posso ajudar\n\n"
-            "Sou um assistente de análise de mercado crypto. "
-            "Não dou conselhos de investimento — dou-te **informação estruturada** para tomares melhores decisões.\n\n"
-            "Tenho três fontes de dados principais:\n\n"
-            "---\n\n"
-            "### 🏦 Monitorização de wallets de grandes exchanges\n"
+            "## O que faco e como te posso ajudar\n\n"
+            "Monitorizo wallets de exchanges e transformo atividade on-chain em sinais estruturados de mercado crypto. "
+            "Isto e informativo, nao aconselhamento financeiro.\n\n"
+            "### Monitorizacao de wallets de exchanges\n"
             "Acompanho wallets on-chain de exchanges como **Binance, Coinbase, Gate.io, Kraken, OKX e Bybit**. "
-            "Quando uma exchange acumula um token que ainda não está listado nela, isso pode ser um sinal antecipado. "
-            "Mostro o valor acumulado, há quanto tempo foi detetado e a probabilidade estimada.\n\n"
-            "_Pergunta-me: \"Potenciais listings nas exchanges\"_\n\n"
-            "---\n\n"
-            "### 📊 Análise técnica diária do Top 100\n"
-            "Todos os dias analiso as 100 maiores criptomoedas com indicadores técnicos reais: "
-            "RSI, MACD, Bollinger Bands, médias móveis (SMA20/50/200) e suporte/resistência por swing pivots. "
-            "Digo-te quais estão perto de zonas de compra, quais têm momentum a favor, e qual a leitura técnica de cada uma.\n\n"
-            "_Pergunta-me: \"Melhores oportunidades hoje\" ou \"O que está barato agora?\"_\n\n"
-            "---\n\n"
-            "### 🔍 Análise individual de qualquer moeda\n"
-            "Posso analisar qualquer criptomoeda em detalhe — zonas de entrada, stop loss, targets, RSI, tendência macro e micro.\n\n"
-            "_Pergunta-me: \"Analisa BTC\", \"Analisa SOL\", \"Analisa NEAR\"_\n\n"
-            "---\n\n"
-            "**Nota:** Tudo o que vês é informação de mercado, não aconselhamento financeiro. "
-            "Usa os dados para informares a tua própria análise."
+            "Quando um token aparece numa wallet de exchange antes de estar listado nessa mesma exchange, pode ser um sinal antecipado. "
+            "Mostro valor na wallet, liquidez, volume, data de detecao e score de listing.\n\n"
+            f"Pergunta: {_onboarding_link('Que tokens as exchanges estao a acumular que ainda nao foram listados?', 'Potenciais listings nas exchanges')}\n\n"
+            "### Ranking tecnico diario do Top100\n"
+            "Um worker diario analisa as maiores cryptos com RSI, medias moveis, suporte/resistencia, tendencia e risco. "
+            "Isto ajuda a encontrar setups perto de suporte, em vez de mostrar apenas as moedas maiores.\n\n"
+            f"Pergunta: {_onboarding_link('Quais do top100 estao perto de suporte?', 'Melhores oportunidades hoje')}\n\n"
+            "### Analise individual de moedas\n"
+            "Podes pedir uma moeda especifica e receber preco, RSI, tendencia, suporte, alvo, stop e grafico TradingView.\n\n"
+            f"Pergunta: {_onboarding_link('Analisa BTC', 'Analisa BTC')} - {_onboarding_link('Analisa SOL', 'Analisa SOL')} - {_onboarding_link('Analisa NEAR', 'Analisa NEAR')}\n\n"
+            "A parte mais diferenciadora do projeto e o radar de listings: sinais de wallets de exchanges filtrados contra listings conhecidos."
         )
     return generate
 

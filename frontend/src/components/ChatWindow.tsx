@@ -39,6 +39,7 @@ export function ChatWindow() {
 
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
+  const urlPromptHandledRef = useRef(false);
 
   useEffect(() => {
     const browserLang = navigator.language.toLowerCase();
@@ -56,6 +57,17 @@ export function ChatWindow() {
   };
   
   const API_URL = getApiUrl();
+
+  useEffect(() => {
+    if (urlPromptHandledRef.current || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ask = params.get('ask')?.trim();
+    if (!ask) return;
+
+    urlPromptHandledRef.current = true;
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => sendMessage(ask), 0);
+  }, []);
 
   // Warm-up para evitar cold start do Render
   useEffect(() => {
