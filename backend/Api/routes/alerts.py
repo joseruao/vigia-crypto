@@ -84,6 +84,13 @@ def _prediction_since_iso() -> str:
     since = datetime.now(timezone.utc) - timedelta(hours=_prediction_max_age_hours())
     return since.isoformat()
 
+def _wants_historical_predictions(q: str) -> bool:
+    q = (q or "").lower()
+    return any(term in q for term in [
+        "historico", "histórico", "antigo", "antigos", "arquivo", "outubro",
+        "old", "older", "historical", "archive",
+    ])
+
 def _is_buy_watchlist_question(q: str) -> bool:
     q = (q or "").lower()
     buy_terms = (
@@ -1090,23 +1097,6 @@ def get_predictions():
             len(filtered),
         )
         
-        # Se não houver nenhuma com score >= 50, retorna todas ordenadas por score (para debug)
-        if len(filtered) < PREDICTIONS_LIMIT:
-            log.warning("Predictions recentes insuficientes (%s/%s). A procurar fallback historico nao listado.", len(filtered), PREDICTIONS_LIMIT)
-            fallback_params = {
-                "type": "eq.holding",
-                "select": base_select,
-                "limit": "500",
-                "order": "score.desc",
-            }
-            fallback_r = supa.rest_get("transacted_tokens", params=fallback_params, timeout=8)
-            if fallback_r.status_code != 200:
-                log.error(f"Erro ao buscar fallback predictions: HTTP {fallback_r.status_code} - {fallback_r.text[:200]}")
-                return filtered[:PREDICTIONS_LIMIT]
-            fallback_filtered = _filter_prediction_rows(fallback_r.json() or [], listed_tokens, log=log)
-            filtered = _merge_prediction_backfill(filtered, fallback_filtered)
-            log.info("Predictions apos backfill historico: %s", len(filtered))
-        
         # Retorna lista direta (formato esperado pelo frontend)
         return filtered[:PREDICTIONS_LIMIT]
         
@@ -1252,7 +1242,11 @@ def ask_alerts(payload: AskIn):
     # Ordena por score desc
     out = _dedupe_latest_predictions(out)
 
-    if len(out) < PREDICTIONS_LIMIT and (is_listing_question or is_buy_watchlist_question):
+    if (
+        len(out) < PREDICTIONS_LIMIT
+        and (is_listing_question or is_buy_watchlist_question)
+        and _wants_historical_predictions(q)
+    ):
         fallback_params = params.copy()
         fallback_params.pop("ts", None)
         log.info(f"Resultados recentes insuficientes ({len(out)}/{PREDICTIONS_LIMIT}); buscando fallback historico com params: {fallback_params}")

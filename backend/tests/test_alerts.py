@@ -250,6 +250,58 @@ def test_predictions_filter_wrapped_and_staked_derivatives():
 
     assert [row["token"] for row in filtered] == ["ALPHA"]
 
+def test_predictions_endpoint_does_not_backfill_old_rows(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+        def __init__(self, rows):
+            self._rows = rows
+        def json(self):
+            return self._rows
+
+    def fake_rest_get(table, params=None, timeout=8):
+        calls["count"] += 1
+        assert params and "ts" in params
+        return FakeResponse([])
+
+    monkeypatch.setattr(alerts.supa, "rest_get", fake_rest_get)
+    client = TestClient(app)
+
+    r = client.get("/alerts/predictions")
+
+    assert r.status_code == 200
+    assert r.json() == []
+    assert calls["count"] == 1
+
+def test_listing_ask_does_not_backfill_old_rows_by_default(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return []
+
+    def fake_rest_get(table, params=None, timeout=8):
+        calls["count"] += 1
+        assert params and "ts" in params
+        return FakeResponse()
+
+    monkeypatch.setattr(alerts.supa, "rest_get", fake_rest_get)
+    client = TestClient(app)
+
+    r = client.post("/alerts/ask", json={"prompt": "que tokens vao ser listados?"})
+
+    assert r.status_code == 200
+    assert "Nao encontrei tokens com potencial" in r.json()["answer"]
+    assert calls["count"] == 1
+
 def test_top100_endpoint_filters_zero_price(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
 
