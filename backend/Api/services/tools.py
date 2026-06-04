@@ -102,6 +102,46 @@ def get_top100_delta() -> Dict[str, Any]:
     return alerts._answer_top100_buy_watchlist(prompt="o que mudou no top100 desde ontem?")
 
 
+def get_smart_money() -> Dict[str, Any]:
+    params = {
+        "type": "eq.smart_money",
+        "select": "exchange,token,chain,score,value_usd,ts,pair_url",
+        "order": "score.desc",
+        "limit": "10",
+    }
+    try:
+        response = alerts.supa.rest_get("transacted_tokens", params=params, timeout=10)
+        if response.status_code != 200:
+            return _answer_payload(
+                f"Could not fetch smart money signals now. Supabase HTTP {response.status_code}.",
+                count=0,
+                items=[],
+            )
+        rows = response.json() or []
+    except Exception as exc:
+        return _answer_payload(f"Could not fetch smart money signals now: {exc}", count=0, items=[])
+
+    if not rows:
+        return _answer_payload("No smart money signals stored yet. Let the Arkham scanner run once.", count=0, items=[])
+
+    lines = ["**Smart money signals**\n"]
+    for row in rows[:10]:
+        token = str(row.get("token") or "?").upper()
+        fund = row.get("exchange") or "Unknown fund"
+        chain = str(row.get("chain") or "unknown").capitalize()
+        score = row.get("score")
+        value = row.get("value_usd")
+        score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "N/A"
+        value_txt = f"${value:,.0f}" if isinstance(value, (int, float)) else "N/A"
+        line = f"- **{token}** · {fund} · {chain} · Score {score_txt} · Wallet value {value_txt}"
+        pair_url = row.get("pair_url")
+        if pair_url:
+            line += f" · [DexScreener]({pair_url})"
+        lines.append(line)
+
+    return _answer_payload("\n".join(lines), count=len(rows), items=rows)
+
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -158,6 +198,14 @@ TOOL_SCHEMAS = [
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_smart_money",
+            "description": "Lista tokens relevantes em carteiras de fundos, market makers e whales monitorizados via Arkham.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
 ]
 
 
@@ -173,6 +221,8 @@ async def execute_tool(name: str, arguments: Dict[str, Any] | None = None) -> Di
         return get_recent_holdings()
     if name == "get_top100_delta":
         return get_top100_delta()
+    if name == "get_smart_money":
+        return get_smart_money()
     return {"ok": False, "error": f"Ferramenta desconhecida: {name}", "answer": "Ferramenta desconhecida."}
 
 

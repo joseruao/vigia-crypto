@@ -1,4 +1,4 @@
-# Render Blueprint - Cron Job para vigia_solana_pro_supabase
+# Render Blueprint - Cron jobs
 # https://render.com/docs/blueprint-spec
 #
 # IMPORTANTE: rootDir: backend faz com que o build corra na pasta backend,
@@ -6,12 +6,23 @@
 
 services:
   - type: cron
-    name: vigia-solana-pro-cron
+    name: arkham-exchange-scanner
     runtime: python
     region: oregon
     rootDir: backend
     pythonVersion: "3.12"
     buildCommand: pip install -r requirements.txt
-    startCommand: python worker/vigia_solana_pro_supabase.py
+    startCommand: python worker/arkham_scanner.py
     schedule: "0 8 * * *"
+    autoDeploy: yes
+
+  - type: cron
+    name: top100-rankings-cron
+    runtime: python
+    region: oregon
+    rootDir: backend
+    pythonVersion: "3.12"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python dailyworker/top100_rankings_worker.py
+    schedule: "0 7 * * *"
     autoDeploy: yes

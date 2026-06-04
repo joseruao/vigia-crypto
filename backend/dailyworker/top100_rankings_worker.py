@@ -1,4 +1,5 @@
 import math
+import os
 import time
 import asyncio
 from datetime import datetime, timezone, timedelta
@@ -766,3 +767,64 @@ async def update_top100_rankings(
 
     print(f"✅ Top100 atualizado: {saved}/{len(rows)} moedas guardadas")
     return saved
+
+
+def _standalone_supabase_headers() -> dict:
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or ""
+    ).strip()
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+
+
+def _standalone_upsert(table: str, row: Dict[str, Any], conflict_cols: List[str]) -> bool:
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    if not url:
+        print("Top100 standalone: falta SUPABASE_URL", flush=True)
+        return False
+    response = requests.post(
+        f"{url}/rest/v1/{table}",
+        params={"on_conflict": ",".join(conflict_cols)},
+        json=row,
+        headers=_standalone_supabase_headers(),
+        timeout=20,
+    )
+    if response.status_code in (200, 201):
+        return True
+    print(f"Top100 standalone upsert falhou: HTTP {response.status_code} - {response.text[:240]}", flush=True)
+    return False
+
+
+def _standalone_upsert_many(table: str, rows: List[Dict[str, Any]], conflict_cols: List[str]) -> int:
+    if not rows:
+        return 0
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    if not url:
+        print("Top100 standalone: falta SUPABASE_URL", flush=True)
+        return 0
+    response = requests.post(
+        f"{url}/rest/v1/{table}",
+        params={"on_conflict": ",".join(conflict_cols)},
+        json=rows,
+        headers=_standalone_supabase_headers(),
+        timeout=35,
+    )
+    if response.status_code in (200, 201):
+        return len(rows)
+    print(f"Top100 standalone bulk upsert falhou: HTTP {response.status_code} - {response.text[:300]}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    print("TOP100 TECHNICAL RANKINGS - CRON INICIADO", flush=True)
+    started = time.time()
+    saved_count = asyncio.run(update_top100_rankings(_standalone_upsert, _standalone_upsert_many))
+    print(f"{saved_count} moedas guardadas em {TOP100_TABLE}", flush=True)
+    print(f"Duracao: {round(time.time() - started, 1)}s", flush=True)

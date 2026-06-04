@@ -57,5 +57,31 @@ def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
     })
 
     assert ok is True
-    assert calls[0][0]["token_address"] == "arkham:binance:ethereum:ABC"
+    assert calls[0][0]["token_address"] == "arkham:holding:binance:ethereum:ABC"
     assert calls[0][1] == ["token", "exchange"]
+
+
+def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_portfolio",
+        lambda slug, min_value_usd: [{
+            "symbol": "ABC",
+            "chain": "ethereum",
+            "amount": 10,
+            "value_usd": 150_000,
+            "token_address": "0xabc",
+        }],
+    )
+    saved = []
+    monkeypatch.setattr(scanner, "save_candidate", lambda candidate, signal_type="holding": saved.append((candidate, signal_type)) or True)
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "wintermute", "name": "Wintermute"}])
+
+    count, saved_count = scanner.scan_smart_money({"ABC": {"Binance"}})
+
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][1] == "smart_money"
+    assert saved[0][0]["score"] == 45

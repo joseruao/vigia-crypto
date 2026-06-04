@@ -105,6 +105,29 @@ def test_get_recent_holdings_preserves_empty_ask_response(monkeypatch):
     assert "Nao encontrei" in result["answer"]
 
 
+def test_get_smart_money_formats_supabase_rows(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [{
+                "token": "ABC",
+                "exchange": "Wintermute",
+                "chain": "ethereum",
+                "score": 88,
+                "value_usd": 1_250_000,
+                "pair_url": "https://dexscreener.com/search?q=ABC",
+            }]
+
+    monkeypatch.setattr(tools.alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    result = tools.get_smart_money()
+
+    assert result["count"] == 1
+    assert "ABC" in result["answer"]
+    assert "Wintermute" in result["answer"]
+    assert "$1,250,000" in result["answer"]
+
+
 def test_execute_tool_dispatches_known_sync_tool(monkeypatch):
     monkeypatch.setattr(tools, "get_listing_predictions", lambda: {"ok": True, "answer": "LISTINGS"})
 

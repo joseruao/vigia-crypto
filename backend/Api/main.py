@@ -326,6 +326,15 @@ async def chat_stream(req: ChatRequest):
                 yield result.get("answer") or ("Could not fetch listing signals now." if lang == "en" else "Nao consegui obter potenciais listings agora.")
             return StreamingResponse(_listings(), media_type="text/plain")
 
+        if any(t in _q for t in [
+            "smart money", "fundos", "whales", "institutions", "institucionais",
+            "jump", "wintermute", "paradigm",
+        ]):
+            result = await execute_tool("get_smart_money")
+            def _smart_money():
+                yield result.get("answer") or ("Could not fetch smart money signals now." if lang == "en" else "Nao consegui obter smart money agora.")
+            return StreamingResponse(_smart_money(), media_type="text/plain")
+
         if _is_recent_holdings_tool_question(req.prompt):
             result = await execute_tool("get_recent_holdings")
             def _holdings():

@@ -41,6 +41,7 @@ SUPABASE_KEY = (
 ).strip()
 
 VALUE_THRESHOLD_USD = 50_000
+SMART_MONEY_THRESHOLD_USD = 100_000
 
 EXCHANGES = [
     {"slug": "binance", "exchange": "Binance"},
@@ -51,6 +52,18 @@ EXCHANGES = [
     {"slug": "kraken", "exchange": "Kraken"},
     {"slug": "bitget", "exchange": "Bitget"},
     {"slug": "mexc", "exchange": "MEXC"},
+]
+
+SMART_MONEY_FUNDS = [
+    {"slug": "wintermute", "name": "Wintermute"},
+    {"slug": "jump-trading", "name": "Jump Trading"},
+    {"slug": "paradigm", "name": "Paradigm"},
+    {"slug": "a16z", "name": "a16z"},
+    {"slug": "multicoin-capital", "name": "Multicoin Capital"},
+    {"slug": "drw-cumberland", "name": "DRW Cumberland"},
+    {"slug": "galaxy-digital", "name": "Galaxy Digital"},
+    {"slug": "pantera-capital", "name": "Pantera Capital"},
+    {"slug": "dwr-cumberland", "name": "DWR Cumberland"},
 ]
 
 ARKHAM_HEADERS = {
@@ -167,7 +180,7 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def fetch_arkham_portfolio(slug: str) -> list[dict[str, Any]]:
+def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD) -> list[dict[str, Any]]:
     url = f"{ARKHAM_BASE_URL}/portfolio/entity/{slug}"
     response = requests.get(url, headers=ARKHAM_HEADERS, timeout=30)
     response.raise_for_status()
@@ -176,7 +189,7 @@ def fetch_arkham_portfolio(slug: str) -> list[dict[str, Any]]:
     tokens: list[dict[str, Any]] = []
     for row in raw_rows:
         token = _normalize_token(row)
-        if token and token["value_usd"] > VALUE_THRESHOLD_USD:
+        if token and token["value_usd"] > min_value_usd:
             tokens.append(token)
     return tokens
 
@@ -230,13 +243,13 @@ def supabase_upsert(table: str, row: dict[str, Any], conflict_cols: list[str]) -
     return False
 
 
-def save_candidate(candidate: dict[str, Any]) -> bool:
+def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> bool:
     token = candidate["token"]
     exchange = candidate["exchange"]
     chain = candidate["chain"]
     # Arkham may not return token addresses for every chain; keep a stable
     # synthetic key so NOT NULL / legacy unique constraints do not break.
-    token_address = candidate.get("token_address") or f"arkham:{exchange.lower()}:{chain}:{token}"
+    token_address = candidate.get("token_address") or f"arkham:{signal_type}:{exchange.lower()}:{chain}:{token}"
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
@@ -248,8 +261,8 @@ def save_candidate(candidate: dict[str, Any]) -> bool:
         "value_usd": candidate["value_usd"],
         "score": candidate["score"],
         "ts": now,
-        "type": "holding",
-        "signature": f"arkham-{exchange.lower()}-{chain}-{token}",
+        "type": signal_type,
+        "signature": f"arkham-{signal_type}-{exchange.lower()}-{chain}-{token}",
         "pair_url": f"https://dexscreener.com/search?q={token}",
         "analysis_text": (
             f"{token} detected in Arkham {exchange} entity portfolio. "
@@ -267,11 +280,8 @@ def save_candidate(candidate: dict[str, Any]) -> bool:
     )
 
 
-def main() -> None:
-    _require_env()
-    print("🔎 ARKHAM EXCHANGE SCANNER — iniciado", flush=True)
+def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
     start = time.time()
-
     exchange_holdings: dict[str, list[dict[str, Any]]] = {}
     token_exchanges: dict[str, set[str]] = defaultdict(set)
 
@@ -280,7 +290,7 @@ def main() -> None:
         exchange = item["exchange"]
         try:
             print(f"🏦 Arkham portfolio: {exchange} ({slug})", flush=True)
-            tokens = fetch_arkham_portfolio(slug)
+            tokens = fetch_arkham_portfolio(slug, VALUE_THRESHOLD_USD)
             exchange_holdings[exchange] = tokens
             for token in tokens:
                 token_exchanges[token["symbol"]].add(exchange)
@@ -337,6 +347,81 @@ def main() -> None:
         f"✅ {len(candidates)} candidatos encontrados em "
         f"{len(exchanges_with_candidates)} exchanges; {saved} guardados. "
         f"Duração: {elapsed}s",
+        flush=True,
+    )
+    return token_exchanges, len(candidates), saved
+
+
+def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
+    print("🧠 ARKHAM SMART MONEY TRACKER — iniciado", flush=True)
+    candidates: list[dict[str, Any]] = []
+    seen_slugs: set[str] = set()
+
+    for index, item in enumerate(SMART_MONEY_FUNDS):
+        slug = item["slug"]
+        fund_name = item["name"]
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+
+        try:
+            print(f"🐋 Arkham portfolio: {fund_name} ({slug})", flush=True)
+            tokens = fetch_arkham_portfolio(slug, SMART_MONEY_THRESHOLD_USD)
+            print(f"   ✅ {len(tokens)} tokens acima de ${SMART_MONEY_THRESHOLD_USD:,.0f}", flush=True)
+        except Exception as exc:
+            print(f"   ⚠️ Arkham falhou para {fund_name}: {exc}", flush=True)
+            tokens = []
+
+        for token in tokens:
+            symbol = token["symbol"]
+            exchange_count = len(token_exchanges.get(symbol, set()))
+            score = score_candidate(token["value_usd"], 1)
+            if exchange_count >= 1:
+                score += 30
+            score = min(score, 100)
+            if score <= 0:
+                continue
+
+            candidates.append({
+                "exchange": fund_name,
+                "token": symbol,
+                "chain": token["chain"],
+                "amount": token["amount"],
+                "value_usd": token["value_usd"],
+                "token_address": token["token_address"],
+                "exchange_count": max(exchange_count, 1),
+                "score": score,
+            })
+
+        if index < len(SMART_MONEY_FUNDS) - 1:
+            time.sleep(1.1)
+
+    saved = 0
+    for candidate in sorted(candidates, key=lambda row: row["score"], reverse=True):
+        if save_candidate(candidate, signal_type="smart_money"):
+            saved += 1
+            print(
+                f"💾 smart_money {candidate['token']} · {candidate['exchange']} · "
+                f"${candidate['value_usd']:,.0f} · score {candidate['score']}",
+                flush=True,
+            )
+
+    print(f"✅ Smart money: {len(candidates)} candidatos; {saved} guardados.", flush=True)
+    return len(candidates), saved
+
+
+def main() -> None:
+    _require_env()
+    print("🔎 ARKHAM EXCHANGE SCANNER — iniciado", flush=True)
+    start = time.time()
+
+    token_exchanges, exchange_candidates, exchange_saved = scan_exchange_candidates()
+    smart_candidates, smart_saved = scan_smart_money(token_exchanges)
+
+    print(
+        f"🏁 Arkham concluido: exchange={exchange_candidates}/{exchange_saved}, "
+        f"smart_money={smart_candidates}/{smart_saved}. "
+        f"Duracao total: {round(time.time() - start, 1)}s",
         flush=True,
     )
 
