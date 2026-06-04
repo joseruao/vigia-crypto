@@ -12,6 +12,7 @@ const getApiBase = () => {
 const API_BASE = getApiBase();
 
 export type Holding = {
+  id?: string | null;
   token: string | null;
   exchange: string | null;
   chain: string | null;
@@ -22,6 +23,29 @@ export type Holding = {
   pair_url?: string | null;
   analysis?: string | null;
   ts?: string | null;
+  token_address?: string | null;
+};
+
+export type Top100Coin = {
+  symbol: string;
+  name?: string | null;
+  coin_id?: string | null;
+  price?: number | null;
+  market_cap?: number | null;
+  volume_24h?: number | null;
+  score?: number | null;
+  risk?: string | null;
+  signal?: string | null;
+  rationale?: string | null;
+  rsi?: number | null;
+  trend?: string | null;
+  support?: number | null;
+  resistance?: number | null;
+  current_position?: number | null;
+  entry_zone?: string | null;
+  technical_action?: string | null;
+  change_24h?: number | null;
+  change_7d?: number | null;
 };
 
 export async function fetchHoldings(params?: {
@@ -47,6 +71,19 @@ export async function fetchPredictions(): Promise<Holding[]> {
   const res = await fetch(`${API_BASE}/alerts/predictions`, { cache: "no-store" });
   if (!res.ok) return [];
   return res.json();
+}
+
+export async function fetchTop100Rankings(params?: {
+  mode?: string;
+  limit?: number;
+}): Promise<Top100Coin[]> {
+  const q = new URLSearchParams();
+  q.set("mode", params?.mode || "near_support");
+  q.set("limit", String(params?.limit ?? 5));
+  const res = await fetch(`${API_BASE}/alerts/top100?${q.toString()}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return Array.isArray(data?.items) ? data.items : [];
 }
 
 export async function askAlerts(prompt: string): Promise<string> {

@@ -3,7 +3,6 @@
 import {
   CandlestickChart,
   CircleHelp,
-  ListFilter,
   Radar,
   Search,
   TrendingUp,
@@ -44,13 +43,6 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Mais sinais',
-      description: 'Lista alargada de tokens ainda nao listados.',
-      prompt: 'ver mais listings',
-      icon: ListFilter,
-      tone: 'text-amber-700 bg-amber-50',
-    },
-    {
       label: 'Analisar uma moeda',
       description: 'Entrada, alvo, stop, RSI e tendencia.',
       prompt: 'Analisa BTC',
@@ -86,13 +78,6 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       prompt: 'Which tokens are exchanges accumulating that are not yet listed?',
       icon: Radar,
       tone: 'text-blue-700 bg-blue-50',
-    },
-    {
-      label: 'More signals',
-      description: 'Expanded list of unlisted token signals.',
-      prompt: 'show more listings',
-      icon: ListFilter,
-      tone: 'text-amber-700 bg-amber-50',
     },
     {
       label: 'Analyze a coin',

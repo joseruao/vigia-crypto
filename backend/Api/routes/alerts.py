@@ -621,6 +621,37 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         answer += "\n\n" + footer
     return {"ok": True, "answer": answer, "count": len(rows), "items": rows}
 
+@router.get("/alerts/top100")
+def get_top100_rankings(mode: str = "near_support", limit: int = 5):
+    """
+    Devolve ranking tecnico top100 em JSON para o painel inicial.
+    """
+    import logging
+    log = logging.getLogger("vigia")
+
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase nao configurado", "items": []}
+
+    safe_limit = max(1, min(int(limit or 5), 10))
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+
+    raw, _ = _fetch_top100_rows(today, log)
+    if not raw:
+        raw, _ = _fetch_top100_rows(yesterday, log)
+    if not raw:
+        raw, _ = _fetch_top100_rows(None, log)
+
+    rows = [
+        row for row in (raw or [])
+        if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
+        and float(row.get("score") or 0) > 0
+    ]
+    allowed_modes = {"score", "near_support", "low_rsi", "low_risk", "risk_reward", "bounce"}
+    selected_mode = mode if mode in allowed_modes else "near_support"
+    rows = _sort_top100_rows(rows, selected_mode)[:safe_limit]
+    return {"ok": True, "mode": selected_mode, "count": len(rows), "items": rows}
+
 def _is_test_token(row: Dict[str, Any]) -> bool:
     token = str(row.get("token") or "").strip().upper()
     token_address = str(row.get("token_address") or "").strip().lower()
