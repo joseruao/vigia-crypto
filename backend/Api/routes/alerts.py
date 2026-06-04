@@ -61,7 +61,7 @@ TOP100_EXCLUDED_SYMBOLS = {
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
     "EURC", "EUROC", "EURI", "EURT", "EURQ",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
-    "CBBTC", "SPENDLE",
+    "CBBTC", "SPENDLE", "SENA",
     "PAXG", "XAUT",
 }
 LISTING_EXCLUDED_PREFIXES = ("CB", "S", "W")

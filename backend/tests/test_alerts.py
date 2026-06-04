@@ -243,6 +243,7 @@ def test_predictions_filter_wrapped_and_staked_derivatives():
     rows = [
         {"exchange": "Binance 8", "token": "cbBTC", "token_address": "0xcbbtc", "chain": "ethereum", "score": 90},
         {"exchange": "Binance 8", "token": "sPENDLE", "token_address": "0xspendle", "chain": "ethereum", "score": 90},
+        {"exchange": "Gate.io", "token": "sENA", "token_address": "0xsena", "chain": "ethereum", "score": 90},
         {"exchange": "Binance 8", "token": "ALPHA", "token_address": "0xalpha", "chain": "ethereum", "score": 80},
     ]
 
@@ -622,6 +623,7 @@ def test_daily_holdings_filters_wrapped_and_staked_derivatives():
 
     assert worker.is_stable_or_wrapped_token("cbBTC") is True
     assert worker.is_stable_or_wrapped_token("sPENDLE") is True
+    assert worker.is_stable_or_wrapped_token("sENA") is True
     assert worker.is_stable_or_wrapped_token("ALPHA") is False
 
 def test_evm_chain_disables_after_unsupported_provider(monkeypatch):
