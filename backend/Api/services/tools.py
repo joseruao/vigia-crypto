@@ -43,9 +43,31 @@ def get_top100_rankings(mode: str = "score") -> Dict[str, Any]:
 
 
 def get_listing_predictions() -> Dict[str, Any]:
-    return alerts.ask_alerts(
-        alerts.AskIn(prompt="Que tokens as exchanges estao a acumular que ainda nao foram listados?")
-    )
+    rows = alerts.get_predictions()
+    if not rows:
+        return _answer_payload("No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.")
+    total = len(rows)
+    limit = 3
+    lines = [f"**Top signals on-chain detected**\n\n{total} signals filtered. Showing the {min(limit, total)} most relevant.\n"]
+    for i, r in enumerate(rows[:limit], 1):
+        token = r.get("token") or "—"
+        exchange = r.get("exchange") or "—"
+        chain = r.get("chain") or "—"
+        score = r.get("score")
+        score_txt = f"{score}/100" if isinstance(score, (int, float)) else "—"
+        val = r.get("value_usd")
+        val_txt = f"${val:,.0f}" if isinstance(val, (int, float)) else "—"
+        pair_url = r.get("pair_url") or f"https://dexscreener.com/search?q={token}"
+        analysis = r.get("analysis_text") or r.get("ai_analysis") or ""
+        lines.append(
+            f"{i}. **{token}** · {exchange} · {chain}\n"
+            f"   Score: {score_txt} · Wallet: {val_txt}\n"
+            + (f"   {analysis}\n" if analysis else "")
+            + f"   [DexScreener]({pair_url})\n"
+        )
+    if total > limit:
+        lines.append(f"\n+ {total - limit} more signals. Ask *show more listings* to expand.")
+    return _answer_payload("\n".join(lines), count=total, items=rows[:limit])
 
 
 def get_recent_holdings() -> Dict[str, Any]:
