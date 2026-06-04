@@ -101,6 +101,12 @@ def ping():
     return {"status": "ok"}
 
 
+@app.get("/health")
+@app.head("/health")
+def health():
+    return {"ok": True, "service": "vigia-backend", "status": "healthy"}
+
+
 @app.get("/__version")
 def version():
     return {"name": "vigia-backend", "version": "0.2.0"}
