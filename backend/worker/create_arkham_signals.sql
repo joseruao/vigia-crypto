@@ -9,6 +9,12 @@ create table if not exists public.arkham_signals (
   chain text,
   amount numeric,
   value_usd numeric,
+  previous_value_usd numeric,
+  value_delta_usd numeric,
+  value_delta_pct numeric,
+  previous_amount numeric,
+  amount_delta numeric,
+  signal_direction text,
   market_cap_usd numeric,
   liquidity_usd numeric,
   position_pct numeric,
@@ -29,6 +35,12 @@ alter table public.arkham_signals add column if not exists liquidity_usd numeric
 alter table public.arkham_signals add column if not exists position_pct numeric;
 alter table public.arkham_signals add column if not exists liquidity_pct numeric;
 alter table public.arkham_signals add column if not exists exchange_count integer default 1;
+alter table public.arkham_signals add column if not exists previous_value_usd numeric;
+alter table public.arkham_signals add column if not exists value_delta_usd numeric;
+alter table public.arkham_signals add column if not exists value_delta_pct numeric;
+alter table public.arkham_signals add column if not exists previous_amount numeric;
+alter table public.arkham_signals add column if not exists amount_delta numeric;
+alter table public.arkham_signals add column if not exists signal_direction text;
 
 create index if not exists arkham_signals_entity_type_score_idx
   on public.arkham_signals (entity_type, score desc, ts desc);
@@ -41,6 +53,12 @@ create index if not exists arkham_signals_token_idx
 
 create index if not exists arkham_signals_entity_idx
   on public.arkham_signals (entity);
+
+create index if not exists arkham_signals_direction_idx
+  on public.arkham_signals (entity_type, signal_direction, ts desc);
+
+create index if not exists arkham_signals_value_delta_idx
+  on public.arkham_signals (entity_type, value_delta_usd desc);
 
 alter table public.arkham_signals enable row level security;
 

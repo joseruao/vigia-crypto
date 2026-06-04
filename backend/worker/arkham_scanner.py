@@ -581,7 +581,63 @@ def supabase_upsert(table: str, row: dict[str, Any], conflict_cols: list[str]) -
     return False
 
 
-def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> bool:
+def candidate_signal_key(candidate: dict[str, Any], signal_type: str) -> str:
+    token = candidate["token"]
+    exchange = candidate["exchange"]
+    chain = candidate["chain"]
+    token_address = candidate.get("token_address") or f"arkham:{signal_type}:{exchange.lower()}:{chain}:{token}"
+    return f"{signal_type}:{exchange.lower()}:{chain}:{token_address or token}".lower()
+
+
+def signal_direction(current_value: float, previous_value: float) -> str:
+    if previous_value <= 0 and current_value > 0:
+        return "new"
+    delta = current_value - previous_value
+    threshold = max(10_000, previous_value * 0.05)
+    if current_value <= 0 and previous_value > 0:
+        return "removed_or_moved"
+    if delta >= threshold:
+        return "increased"
+    if delta <= -threshold:
+        return "decreased"
+    return "flat"
+
+
+def fetch_existing_signals(entity: str, entity_type: str) -> dict[str, dict[str, Any]]:
+    url = f"{SUPABASE_URL}/rest/v1/{ARKHAM_SIGNALS_TABLE}"
+    params = {
+        "select": "signal_key,token,chain,token_address,value_usd,amount,score,pair_url,exchange_count",
+        "entity": f"eq.{entity}",
+        "entity_type": f"eq.{entity_type}",
+        "limit": "10000",
+    }
+    response = requests.get(url, params=params, headers=SUPABASE_HEADERS, timeout=20)
+    if response.status_code >= 400:
+        print(
+            f"âš ï¸ Supabase existing {ARKHAM_SIGNALS_TABLE} falhou para {entity}: "
+            f"HTTP {response.status_code} - {response.text[:200]}",
+            flush=True,
+        )
+        return {}
+    return {str(row.get("signal_key") or ""): row for row in response.json() if row.get("signal_key")}
+
+
+def smart_money_score(value_usd: float, exchange_overlap_count: int = 0, direction: str = "new") -> int:
+    score = score_candidate(value_usd, 1)
+    if exchange_overlap_count >= 1:
+        score += 25
+    if exchange_overlap_count >= 3:
+        score += 10
+    if direction == "increased":
+        score += 15
+    elif direction == "new":
+        score += 10
+    elif direction in {"decreased", "removed_or_moved"}:
+        score = max(20, score - 15)
+    return max(0, min(score, 100))
+
+
+def save_candidate(candidate: dict[str, Any], signal_type: str = "holding", previous: dict[str, Any] | None = None) -> bool:
     token = candidate["token"]
     exchange = candidate["exchange"]
     chain = candidate["chain"]
@@ -589,7 +645,16 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
     # synthetic key so NOT NULL / legacy unique constraints do not break.
     token_address = candidate.get("token_address") or f"arkham:{signal_type}:{exchange.lower()}:{chain}:{token}"
     entity_type = "smart_money" if signal_type == "smart_money" else "exchange"
-    signal_key = f"{signal_type}:{exchange.lower()}:{chain}:{token_address or token}".lower()
+    signal_key = candidate_signal_key({**candidate, "token_address": token_address}, signal_type)
+    previous = previous or {}
+    previous_value = _float_or_zero(previous.get("value_usd"))
+    previous_amount = _float_or_zero(previous.get("amount"))
+    current_value = _float_or_zero(candidate.get("value_usd"))
+    current_amount = _float_or_zero(candidate.get("amount"))
+    value_delta = current_value - previous_value
+    amount_delta = current_amount - previous_amount
+    value_delta_pct = (value_delta / previous_value * 100) if previous_value > 0 else None
+    direction = signal_direction(current_value, previous_value)
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
@@ -601,7 +666,13 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         "token_address": token_address,
         "chain": chain,
         "amount": candidate.get("amount", 0),
-        "value_usd": candidate["value_usd"],
+        "value_usd": current_value,
+        "previous_value_usd": previous_value,
+        "value_delta_usd": value_delta,
+        "value_delta_pct": value_delta_pct,
+        "previous_amount": previous_amount,
+        "amount_delta": amount_delta,
+        "signal_direction": direction,
         "market_cap_usd": candidate.get("market_cap_usd") or 0,
         "liquidity_usd": candidate.get("liquidity_usd") or 0,
         "position_pct": candidate.get("position_pct") or 0,
@@ -614,7 +685,8 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         "pair_url": f"https://dexscreener.com/search?q={token}",
         "analysis_text": (
             f"{token} detected in Arkham {exchange} entity portfolio. "
-            f"Value: ${candidate['value_usd']:,.0f}. "
+            f"Value: ${current_value:,.0f}. "
+            f"Delta: ${value_delta:,.0f} ({direction}). "
             f"Position: {candidate.get('position_pct') or 0:.2f}% of market cap. "
             f"Seen across {candidate['exchange_count']} monitored exchange(s)."
         ),
@@ -783,13 +855,106 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
     return len(candidates), saved
 
 
+def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
+    print("ARKHAM SMART MONEY TRACKER — iniciado", flush=True)
+    candidates: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    seen_slugs: set[str] = set()
+
+    funds = _limit_entities(SMART_MONEY_FUNDS, "ARKHAM_SMART_MONEY_SLUGS")
+    for index, item in enumerate(funds):
+        slug = item["slug"]
+        fund_name = item["name"]
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+
+        existing = fetch_existing_signals(fund_name, "smart_money")
+        seen_keys: set[str] = set()
+
+        try:
+            print(f"Arkham portfolio: {fund_name} ({slug})", flush=True)
+            tokens = fetch_arkham_portfolio(slug, SMART_MONEY_THRESHOLD_USD)
+            print(f"   {len(tokens)} tokens acima de ${SMART_MONEY_THRESHOLD_USD:,.0f}", flush=True)
+        except Exception as exc:
+            print(f"   Arkham falhou para {fund_name}: {exc}", flush=True)
+            tokens = []
+
+        for token in tokens:
+            symbol = token["symbol"]
+            if is_low_signal_smart_money_asset(symbol):
+                continue
+
+            exchange_count = len(token_exchanges.get(symbol, set()))
+            candidate = {
+                "exchange": fund_name,
+                "token": symbol,
+                "chain": token["chain"],
+                "amount": token["amount"],
+                "value_usd": token["value_usd"],
+                "token_address": token["token_address"],
+                "exchange_count": max(exchange_count, 1),
+                "score": 0,
+            }
+            key = candidate_signal_key(candidate, "smart_money")
+            previous = existing.get(key)
+            previous_value = _float_or_zero((previous or {}).get("value_usd"))
+            direction = signal_direction(candidate["value_usd"], previous_value)
+            candidate["score"] = smart_money_score(candidate["value_usd"], exchange_count, direction)
+            if candidate["score"] < SMART_MONEY_MIN_SAVE_SCORE:
+                continue
+
+            seen_keys.add(key)
+            candidates.append((candidate, previous))
+
+        for key, previous in existing.items():
+            if key in seen_keys:
+                continue
+            symbol = str(previous.get("token") or "").strip().upper()
+            if not symbol or is_low_signal_smart_money_asset(symbol):
+                continue
+            previous_value = _float_or_zero(previous.get("value_usd"))
+            if previous_value < SMART_MONEY_THRESHOLD_USD:
+                continue
+
+            overlap_count = int(previous.get("exchange_count") or 0)
+            candidate = {
+                "exchange": fund_name,
+                "token": symbol,
+                "chain": previous.get("chain") or "unknown",
+                "amount": 0,
+                "value_usd": 0,
+                "token_address": previous.get("token_address") or "",
+                "exchange_count": max(overlap_count, 1),
+                "score": smart_money_score(0, overlap_count, "removed_or_moved"),
+            }
+            candidates.append((candidate, previous))
+
+        if index < len(funds) - 1:
+            time.sleep(1.1)
+
+    saved = 0
+    for candidate, previous in sorted(candidates, key=lambda item: item[0]["score"], reverse=True):
+        previous_value = _float_or_zero((previous or {}).get("value_usd"))
+        direction = signal_direction(_float_or_zero(candidate.get("value_usd")), previous_value)
+        if save_candidate(candidate, signal_type="smart_money", previous=previous):
+            saved += 1
+            print(
+                f"smart_money {direction} {candidate['token']} · {candidate['exchange']} · "
+                f"${candidate['value_usd']:,.0f} · score {candidate['score']}",
+                flush=True,
+            )
+
+    print(f"Smart money: {len(candidates)} sinais/deltas; {saved} guardados.", flush=True)
+    return len(candidates), saved
+
+
 def main() -> None:
     _require_env()
     print("🔎 ARKHAM EXCHANGE SCANNER — iniciado", flush=True)
     start = time.time()
 
     token_exchanges, exchange_candidates, exchange_saved = scan_exchange_candidates()
-    smart_candidates, smart_saved = scan_smart_money(token_exchanges)
+    smart_candidates, smart_saved = scan_smart_money_with_deltas(token_exchanges)
 
     print(
         f"🏁 Arkham concluido: exchange={exchange_candidates}/{exchange_saved}, "

@@ -151,6 +151,47 @@ def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
     assert calls[0][1] == ["signal_key"]
 
 
+def test_arkham_scanner_signal_direction_is_not_called_sale():
+    scanner = _load_scanner()
+
+    assert scanner.signal_direction(100_000, 0) == "new"
+    assert scanner.signal_direction(160_000, 100_000) == "increased"
+    assert scanner.signal_direction(80_000, 100_000) == "decreased"
+    assert scanner.signal_direction(96_000, 100_000) == "flat"
+    assert scanner.signal_direction(0, 100_000) == "removed_or_moved"
+
+
+def test_arkham_scanner_save_candidate_stores_delta_fields(monkeypatch):
+    scanner = _load_scanner()
+    calls = []
+    monkeypatch.setattr(scanner, "supabase_upsert", lambda table, row, cols: calls.append((row, cols)) or True)
+
+    ok = scanner.save_candidate(
+        {
+            "exchange": "Wintermute",
+            "token": "HYPE",
+            "chain": "ethereum",
+            "amount": 15,
+            "value_usd": 1_500_000,
+            "score": 65,
+            "exchange_count": 1,
+            "token_address": "0xhype",
+        },
+        signal_type="smart_money",
+        previous={"value_usd": 1_000_000, "amount": 10},
+    )
+
+    row = calls[0][0]
+    assert ok is True
+    assert row["entity_type"] == "smart_money"
+    assert row["previous_value_usd"] == 1_000_000
+    assert row["value_delta_usd"] == 500_000
+    assert row["value_delta_pct"] == 50
+    assert row["previous_amount"] == 10
+    assert row["amount_delta"] == 5
+    assert row["signal_direction"] == "increased"
+
+
 def test_arkham_scanner_filters_listed_aliases_and_low_signal_assets():
     scanner = _load_scanner()
 
@@ -222,6 +263,91 @@ def test_arkham_scanner_smart_money_skips_low_score_noise(monkeypatch):
     assert count == 0
     assert saved_count == 0
     assert saved == []
+
+
+def test_arkham_scanner_smart_money_delta_tracks_increase(monkeypatch):
+    scanner = _load_scanner()
+    old_key = "smart_money:wintermute:ethereum:0xabc"
+    monkeypatch.setattr(
+        scanner,
+        "fetch_existing_signals",
+        lambda entity, entity_type: {
+            old_key: {
+                "signal_key": old_key,
+                "token": "ABC",
+                "chain": "ethereum",
+                "token_address": "0xabc",
+                "amount": 10,
+                "value_usd": 100_000,
+                "exchange_count": 1,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_portfolio",
+        lambda slug, min_value_usd: [{
+            "symbol": "ABC",
+            "chain": "ethereum",
+            "amount": 15,
+            "value_usd": 180_000,
+            "token_address": "0xabc",
+        }],
+    )
+    saved = []
+    monkeypatch.setattr(
+        scanner,
+        "save_candidate",
+        lambda candidate, signal_type="holding", previous=None: saved.append((candidate, signal_type, previous)) or True,
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "wintermute", "name": "Wintermute"}])
+
+    count, saved_count = scanner.scan_smart_money_with_deltas({"ABC": {"Binance"}})
+
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][1] == "smart_money"
+    assert saved[0][2]["value_usd"] == 100_000
+    assert saved[0][0]["score"] > scanner.score_candidate(180_000, 1)
+
+
+def test_arkham_scanner_smart_money_marks_missing_position_as_moved(monkeypatch):
+    scanner = _load_scanner()
+    old_key = "smart_money:wintermute:ethereum:0xabc"
+    monkeypatch.setattr(
+        scanner,
+        "fetch_existing_signals",
+        lambda entity, entity_type: {
+            old_key: {
+                "signal_key": old_key,
+                "token": "ABC",
+                "chain": "ethereum",
+                "token_address": "0xabc",
+                "amount": 10,
+                "value_usd": 150_000,
+                "exchange_count": 1,
+            }
+        },
+    )
+    monkeypatch.setattr(scanner, "fetch_arkham_portfolio", lambda slug, min_value_usd: [])
+    saved = []
+    monkeypatch.setattr(
+        scanner,
+        "save_candidate",
+        lambda candidate, signal_type="holding", previous=None: saved.append((candidate, signal_type, previous)) or True,
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "wintermute", "name": "Wintermute"}])
+
+    count, saved_count = scanner.scan_smart_money_with_deltas({})
+
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][0]["token"] == "ABC"
+    assert saved[0][0]["value_usd"] == 0
+    assert saved[0][2]["value_usd"] == 150_000
+    assert scanner.signal_direction(saved[0][0]["value_usd"], saved[0][2]["value_usd"]) == "removed_or_moved"
 
 
 def test_arkham_scanner_exchange_scan_uses_separate_signal_type(monkeypatch):
