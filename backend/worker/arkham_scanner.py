@@ -402,11 +402,11 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         ),
     }
 
-    # Preferred constraint requested for this scanner. Fallbacks keep the job
-    # useful if the database migration has not yet been applied.
+    # The current production table already supports the token_address/type/chain
+    # path. A future migration can add token/exchange, but trying that first
+    # creates noisy 42P10 logs on Supabase while still saving via fallback.
     return (
-        supabase_upsert("transacted_tokens", row, ["token", "exchange"])
-        or supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain", "exchange"])
+        supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain", "exchange"])
         or supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain"])
     )
 

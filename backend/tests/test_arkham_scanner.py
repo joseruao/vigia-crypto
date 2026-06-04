@@ -111,7 +111,7 @@ def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
 
     assert ok is True
     assert calls[0][0]["token_address"] == "arkham:holding:binance:ethereum:ABC"
-    assert calls[0][1] == ["token", "exchange"]
+    assert calls[0][1] == ["token_address", "type", "chain", "exchange"]
 
 
 def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
