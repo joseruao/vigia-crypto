@@ -89,59 +89,9 @@ export function ChatWindow() {
 
   // Heurística para usar a API de alerts (prediction/holdings/etc.)
   // NÃO usar para análise de moedas (coin analysis)
-  function shouldUseAlertsAPI(prompt: string) {
-    const q = prompt.toLowerCase();
-    // Only route to alerts/ask for explicit top100 keyword or very specific opportunity phrases
-    // General "melhores oportunidades hoje" should go to chat/stream (backend handles top100 routing)
-    const isTop100Question = q.includes('top100') || q.includes('top 100');
-    const isListingQuestion =
-      q.includes('listado') ||
-      q.includes('listing') ||
-      q.includes('listagem') ||
-      q.includes('previsao de listing') ||
-      q.includes('vão ser') ||
-      q.includes('vao ser') ||
-      q.includes('vai ser') ||
-      q.includes('acumular') ||
-      q.includes('accumulate') ||
-      (q.includes('exchange') && q.includes('token')) ||
-      (q.includes('achas') && (q.includes('token') || q.includes('listado')));
-    const isBuyWatchlistQuestion =
-      (q.includes('comprar') || q.includes('compra') || q.includes('aconselhas') || q.includes('recomendas') || q.includes('oportunidade')) &&
-      (q.includes('moeda') || q.includes('moedas') || q.includes('crypto') || q.includes('cripto') || q.includes('token'));
-
-    if (isTop100Question || isListingQuestion || isBuyWatchlistQuestion) {
-      return true;
-    }
-    
-    // Se for pedido de análise de moeda, usar chat/stream
-    if (q.includes('analisa-me') || q.includes('analisa') || q.includes('análise')) {
-      if (q.includes('moeda') || q.includes('coin') || q.includes('criptomoeda') || q.includes('cryptocurrency')) {
-        return false; // Usar chat/stream para análise de moedas
-      }
-    }
-    
-    // Detectar perguntas sobre tokens/listings
-    return (
-      q.includes('listado') ||
-      q.includes('listing') ||
-      q.includes('vão ser') ||
-      q.includes('vao ser') ||
-      q.includes('vai ser') ||
-      q.includes('exchange') ||
-	      q.includes('prediction') ||
-	      q.includes('previsao') ||
-	      q.includes('predicao') ||
-      q.includes('previsão') ||
-      q.includes('predição') ||
-      q.includes('holders') ||
-      q.includes('holding') ||
-      q.includes('wallet') ||
-      q.includes('scoring') ||
-      isTop100Question ||
-      isBuyWatchlistQuestion ||
-      isListingQuestion
-    );
+  function shouldUseAlertsAPI(_prompt: string) {
+    // All routing is handled by /chat/stream backend logic
+    return false;
   }
 
   async function sendMessage(text?: string) {
