@@ -1,9 +1,9 @@
 'use client';
 
 import {
-  Activity,
   CandlestickChart,
   CircleHelp,
+  ListFilter,
   Radar,
   Search,
   TrendingUp,
@@ -44,10 +44,10 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Holdings recentes',
-      description: 'Maiores posicoes em wallets monitorizadas.',
-      prompt: 'Mostra holdings recentes em wallets de exchanges',
-      icon: Activity,
+      label: 'Mais sinais',
+      description: 'Lista alargada de tokens ainda nao listados.',
+      prompt: 'ver mais listings',
+      icon: ListFilter,
       tone: 'text-amber-700 bg-amber-50',
     },
     {
@@ -88,10 +88,10 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Recent holdings',
-      description: 'Largest positions in monitored wallets.',
-      prompt: 'Show recent exchange wallet holdings',
-      icon: Activity,
+      label: 'More signals',
+      description: 'Expanded list of unlisted token signals.',
+      prompt: 'show more listings',
+      icon: ListFilter,
       tone: 'text-amber-700 bg-amber-50',
     },
     {
