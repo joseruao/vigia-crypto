@@ -191,7 +191,8 @@ def _is_listing_tool_question(prompt: str) -> bool:
     return any(t in q for t in [
         "listing", "listado", "listados", "listagem",
         "vao ser", "vai ser", "acumular", "acumulando",
-        "ainda nao foram listados", "unlisted",
+        "ainda nao foram listados", "unlisted", "not listed", "not yet listed",
+        "exchange wallet", "exchange wallets", "potenciais listings", "radar",
     ]) and any(t in q for t in ["token", "tokens", "exchange", "exchanges", "wallet", "wallets"])
 
 
