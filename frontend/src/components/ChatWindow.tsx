@@ -172,7 +172,7 @@ export function ChatWindow() {
           'Content-Type': 'application/json',
           'Accept': useAlerts ? 'application/json' : 'text/plain',
         },
-        body: JSON.stringify({ prompt: content, history }),
+        body: JSON.stringify({ prompt: content, history, lang }),
         signal: controller.signal,
       });
 

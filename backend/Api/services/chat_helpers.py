@@ -84,6 +84,7 @@ class ChatHistoryMessage(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str
     history: list[ChatHistoryMessage] = Field(default_factory=list)
+    lang: str = Field(default='pt')
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +145,7 @@ def _is_top100_recommendation_followup(prompt: str) -> bool:
     ])
 
 
-def _format_top100_recommendation(history: list[ChatHistoryMessage]):
+def _format_top100_recommendation(history: list[ChatHistoryMessage], lang: str = "pt"):
     """If last assistant message was a top100 list, recommend the best coin from it."""
     for msg in reversed(history or []):
         if msg.role != "assistant":
@@ -176,12 +177,20 @@ def _format_top100_recommendation(history: list[ChatHistoryMessage]):
         best_coin, best_score = best[0], best[1]
 
         def generate():
-            yield f"Das moedas listadas, **{best_coin}** tem o score mais alto"
-            if best_score and best_score != "0":
-                yield f" ({best_score}/100)"
-            yield ".\n\n"
-            yield f"Para uma análise detalhada com entrada, alvo e stop, pede:\n"
-            yield f"`analisa {best_coin}`\n"
+            if lang == 'en':
+                yield f"From the listed coins, **{best_coin}** has the highest score"
+                if best_score and best_score != "0":
+                    yield f" ({best_score}/100)"
+                yield ".\n\n"
+                yield f"For a detailed analysis with entry, target and stop, ask:\n"
+                yield f"`analyze {best_coin}`\n"
+            else:
+                yield f"Das moedas listadas, **{best_coin}** tem o score mais alto"
+                if best_score and best_score != "0":
+                    yield f" ({best_score}/100)"
+                yield ".\n\n"
+                yield f"Para uma análise detalhada com entrada, alvo e stop, pede:\n"
+                yield f"`analisa {best_coin}`\n"
 
         return generate
     return None
@@ -194,7 +203,7 @@ def _is_comparison_question(prompt: str) -> bool:
     return len(found) >= 2
 
 
-def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessage]):
+def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessage], lang: str = "pt"):
     """Compare coins using analyses already present in history. Returns None if data is missing."""
     coin_data: dict[str, dict] = {}
     for msg in reversed(history or []):
@@ -242,16 +251,18 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
     if len(present) < 2:
         return None
 
+    tc = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
+
     def generate():
-        yield "**Comparação técnica** com base nas análises anteriores:\n\n"
+        yield f"{tc('**Comparação técnica** com base nas análises anteriores:', '**Technical comparison** based on previous analyses:')}\n\n"
         for coin in present:
             d = coin_data[coin]
             verdict = d.get("verdict") or ""
             icon = "🔥" if "FORTE" in verdict else ("🟢" if "COMPRA" in verdict else ("🔴" if "VENDA" in verdict else "🟡"))
             yield f"{icon} **{coin}** — {d['price']}\n"
-            yield f"RSI {d['rsi']} · Tendência: {d.get('trend') or 'N/A'} · {'Acima' if d.get('sma200') == 'Acima' else 'Abaixo'} SMA200\n"
+            yield f"RSI {d['rsi']} · {tc('Tendência:', 'Trend:')} {d.get('trend') or 'N/A'} · {'Acima' if d.get('sma200') == 'Acima' else 'Abaixo'} SMA200\n"
             if d["entry"] != "N/A":
-                yield f"Entrada {d['entry']} · Alvo {d['target']} · Stop {d['stop']}\n"
+                yield f"{tc('Entrada', 'Entry')} {d['entry']} · {tc('Alvo', 'Target')} {d['target']} · Stop {d['stop']}\n"
             yield "\n"
 
         a_coin, b_coin = present[0], present[1]
@@ -260,23 +271,24 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
         a_above = a.get("sma200") == "Acima"
         b_above = b.get("sma200") == "Acima"
 
-        yield "**Leitura comparativa:**\n"
+        yield f"{tc('**Leitura comparativa:**', '**Comparative reading:**')}\n"
 
         if a_rsi is not None and b_rsi is not None:
             if abs(a_rsi - b_rsi) > 4:
                 more = a_coin if a_rsi < b_rsi else b_coin
-                less = b_coin if a_rsi < b_rsi else a_coin
                 more_rsi = min(a_rsi, b_rsi)
-                yield f"- RSI: {more} mais sobrevendido ({more_rsi:.1f}) — maior potencial de bounce, mas confirmar antes de entrar\n"
+                yield f"- RSI: {more} {tc(f'mais sobrevendido ({more_rsi:.1f}) — maior potencial de bounce, mas confirmar antes de entrar', f'more oversold ({more_rsi:.1f}) — higher bounce potential, but confirm before entering')}\n"
             else:
-                yield f"- RSI semelhante: {a_coin} {a_rsi:.1f} vs {b_coin} {b_rsi:.1f} — ambos em oversold\n"
+                yield f"- {tc(f'RSI semelhante: {a_coin} {a_rsi:.1f} vs {b_coin} {b_rsi:.1f} — ambos em oversold', f'Similar RSI: {a_coin} {a_rsi:.1f} vs {b_coin} {b_rsi:.1f} — both in oversold')}\n"
 
         if a_above != b_above:
             above = a_coin if a_above else b_coin
             below = b_coin if a_above else a_coin
-            yield f"- SMA200: {above} acima (macro bullish), {below} abaixo (pressão vendedora macro)\n"
+            yield f"- SMA200: {above} {tc('acima (macro bullish),', 'above (macro bullish),')} {below} {tc('abaixo (pressão vendedora macro)', 'below (macro selling pressure)')}\n"
         else:
-            yield f"- SMA200: ambos {'acima' if a_above else 'abaixo'} — mesmo contexto macro\n"
+            _sma_pt = "acima" if a_above else "abaixo"
+            _sma_en = "above" if a_above else "below"
+            yield f"- SMA200: {tc(f'ambos {_sma_pt} — mesmo contexto macro', f'both {_sma_en} — same macro context')}\n"
 
         a_score = sum([
             1 if (a_rsi or 99) < (b_rsi or 99) else 0,
@@ -291,12 +303,12 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
 
         yield "\n"
         if a_score > b_score:
-            yield f"**Setup ligeiramente mais favorável: {a_coin}** — melhor combinação de RSI, tendência e SMA200.\n"
+            yield f"{tc(f'**Setup ligeiramente mais favorável: {a_coin}** — melhor combinação de RSI, tendência e SMA200.', f'**Slightly more favourable setup: {a_coin}** — better combination of RSI, trend and SMA200.')}\n"
         elif b_score > a_score:
-            yield f"**Setup ligeiramente mais favorável: {b_coin}** — melhor combinação de RSI, tendência e SMA200.\n"
+            yield f"{tc(f'**Setup ligeiramente mais favorável: {b_coin}** — melhor combinação de RSI, tendência e SMA200.', f'**Slightly more favourable setup: {b_coin}** — better combination of RSI, trend and SMA200.')}\n"
         else:
-            yield f"**Setup equivalente** entre {a_coin} e {b_coin} — sem vantagem clara de um sobre o outro agora.\n"
-        yield "Ambos têm plano definido (entrada/alvo/stop). Se diversificares, ambos têm setup válido.\n"
+            yield f"{tc(f'**Setup equivalente** entre {a_coin} e {b_coin} — sem vantagem clara de um sobre o outro agora.', f'**Equivalent setup** between {a_coin} and {b_coin} — no clear advantage of one over the other now.')}\n"
+        yield tc("Ambos têm plano definido (entrada/alvo/stop). Se diversificares, ambos têm setup válido.\n", "Both have a defined plan (entry/target/stop). If diversifying, both have a valid setup.\n")
 
     return generate
 
@@ -306,11 +318,12 @@ def _onboarding_link(prompt: str, label: str | None = None) -> str:
     return f"[{label}](/?ask={quote(prompt)})"
 
 
-def _format_onboarding(prompt: str = "") -> callable:
+def _format_onboarding(prompt: str = "", lang: str = "pt") -> callable:
     is_english = any(t in prompt.lower() for t in [
         "what do you do", "how can you help", "what can you do",
         "what is this", "how does this work", "start here",
     ])
+    is_english = is_english or lang == 'en'
 
     def generate():
         if is_english:
@@ -782,7 +795,7 @@ def _format_snapshot_followup(prompt: str, coin: str, content: str, side: str = 
     return generate_buy
 
 
-def _format_text_analysis_followup(history: list[ChatHistoryMessage], prompt: str = ""):
+def _format_text_analysis_followup(history: list[ChatHistoryMessage], prompt: str = "", lang: str = "pt"):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
@@ -807,37 +820,39 @@ def _format_text_analysis_followup(history: list[ChatHistoryMessage], prompt: st
     budget_info = _extract_position_size(prompt, coin)
     budget = budget_info.get("amount") if budget_info and budget_info.get("type") == "fiat" else None
 
+    tf = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
+
     if "AGUARDAR" in action.upper():
-        decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
+        decision = tf("Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao.", "I would not buy aggressively now; I would wait for a pullback or confirmation.")
     elif rsi_value >= 68:
-        decision = "Eu so consideraria entrada faseada, porque o RSI ja esta alto."
+        decision = tf("Eu so consideraria entrada faseada, porque o RSI ja esta alto.", "I would only consider a staged entry, because RSI is already high.")
     elif "COMPRA" in action.upper():
-        decision = "Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in."
+        decision = tf("Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in.", "Technically favourable for a staged entry, not for going all-in.")
     else:
-        decision = "Eu trataria como observacao ate aparecer uma entrada mais clara."
+        decision = tf("Eu trataria como observacao ate aparecer uma entrada mais clara.", "I would treat this as observation until a clearer entry appears.")
 
     def generate():
-        yield f"Com base na analise anterior de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"{tf(f'Com base na analise anterior de **{coin}**, a minha leitura informativa e:', f'Based on the previous analysis of **{coin}**, my informational reading is:')}\n\n"
         yield f"**{decision}**\n\n"
-        yield f"- Preco atual: **{price}**\n"
-        yield f"- Zona atual: **{zone}**\n"
+        yield f"- {tf('Preco atual:', 'Current price:')} **{price}**\n"
+        yield f"- {tf('Zona atual:', 'Current zone:')} **{zone}**\n"
         yield f"- RSI: **{rsi}**\n"
-        yield f"- Sinal tecnico: **{action}**\n"
+        yield f"- {tf('Sinal tecnico:', 'Technical signal:')} **{action}**\n"
         if stop != "N/A":
-            yield f"- Invalida se perder: **{stop}**\n"
+            yield f"- {tf('Invalida se perder:', 'Invalidated if breaks:')} **{stop}**\n"
         if target_matches:
-            yield "- Zonas de realizacao:\n"
+            yield f"- {tf('Zonas de realizacao:', 'Take profit zones:')}\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
         if budget:
-            yield "- Plano de entrada faseada possivel:\n"
+            yield f"- {tf('Plano de entrada faseada possivel:', 'Possible staged entry plan:')}\n"
             for line in _entry_plan_lines(float(budget), cautious=("AGUARDAR" in action.upper() or rsi_value >= 68)):
                 yield f"{line}\n"
 
     return generate
 
 
-def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
+def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage], lang: str = "pt"):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
@@ -861,12 +876,14 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     current_value = _parse_number_text(price)
     entry_price = _extract_entry_price(prompt)
 
+    ts = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
+
     if entry_price is None:
         def ask_entry():
-            yield f"Antes de dizer se faz sentido vender **{coin}**, preciso do teu preco medio de entrada.\n\n"
-            yield f"- Preco atual: **{price}**\n"
-            yield f"- Zonas tecnicas de venda/realizacao: {', '.join(target_matches[:3]) if target_matches else 'N/A'}\n\n"
-            yield "Exemplo: `comprei a 5.5, devo vender?`\n\n"
+            yield f"{ts(f'Antes de dizer se faz sentido vender **{coin}**, preciso do teu preco medio de entrada.', f'Before saying whether it makes sense to sell **{coin}**, I need your average entry price.')}\n\n"
+            yield f"- {ts('Preco atual:', 'Current price:')} **{price}**\n"
+            yield f"- {ts('Zonas tecnicas de venda/realizacao:', 'Technical sell/take-profit zones:')} {', '.join(target_matches[:3]) if target_matches else 'N/A'}\n\n"
+            yield ts("Exemplo: `comprei a 5.5, devo vender?`\n\n", "Example: `bought at 5.5, should I sell?`\n\n")
         return ask_entry
 
     pnl_pct = None
@@ -876,44 +893,44 @@ def _format_text_sell_followup(prompt: str, history: list[ChatHistoryMessage]):
     position_summary = _position_summary(position, entry_price, current_value)
 
     if pnl_pct is not None and pnl_pct < -10:
-        decision = "Como estas em perda, eu nao trataria isto como realizacao de lucro. A decisao passa por gerir risco: vender parcial se a tese mudou, ou esperar recuperacao tecnica se ainda acreditas no setup."
+        decision = ts("Como estas em perda, eu nao trataria isto como realizacao de lucro. A decisao passa por gerir risco: vender parcial se a tese mudou, ou esperar recuperacao tecnica se ainda acreditas no setup.", "As you are at a loss, I would not treat this as profit-taking. The decision is about risk management: sell partial if the thesis changed, or wait for a technical recovery if you still believe in the setup.")
     elif rsi_value >= 70:
-        decision = "Se ja tens posicao, faz sentido considerar realizacao parcial; nao precisa ser tudo de uma vez."
+        decision = ts("Se ja tens posicao, faz sentido considerar realizacao parcial; nao precisa ser tudo de uma vez.", "If you already have a position, it makes sense to consider partial profit-taking; it does not have to be all at once.")
     elif target_matches:
-        decision = "Eu usaria os targets como zonas de venda parcial, mantendo gestao de risco."
+        decision = ts("Eu usaria os targets como zonas de venda parcial, mantendo gestao de risco.", "I would use the targets as partial sell zones, keeping risk management in mind.")
     else:
-        decision = "Eu nao venderia por impulso; procuraria uma zona tecnica clara de realizacao."
+        decision = ts("Eu nao venderia por impulso; procuraria uma zona tecnica clara de realizacao.", "I would not sell impulsively; I would look for a clear technical take-profit zone.")
 
     def generate():
-        yield f"Com base na analise anterior de **{coin}**, olhando pelo lado de venda:\n\n"
+        yield f"{ts(f'Com base na analise anterior de **{coin}**, olhando pelo lado de venda:', f'Based on the previous analysis of **{coin}**, looking from the sell side:')}\n\n"
         yield f"**{decision}**\n\n"
-        yield f"- Preco atual: **{price}**\n"
-        yield f"- Teu preco medio: **{_fmt_price(entry_price)}**\n"
+        yield f"- {ts('Preco atual:', 'Current price:')} **{price}**\n"
+        yield f"- {ts('Teu preco medio:', 'Your average price:')} **{_fmt_price(entry_price)}**\n"
         if pnl_pct is not None:
-            yield f"- Resultado aproximado: **{pnl_pct:.1f}%**\n"
+            yield f"- {ts('Resultado aproximado:', 'Approximate result:')} **{pnl_pct:.1f}%**\n"
         if position_summary:
-            yield f"- Quantidade estimada: **{position_summary['units']:.4g} {coin}**\n"
-            yield f"- Capital investido: **{_fmt_money(position_summary['invested'])}**\n"
-            yield f"- Valor atual estimado: **{_fmt_money(position_summary['current_value'])}**\n"
-            yield f"- PnL estimado: **{_fmt_money(position_summary['pnl_value'])} ({position_summary['pnl_pct']:.1f}%)**\n"
-        yield f"- Zona atual: **{zone}**\n"
+            yield f"- {ts('Quantidade estimada:', 'Estimated quantity:')} **{position_summary['units']:.4g} {coin}**\n"
+            yield f"- {ts('Capital investido:', 'Invested capital:')} **{_fmt_money(position_summary['invested'])}**\n"
+            yield f"- {ts('Valor atual estimado:', 'Estimated current value:')} **{_fmt_money(position_summary['current_value'])}**\n"
+            yield f"- {ts('PnL estimado:', 'Estimated PnL:')} **{_fmt_money(position_summary['pnl_value'])} ({position_summary['pnl_pct']:.1f}%)**\n"
+        yield f"- {ts('Zona atual:', 'Current zone:')} **{zone}**\n"
         yield f"- RSI: **{rsi}**\n"
         if target_matches:
-            yield "- Zonas de venda/realizacao:\n"
+            yield f"- {ts('Zonas de venda/realizacao:', 'Sell/take-profit zones:')}\n"
             for target in target_matches[:3]:
                 yield f"  - {target}\n"
             if position_summary and position_summary.get("current_value"):
-                yield "- Plano faseado possivel:\n"
-                yield f"  - 30% da posicao: ~{_fmt_money(position_summary['current_value'] * 0.30)}\n"
-                yield f"  - 50% da posicao: ~{_fmt_money(position_summary['current_value'] * 0.50)}\n"
-                yield f"  - 20% restante: deixar correr se mantiver forca\n"
+                yield f"- {ts('Plano faseado possivel:', 'Possible staged plan:')}\n"
+                yield f"  - {ts('30% da posicao', '30% of position')}: ~{_fmt_money(position_summary['current_value'] * 0.30)}\n"
+                yield f"  - {ts('50% da posicao', '50% of position')}: ~{_fmt_money(position_summary['current_value'] * 0.50)}\n"
+                yield f"  - {ts('20% restante: deixar correr se mantiver forca', '20% remaining: let it run if it holds strength')}\n"
         else:
-            yield "- Nao encontrei targets claros na ultima analise.\n"
+            yield f"- {ts('Nao encontrei targets claros na ultima analise.', 'I did not find clear targets in the last analysis.')}\n"
 
     return generate
 
 
-def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistoryMessage]):
+def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistoryMessage], lang: str = "pt"):
     coin, content = _latest_analysis_text(history)
     if not coin or not content:
         return None
@@ -939,39 +956,41 @@ def _format_text_analysis_detail_followup(prompt: str, history: list[ChatHistory
     risk = _extract_markdown_value(content, "Risco")
     target_matches = _extract_targets(content)
 
+    td = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
+
     def generate():
-        yield f"Com base na analise anterior de **{coin}**:\n\n"
+        yield f"{td(f'Com base na analise anterior de **{coin}**:', f'Based on the previous analysis of **{coin}**:')}\n\n"
         if any(t in prompt_lower for t in ["risco", "stop", "invalidacao", "invalidação"]):
-            yield f"- Risco: **{risk}**\n" if risk != "N/A" else "- Risco: nao apareceu explicitamente na ultima resposta.\n"
+            yield f"- {td('Risco:', 'Risk:')} **{risk}**\n" if risk != "N/A" else f"- {td('Risco: nao apareceu explicitamente na ultima resposta.', 'Risk: not explicitly mentioned in the last response.')}\n"
             if stop != "N/A":
-                yield f"- Invalida se perder: **{stop}**\n"
-            yield f"- Contexto: preco em **{zone}**, RSI **{rsi}**, sinal **{action}**.\n"
+                yield f"- {td('Invalida se perder:', 'Invalidated if breaks:')} **{stop}**\n"
+            yield f"- {td(f'Contexto: preco em **{zone}**, RSI **{rsi}**, sinal **{action}**.', f'Context: price in **{zone}**, RSI **{rsi}**, signal **{action}**.')}\n"
         elif any(t in prompt_lower for t in ["target", "targets", "alvo", "alvos"]):
             if target_matches:
-                yield "Zonas de realizacao que estavam no plano:\n"
+                yield f"{td('Zonas de realizacao que estavam no plano:', 'Take-profit zones that were in the plan:')}\n"
                 for target in target_matches[:3]:
                     yield f"- {target}\n"
             else:
-                yield "Nao encontrei targets claros na ultima analise.\n"
+                yield f"{td('Nao encontrei targets claros na ultima analise.', 'I did not find clear targets in the last analysis.')}\n"
         elif any(t in prompt_lower for t in ["onde entro", "entrada ideal", "plano"]):
-            yield f"- Entrada: **{zone}**\n"
-            yield f"- Preco atual: **{price}**\n"
-            yield f"- Sinal: **{action}**\n"
+            yield f"- {td('Entrada:', 'Entry:')} **{zone}**\n"
+            yield f"- {td('Preco atual:', 'Current price:')} **{price}**\n"
+            yield f"- {td('Sinal:', 'Signal:')} **{action}**\n"
             if stop != "N/A":
-                yield f"- Stop/invalidação: **{stop}**\n"
+                yield f"- {td('Stop/invalidação:', 'Stop/invalidation:')} **{stop}**\n"
         else:
-            yield f"O racional principal e: preco em **{zone}**, RSI **{rsi}** e sinal **{action}**.\n"
-            yield "Isto favorece uma leitura faseada/disciplinada, nao uma entrada all-in.\n"
+            yield f"{td(f'O racional principal e: preco em **{zone}**, RSI **{rsi}** e sinal **{action}**.', f'The main rationale is: price in **{zone}**, RSI **{rsi}** and signal **{action}**.')}\n"
+            yield td("Isto favorece uma leitura faseada/disciplinada, nao uma entrada all-in.\n", "This favours a staged/disciplined reading, not an all-in entry.\n")
 
     return generate
 
 
-def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None = None):
+def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None = None, lang: str = "pt"):
     cached = LAST_COIN_ANALYSIS or {}
     coin = cached.get("coin")
     result = cached.get("result") or {}
     if not coin or not result:
-        return _format_text_analysis_followup(history or [], prompt)
+        return _format_text_analysis_followup(history or [], prompt, lang)
     if result.get("snapshot_only"):
         snapshot_lines = list(_format_coin_analysis(coin, result))
         return _format_snapshot_followup(prompt, coin, "".join(snapshot_lines), side="buy")
@@ -993,40 +1012,54 @@ def _format_trade_followup(prompt: str, history: list[ChatHistoryMessage] | None
     budget_info = _extract_position_size(prompt, coin)
     budget = budget_info.get("amount") if budget_info and budget_info.get("type") == "fiat" else None
 
+    tt = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
+
     if action.startswith("AGUARDAR"):
-        decision = "Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao."
+        decision = tt("Eu nao compraria agressivamente agora; esperaria pullback ou confirmacao.", "I would not buy aggressively now; I would wait for a pullback or confirmation.")
     elif rsi >= 68 or position >= 75:
-        decision = "Eu so consideraria entrada faseada, porque o preco ja esta um pouco esticado."
+        decision = tt("Eu so consideraria entrada faseada, porque o preco ja esta um pouco esticado.", "I would only consider a staged entry, because the price is already a bit stretched.")
     elif "COMPRA" in action.upper():
-        decision = "Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in."
+        decision = tt("Tecnicamente esta favoravel para uma entrada faseada, nao para entrar all-in.", "Technically favourable for a staged entry, not for going all-in.")
     else:
-        decision = "Eu trataria como observacao ate aparecer uma entrada mais clara."
+        decision = tt("Eu trataria como observacao ate aparecer uma entrada mais clara.", "I would treat this as observation until a clearer entry appears.")
 
     def generate():
-        yield f"Com base na ultima analise de **{coin}**, a minha leitura informativa e:\n\n"
+        yield f"{tt(f'Com base na ultima analise de **{coin}**, a minha leitura informativa e:', f'Based on the latest analysis of **{coin}**, my informational reading is:')}\n\n"
         yield f"**{decision}**\n\n"
-        yield f"- Preco atual: **{current_price}**\n"
-        yield f"- Zona atual: **{current_zone}**\n"
+        yield f"- {tt('Preco atual:', 'Current price:')} **{current_price}**\n"
+        yield f"- {tt('Zona atual:', 'Current zone:')} **{current_zone}**\n"
         if action.startswith("AGUARDAR") and support_price != "N/A":
-            yield f"- Pullback a vigiar: perto de **{support_price}**\n"
+            yield f"- {tt('Pullback a vigiar: perto de', 'Pullback to watch: near')} **{support_price}**\n"
         yield f"- RSI: **{analysis.get('rsi', 'N/A')}**\n"
-        yield f"- Sinal tecnico: **{action}**\n"
-        yield f"- Motivo: {summary}\n"
+        yield f"- {tt('Sinal tecnico:', 'Technical signal:')} **{action}**\n"
+        yield f"- {tt('Motivo:', 'Reason:')} {summary}\n"
         if stop_loss != "N/A":
-            yield f"- Invalida se perder: **{stop_loss}**\n"
+            yield f"- {tt('Invalida se perder:', 'Invalidated if breaks:')} **{stop_loss}**\n"
         if targets:
-            yield "- Zonas de realizacao:\n"
+            yield f"- {tt('Zonas de realizacao:', 'Take-profit zones:')}\n"
             for target in targets[:3]:
                 yield f"  - {target}\n"
         if budget:
-            yield "- Plano de entrada faseada possivel:\n"
+            yield f"- {tt('Plano de entrada faseada possivel:', 'Possible staged entry plan:')}\n"
             for line in _entry_plan_lines(float(budget), cautious=(action.startswith("AGUARDAR") or rsi >= 68 or position >= 75)):
                 yield f"{line}\n"
 
     return generate
 
 
-def _rsi_label_analysis(rsi: float) -> str:
+def _rsi_label_analysis(rsi: float, lang: str = "pt") -> str:
+    if lang == 'en':
+        if rsi < 28:
+            return "price heavily beaten down — fell too far, statistically tends to recover"
+        if rsi < 38:
+            return "price oversold — sellers losing strength"
+        if rsi < 50:
+            return "fragile equilibrium — slight selling pressure"
+        if rsi < 62:
+            return "balanced market — no clear pressure"
+        if rsi < 70:
+            return "buyers dominate — watch out if it rises further"
+        return "price stretched — correction risk, avoid new buys"
     if rsi < 28:
         return "preço muito castigado — caiu demais, estatisticamente tende a recuperar"
     if rsi < 38:
@@ -1040,7 +1073,8 @@ def _rsi_label_analysis(rsi: float) -> str:
     return "preço esticado — risco de correção, evitar novas compras"
 
 
-def _format_coin_analysis(coin: str, result: dict):
+def _format_coin_analysis(coin: str, result: dict, lang: str = "pt"):
+    t = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
     if result.get("snapshot_only"):
         changes = result.get("price_change") or {}
         yield f"## 📊 {coin} — Snapshot de mercado\n\n"
@@ -1099,39 +1133,39 @@ def _format_coin_analysis(coin: str, result: dict):
 
     if is_buy_zone and is_oversold and not awaiting:
         verdict_icon = "🔥"
-        verdict = "ZONA DE COMPRA FORTE — RSI em oversold, perto do suporte"
+        verdict = t("ZONA DE COMPRA FORTE — RSI em oversold, perto do suporte", "STRONG BUY ZONE — RSI oversold, near support")
     elif is_buy_zone and not awaiting:
         verdict_icon = "🟢"
-        verdict = "ZONA DE COMPRA — preço perto do suporte"
+        verdict = t("ZONA DE COMPRA — preço perto do suporte", "BUY ZONE — price near support")
     elif is_sell_zone or is_overbought:
         verdict_icon = "🔴"
-        verdict = "ZONA DE VENDA / REALIZAÇÃO — preço perto da resistência"
+        verdict = t("ZONA DE VENDA / REALIZAÇÃO — preço perto da resistência", "SELL ZONE / TAKE PROFIT — price near resistance")
     elif awaiting and is_oversold:
         verdict_icon = "🟡"
-        verdict = "AGUARDAR CONFIRMAÇÃO — RSI baixo mas sem momentum ainda"
+        verdict = t("AGUARDAR CONFIRMAÇÃO — RSI baixo mas sem momentum ainda", "WAIT FOR CONFIRMATION — RSI low, no momentum yet")
     elif awaiting:
         verdict_icon = "🟡"
-        verdict = "AGUARDAR — preço em zona neutra, sem entrada clara"
+        verdict = t("AGUARDAR — preço em zona neutra, sem entrada clara", "WAIT — price in neutral zone, no clear entry")
     elif is_oversold:
         verdict_icon = "🟡"
-        verdict = "OVERSOLD — RSI em mínimos, aguardar confirmação de reversão"
+        verdict = t("OVERSOLD — RSI em mínimos, aguardar confirmação de reversão", "OVERSOLD — RSI at lows, wait for reversal confirmation")
     else:
         verdict_icon = "🟡"
-        verdict = "ZONA NEUTRA — sem sinal claro agora"
+        verdict = t("ZONA NEUTRA — sem sinal claro agora", "NEUTRAL ZONE — no clear signal now")
 
-    yield f"# 📊 {coin} — Análise Técnica\n\n"
+    yield f"# 📊 {coin} — {t('Análise Técnica', 'Technical Analysis')}\n\n"
     yield f"{verdict_icon} **{verdict}**\n"
     yield f"{sep}\n\n"
 
     # ── PREÇO + PLANO (o mais importante primeiro) ────────────
     if price_f:
-        yield f"**Preço atual:** {_fmt_price(price_f)}\n\n"
+        yield f"{t('**Preço atual:**', '**Current price:**')} {_fmt_price(price_f)}\n\n"
 
     if not awaiting and support and resistance and stop:
         upside = ((float(resistance) - price_f) / price_f) * 100 if price_f else 0
         downside = ((price_f - float(stop)) / price_f) * 100 if price_f else 0
-        yield f"🎯 **Entrada:** perto de {_fmt_price(support)}\n"
-        yield f"🚀 **Alvo:** {_fmt_price(resistance)}"
+        yield f"{t('🎯 **Entrada:** perto de', '🎯 **Entry:** near')} {_fmt_price(support)}\n"
+        yield f"{t('🚀 **Alvo:**', '🚀 **Target:**')} {_fmt_price(resistance)}"
         if upside > 0:
             yield f" (+{upside:.0f}%)"
         yield "\n"
@@ -1140,51 +1174,51 @@ def _format_coin_analysis(coin: str, result: dict):
             yield f" (-{downside:.0f}%)"
         yield "\n"
         if targets:
-            yield "\n**Targets parciais:**\n"
-            for t in targets[:3]:
-                yield f"› {t}\n"
+            yield f"\n{t('**Targets parciais:**', '**Partial targets:**')}\n"
+            for tgt in targets[:3]:
+                yield f"› {tgt}\n"
     elif awaiting and support:
-        yield f"⏳ **Aguardar:** pullback para {_fmt_price(support)} antes de considerar entrada\n"
+        yield f"{t('⏳ **Aguardar:** pullback para', '⏳ **Wait:** pullback to')} {_fmt_price(support)} {t('antes de considerar entrada', 'before considering entry')}\n"
         if stop:
-            yield f"🛡️ **Stop se entrar:** {_fmt_price(stop)}\n"
+            yield f"{t('🛡️ **Stop se entrar:**', '🛡️ **Stop if entered:**')} {_fmt_price(stop)}\n"
 
     yield f"\n{sep}\n\n"
 
     # ── PORQUÊ — linguagem simples, sem jargão ───────────────
-    yield "**Porquê esta leitura:**\n"
+    yield f"{t('**Porquê esta leitura:**', '**Why this reading:**')}\n"
 
     if rsi_f is not None:
         rsi_emoji = "✅" if rsi_f < 45 else ("⚠️" if rsi_f < 70 else "🔴")
-        yield f"{rsi_emoji} {_rsi_label_analysis(rsi_f)}\n"
+        yield f"{rsi_emoji} {_rsi_label_analysis(rsi_f, lang)}\n"
 
     if trend_dir:
         if trend_dir == "UPTREND":
-            yield "📈 A subir no curto prazo — compradores a ganhar terreno\n"
+            yield t("📈 A subir no curto prazo — compradores a ganhar terreno\n", "📈 Rising short-term — buyers gaining ground\n")
         else:
-            yield "📉 Ainda a cair no curto prazo — sem sinal de inversão confirmada\n"
+            yield t("📉 Ainda a cair no curto prazo — sem sinal de inversão confirmada\n", "📉 Still falling short-term — no confirmed reversal\n")
 
     if ma and sma200 > 0:
         if price_f > sma200:
-            yield "✅ Tendência de longo prazo positiva — mercado ainda favorece compradores\n"
+            yield t("✅ Tendência de longo prazo positiva — mercado ainda favorece compradores\n", "✅ Positive long-term trend — market still favours buyers\n")
         else:
-            yield "⚠️ Tendência de longo prazo negativa — mercado ainda favorece vendedores\n"
+            yield t("⚠️ Tendência de longo prazo negativa — mercado ainda favorece vendedores\n", "⚠️ Negative long-term trend — market still favours sellers\n")
         sma20 = float(ma.get("sma_20") or 0)
         sma50 = float(ma.get("sma_50") or 0)
         if sma20 and sma50:
-            yield f"   _(médias: {_fmt_price(sma20)} · {_fmt_price(sma50)} · {_fmt_price(sma200)})_\n"
+            yield f"   {t('_(médias:', '_(averages:')} {_fmt_price(sma20)} · {_fmt_price(sma50)} · {_fmt_price(sma200)})_\n"
 
     if volume:
         vol_trend = volume.get("trend", "")
         if vol_trend == "LOW":
-            yield "⚠️ Poucos compradores activos agora — esperar mais movimento antes de entrar\n"
+            yield t("⚠️ Poucos compradores activos agora — esperar mais movimento antes de entrar\n", "⚠️ Few active buyers now — wait for more movement before entering\n")
         elif vol_trend == "HIGH":
-            yield "✅ Muita actividade de compra — momentum confirmado\n"
+            yield t("✅ Muita actividade de compra — momentum confirmado\n", "✅ High buying activity — momentum confirmed\n")
 
     if fib_levels:
         fib_618 = fib_levels.get("0.618")
         fib_382 = fib_levels.get("0.382")
         if fib_618 and fib_382:
-            yield f"📐 Zonas de recuperação habitual: {_fmt_price(fib_618)} e {_fmt_price(fib_382)}\n"
+            yield f"{t('📐 Zonas de recuperação habitual:', '📐 Typical recovery zones:')} {_fmt_price(fib_618)} e {_fmt_price(fib_382)}\n"
 
     if risk_alert and "MODERADO" not in risk_alert.upper():
         yield f"\n⚠️ {risk_alert}\n"
