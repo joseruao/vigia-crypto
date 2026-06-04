@@ -111,7 +111,20 @@ def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
 
     assert ok is True
     assert calls[0][0]["token_address"] == "arkham:holding:binance:ethereum:ABC"
-    assert calls[0][1] == ["token_address", "type", "chain", "exchange"]
+    assert calls[0][0]["signal_key"] == "holding:binance:ethereum:arkham:holding:binance:ethereum:abc"
+    assert calls[0][0]["entity"] == "Binance"
+    assert calls[0][0]["entity_type"] == "exchange"
+    assert calls[0][1] == ["signal_key"]
+
+
+def test_arkham_scanner_filters_listed_aliases_and_low_signal_assets():
+    scanner = _load_scanner()
+
+    assert scanner.is_listed_on_exchange("sPENDLE", {"PENDLE"})
+    assert scanner.is_listed_on_exchange("cbBTC", {"BTC"})
+    assert scanner.is_low_signal_exchange_asset("USDT0", {"USDT"})
+    assert scanner.is_low_signal_exchange_asset("WETH", {"ETH"})
+    assert not scanner.is_low_signal_exchange_asset("BEAM", {"BTC", "ETH"})
 
 
 def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):

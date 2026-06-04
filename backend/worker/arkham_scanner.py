@@ -41,8 +41,17 @@ SUPABASE_KEY = (
     or ""
 ).strip()
 
-VALUE_THRESHOLD_USD = 50_000
-SMART_MONEY_THRESHOLD_USD = 100_000
+VALUE_THRESHOLD_USD = float(os.getenv("ARKHAM_MIN_VALUE_USD", "50000"))
+SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", "100000"))
+ARKHAM_SIGNALS_TABLE = os.getenv("ARKHAM_SIGNALS_TABLE", "arkham_signals")
+
+LOW_SIGNAL_SYMBOLS = {
+    "USDT", "USDT0", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDE", "USDS", "USD1",
+    "EUR", "EURC", "EURS", "PYUSD",
+    "BTC", "WBTC", "BTCB", "CBBTC", "TBTC",
+    "ETH", "WETH", "STETH", "WSTETH", "RETH", "CBETH",
+    "BNB", "WBNB", "SOL", "WSOL", "AVAX", "WAVAX", "MATIC", "WMATIC",
+}
 
 EXCHANGES = [
     {"slug": "binance", "exchange": "Binance"},
@@ -364,6 +373,34 @@ def fetch_listed_tokens(exchange: str) -> set[str]:
     return {_normalize_symbol(row.get("token")) for row in response.json() if row.get("token")}
 
 
+def listing_symbol_candidates(symbol: str) -> set[str]:
+    normalized = _normalize_symbol(symbol)
+    candidates = {normalized}
+    prefix_rules = (
+        ("CB", 4),
+        ("ST", 4),
+        ("W", 3),
+        ("S", 4),
+    )
+    for prefix, min_len in prefix_rules:
+        if normalized.startswith(prefix) and len(normalized) > min_len:
+            candidates.add(normalized[len(prefix):])
+    return {candidate for candidate in candidates if candidate}
+
+
+def is_low_signal_exchange_asset(symbol: str, listed: set[str] | None = None) -> bool:
+    candidates = listing_symbol_candidates(symbol)
+    if candidates & LOW_SIGNAL_SYMBOLS:
+        return True
+    if listed and len(candidates) > 1 and any(candidate in listed for candidate in candidates if candidate != _normalize_symbol(symbol)):
+        return True
+    return False
+
+
+def is_listed_on_exchange(symbol: str, listed: set[str]) -> bool:
+    return any(candidate in listed for candidate in listing_symbol_candidates(symbol))
+
+
 def score_candidate(value_usd: float, exchange_count: int) -> int:
     score = 0
     if value_usd > 1_000_000:
@@ -402,9 +439,14 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
     # Arkham may not return token addresses for every chain; keep a stable
     # synthetic key so NOT NULL / legacy unique constraints do not break.
     token_address = candidate.get("token_address") or f"arkham:{signal_type}:{exchange.lower()}:{chain}:{token}"
+    entity_type = "smart_money" if signal_type == "smart_money" else "exchange"
+    signal_key = f"{signal_type}:{exchange.lower()}:{chain}:{token_address or token}".lower()
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
+        "signal_key": signal_key,
+        "entity": exchange,
+        "entity_type": entity_type,
         "exchange": exchange,
         "token": token,
         "token_address": token_address,
@@ -423,13 +465,16 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         ),
     }
 
-    # The current production table already supports the token_address/type/chain
-    # path. A future migration can add token/exchange, but trying that first
-    # creates noisy 42P10 logs on Supabase while still saving via fallback.
-    return (
-        supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain", "exchange"])
-        or supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain"])
-    )
+    saved = supabase_upsert(ARKHAM_SIGNALS_TABLE, row, ["signal_key"])
+    if saved:
+        return True
+
+    if os.getenv("ARKHAM_LEGACY_TRANSACTED_TOKENS", "").strip() == "1":
+        return (
+            supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain", "exchange"])
+            or supabase_upsert("transacted_tokens", row, ["token_address", "type", "chain"])
+        )
+    return False
 
 
 def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
@@ -465,7 +510,7 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
 
         for token in tokens:
             symbol = token["symbol"]
-            if symbol in listed:
+            if is_low_signal_exchange_asset(symbol, listed) or is_listed_on_exchange(symbol, listed):
                 continue
 
             exchange_count = len(token_exchanges[symbol])

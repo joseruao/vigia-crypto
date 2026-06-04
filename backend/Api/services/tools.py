@@ -104,13 +104,21 @@ def get_top100_delta() -> Dict[str, Any]:
 
 def get_smart_money() -> Dict[str, Any]:
     params = {
-        "type": "eq.smart_money",
-        "select": "exchange,token,chain,score,value_usd,ts,pair_url",
+        "entity_type": "eq.smart_money",
+        "select": "entity,exchange,token,chain,score,value_usd,ts,pair_url",
         "order": "score.desc",
         "limit": "10",
     }
     try:
-        response = alerts.supa.rest_get("transacted_tokens", params=params, timeout=10)
+        response = alerts.supa.rest_get("arkham_signals", params=params, timeout=10)
+        if response.status_code != 200:
+            legacy_params = {
+                "type": "eq.smart_money",
+                "select": "exchange,token,chain,score,value_usd,ts,pair_url",
+                "order": "score.desc",
+                "limit": "10",
+            }
+            response = alerts.supa.rest_get("transacted_tokens", params=legacy_params, timeout=10)
         if response.status_code != 200:
             return _answer_payload(
                 f"Could not fetch smart money signals now. Supabase HTTP {response.status_code}.",
@@ -127,7 +135,7 @@ def get_smart_money() -> Dict[str, Any]:
     lines = ["**Smart money signals**\n"]
     for row in rows[:10]:
         token = str(row.get("token") or "?").upper()
-        fund = row.get("exchange") or "Unknown fund"
+        fund = row.get("entity") or row.get("exchange") or "Unknown fund"
         chain = str(row.get("chain") or "unknown").capitalize()
         score = row.get("score")
         value = row.get("value_usd")
