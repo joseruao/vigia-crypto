@@ -28,6 +28,16 @@ def test_arkham_scanner_score_candidate_value_and_exchange_count():
     assert scanner.score_candidate(1_500_000, 3) == 95
 
 
+def test_arkham_scanner_exchange_score_uses_listing_scale():
+    scanner = _load_scanner()
+
+    assert scanner.score_exchange_candidate(60_000, 1) == 50
+    assert scanner.score_exchange_candidate(600_000, 1) == 68
+    assert scanner.score_exchange_candidate(1_500_000, 1) == 76
+    assert scanner.score_exchange_candidate(10_000_000, 2) == 98
+    assert scanner.score_exchange_candidate(25_000_000, 3) == 100
+
+
 def test_arkham_scanner_requires_real_service_role_key(monkeypatch):
     scanner = _load_scanner()
     monkeypatch.setattr(scanner, "ARKHAM_API_KEY", "arkham")

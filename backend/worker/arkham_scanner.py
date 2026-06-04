@@ -47,6 +47,7 @@ for _key_name in ("SUPABASE_SERVICE_ROLE", "SUPABASE_SERVICE_ROLE_KEY", "SUPABAS
 VALUE_THRESHOLD_USD = float(os.getenv("ARKHAM_MIN_VALUE_USD", "50000"))
 SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", "100000"))
 ARKHAM_SIGNALS_TABLE = os.getenv("ARKHAM_SIGNALS_TABLE", "arkham_signals")
+EXCHANGE_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_EXCHANGE_MIN_SAVE_SCORE", "50"))
 SMART_MONEY_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_SMART_MONEY_MIN_SAVE_SCORE", "25"))
 
 LOW_SIGNAL_SYMBOLS = {
@@ -457,6 +458,32 @@ def score_candidate(value_usd: float, exchange_count: int) -> int:
     return min(score, 100)
 
 
+def score_exchange_candidate(value_usd: float, exchange_count: int) -> int:
+    if value_usd >= 25_000_000:
+        score = 96
+    elif value_usd >= 10_000_000:
+        score = 90
+    elif value_usd >= 5_000_000:
+        score = 84
+    elif value_usd >= 1_000_000:
+        score = 76
+    elif value_usd >= 500_000:
+        score = 68
+    elif value_usd >= 100_000:
+        score = 58
+    elif value_usd >= VALUE_THRESHOLD_USD:
+        score = 50
+    else:
+        score = 0
+
+    if exchange_count >= 2:
+        score += 8
+    if exchange_count >= 3:
+        score += 7
+
+    return min(score, 100)
+
+
 def supabase_upsert(table: str, row: dict[str, Any], conflict_cols: list[str]) -> bool:
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     params = {"on_conflict": ",".join(conflict_cols)}
@@ -553,8 +580,8 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
                 continue
 
             exchange_count = len(token_exchanges[symbol])
-            score = score_candidate(token["value_usd"], exchange_count)
-            if score <= 0:
+            score = score_exchange_candidate(token["value_usd"], exchange_count)
+            if score < EXCHANGE_MIN_SAVE_SCORE:
                 continue
 
             candidates.append({
