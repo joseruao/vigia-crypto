@@ -46,28 +46,52 @@ def get_listing_predictions() -> Dict[str, Any]:
     rows = alerts.get_predictions()
     if not rows:
         return _answer_payload("No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.")
-    total = len(rows)
+
+    # Group by token+exchange to surface multi-wallet accumulation
+    grouped: dict = {}
+    for r in rows:
+        key = f"{(r.get('token') or '').upper()}@{r.get('exchange') or ''}"
+        if key not in grouped:
+            grouped[key] = {"rows": [], "token": r.get("token") or "—", "exchange": r.get("exchange") or "—",
+                            "chain": r.get("chain") or "—", "score": r.get("score"), "pair_url": r.get("pair_url")}
+        grouped[key]["rows"].append(r)
+
+    entries = list(grouped.values())
+    # Sort by score desc
+    entries.sort(key=lambda x: x["score"] or 0, reverse=True)
+
+    total = len(entries)
     limit = 3
     lines = [f"**Top signals on-chain detected**\n\n{total} signals filtered. Showing the {min(limit, total)} most relevant.\n"]
-    for i, r in enumerate(rows[:limit], 1):
-        token = r.get("token") or "—"
-        exchange = r.get("exchange") or "—"
-        chain = r.get("chain") or "—"
-        score = r.get("score")
-        score_txt = f"{score}/100" if isinstance(score, (int, float)) else "—"
-        val = r.get("value_usd")
-        val_txt = f"${val:,.0f}" if isinstance(val, (int, float)) else "—"
-        pair_url = r.get("pair_url") or f"https://dexscreener.com/search?q={token}"
-        analysis = r.get("analysis_text") or r.get("ai_analysis") or ""
-        lines.append(
-            f"{i}. **{token}** · {exchange} · {chain}\n"
-            f"   Score: {score_txt} · Wallet: {val_txt}\n"
-            + (f"   {analysis}\n" if analysis else "")
-            + f"   [DexScreener]({pair_url})\n"
-        )
+    for i, entry in enumerate(entries[:limit], 1):
+        token = entry["token"]
+        exchange = entry["exchange"]
+        chain = entry["chain"].capitalize()
+        score = entry["score"]
+        score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "—"
+        pair_url = entry["pair_url"] or f"https://dexscreener.com/search?q={token}"
+        wallets = entry["rows"]
+        total_val = sum(float(r.get("value_usd") or 0) for r in wallets)
+        liq = wallets[0].get("liquidity")
+        liq_txt = f"${liq:,.0f}" if isinstance(liq, (int, float)) else None
+
+        line = f"{i}. **{token}** · {exchange} · {chain}\n   Score: {score_txt}"
+        if len(wallets) > 1:
+            line += f" · **{len(wallets)} wallets** · Total: ${total_val:,.0f}"
+            for w in wallets:
+                val = w.get("value_usd")
+                if isinstance(val, (int, float)):
+                    line += f"\n   └ wallet: ${val:,.0f}"
+        else:
+            val = wallets[0].get("value_usd")
+            line += f" · Wallet: ${val:,.0f}" if isinstance(val, (int, float)) else ""
+        if liq_txt:
+            line += f" · Liquidity: {liq_txt}"
+        line += f"\n   [DexScreener]({pair_url})\n"
+        lines.append(line)
     if total > limit:
         lines.append(f"\n+ {total - limit} more signals. Ask *show more listings* to expand.")
-    return _answer_payload("\n".join(lines), count=total, items=rows[:limit])
+    return _answer_payload("\n".join(lines), count=total, items=rows)
 
 
 def get_recent_holdings() -> Dict[str, Any]:
