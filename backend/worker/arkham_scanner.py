@@ -34,12 +34,14 @@ ARKHAM_BASE_URL = "https://api.arkm.com"
 ARKHAM_API_KEY = os.getenv("ARKHAM_API_KEY", "").strip()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    or os.getenv("SUPABASE_SERVICE_ROLE")
-    or os.getenv("SUPABASE_ANON_KEY")
-    or ""
-).strip()
+SUPABASE_KEY_SOURCE = ""
+SUPABASE_KEY = ""
+for _key_name in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE", "SUPABASE_ANON_KEY"):
+    _key_value = os.getenv(_key_name, "").strip()
+    if _key_value:
+        SUPABASE_KEY_SOURCE = _key_name
+        SUPABASE_KEY = _key_value
+        break
 
 VALUE_THRESHOLD_USD = float(os.getenv("ARKHAM_MIN_VALUE_USD", "50000"))
 SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", "100000"))
@@ -121,6 +123,11 @@ def _require_env() -> None:
         missing.append("SUPABASE_SERVICE_ROLE_KEY")
     if missing:
         raise RuntimeError(f"Missing env vars: {', '.join(missing)}")
+    if SUPABASE_KEY_SOURCE == "SUPABASE_ANON_KEY":
+        raise RuntimeError(
+            "ARKHAM scanner needs SUPABASE_SERVICE_ROLE_KEY in Render. "
+            "Anon key cannot insert into arkham_signals with RLS."
+        )
 
 
 def _normalize_symbol(value: Any) -> str:
