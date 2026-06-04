@@ -1,1 +1,0 @@
-def _build_answer(prompt: str, exchange: Optional[str] = None) -
