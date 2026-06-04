@@ -7,6 +7,13 @@ import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 
 function compactUsd(value?: number | null) {
   if (!value || value <= 0) return 'N/A';
+  if (value < 0.01) return `$${value.toFixed(6)}`;
+  if (value < 1) return `$${value.toFixed(4)}`;
+  if (value < 1000) {
+    return `$${new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 2,
+    }).format(value)}`;
+  }
   return `$${new Intl.NumberFormat('en-US', {
     notation: 'compact',
     maximumFractionDigits: value >= 1_000_000 ? 1 : 0,
