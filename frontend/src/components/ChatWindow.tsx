@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { DashboardHome } from '@/components/DashboardHome';
+import { Suggestions } from '@/components/Suggestions';
 import { TradingViewChart } from '@/components/TradingViewChart';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -266,7 +266,17 @@ export function ChatWindow() {
       {/* Área das mensagens */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!hasMessages && !loading ? (
-          <DashboardHome onAsk={(t) => sendMessage(t)} />
+          <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
+            <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
+              <img src="/logo_full.png" alt="José Ruão.com" className="mb-7 h-36 w-auto max-w-[82vw] object-contain opacity-95 sm:h-72" />
+              <div className="w-full max-w-2xl">
+                <Suggestions
+                  visible={!hasMessages}
+                  onSelect={(t) => sendMessage(t)}
+                />
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="px-3 py-4 sm:px-4 sm:py-6">
             <div className="max-w-3xl mx-auto space-y-4">

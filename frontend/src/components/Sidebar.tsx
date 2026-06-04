@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Github, Linkedin, Mail, Plus, Send, Trash2, X } from 'lucide-react';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
 
 type SidebarProps = {
@@ -164,8 +164,48 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <div className="border-t border-zinc-200 bg-zinc-50 p-4 text-center text-xs text-zinc-500">
-        joseruao.com · crypto intel
+      <div className="border-t border-zinc-200 bg-zinc-50 p-3">
+        <div className="mb-2 text-center text-xs text-zinc-500">joseruao.com · crypto intel</div>
+        <div className="grid grid-cols-4 gap-1.5">
+          <a
+            href="mailto:jose@joseruao.com"
+            className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-600 hover:border-zinc-300 hover:text-zinc-950"
+            title="Email"
+            aria-label="Email"
+          >
+            <Mail size={15} />
+          </a>
+          <a
+            href="https://github.com/joseruao"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-600 hover:border-zinc-300 hover:text-zinc-950"
+            title="GitHub"
+            aria-label="GitHub"
+          >
+            <Github size={15} />
+          </a>
+          <a
+            href="https://www.linkedin.com/in/joseruao"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-600 hover:border-zinc-300 hover:text-zinc-950"
+            title="LinkedIn"
+            aria-label="LinkedIn"
+          >
+            <Linkedin size={15} />
+          </a>
+          <a
+            href="https://t.me/Ruao_aibot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-600 hover:border-zinc-300 hover:text-zinc-950"
+            title="Telegram alerts"
+            aria-label="Telegram alerts"
+          >
+            <Send size={15} />
+          </a>
+        </div>
       </div>
     </aside>
   );
