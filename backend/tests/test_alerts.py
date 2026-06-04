@@ -292,7 +292,19 @@ def test_predictions_endpoint_reads_arkham_exchange_signals(monkeypatch):
 
     def fake_rest_get(table, params=None, timeout=8):
         if table == "transacted_tokens":
-            return FakeResponse([])
+            return FakeResponse([
+                {
+                    "id": 99,
+                    "exchange": "Gate.io",
+                    "token": "OLD",
+                    "token_address": "0xold",
+                    "chain": "solana",
+                    "score": 95,
+                    "ts": "2026-06-04T20:00:00+00:00",
+                    "value_usd": 9_000_000,
+                    "liquidity": 9_000_000,
+                }
+            ])
         if table == "arkham_signals":
             return FakeResponse([
                 {
@@ -325,6 +337,7 @@ def test_predictions_endpoint_reads_arkham_exchange_signals(monkeypatch):
     data = r.json()
     assert len(data) == 1
     assert data[0]["token"] == "ALPHA"
+    assert "OLD" not in [row["token"] for row in data]
     assert data[0]["exchange"] == "Binance"
     assert data[0]["liquidity"] == 5_000_000
     assert data[0]["source"] == "arkham"

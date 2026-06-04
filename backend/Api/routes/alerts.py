@@ -1170,12 +1170,13 @@ def get_predictions():
             log.error(f"Erro ao buscar predictions: HTTP {r.status_code} - {r.text[:200]}")
             return []
 
-        data = r.json() or []
         arkham_data = _fetch_arkham_exchange_predictions(log)
         if arkham_data:
             log.info("Recebidos %s registos Arkham exchange", len(arkham_data))
-            data.extend(arkham_data)
-        log.info(f"Recebidos {len(data)} registos do Supabase/Arkham")
+            data = arkham_data
+        else:
+            data = r.json() or []
+        log.info(f"Recebidos {len(data)} registos para predictions")
         
         # Filtra por score mínimo de 50 e ordena por score desc
         filtered = _filter_prediction_rows(data, listed_tokens, log=log)
