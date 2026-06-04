@@ -207,6 +207,17 @@ def test_arkham_scanner_filters_listed_aliases_and_low_signal_assets():
     assert not scanner.is_low_signal_smart_money_asset("HYPE")
 
 
+def test_arkham_scanner_excludes_prompted_symbols_prefixes_suffixes_and_huge_values():
+    scanner = _load_scanner()
+
+    for symbol in ("USYC", "BSC-USD", "WETH", "SPENDLE", "SENA", "BTCB", "PAXG", "SOL"):
+        assert scanner.is_excluded_arkham_token(symbol, 100_000)
+    for symbol in ("WIF", "CBTOKEN", "STOKEN", "BSCFOO", "USDABC", "EURABC", "FOOBTC", "FOOUSDT"):
+        assert scanner.is_excluded_arkham_token(symbol, 100_000)
+    assert scanner.is_excluded_arkham_token("ALPHA", 500_000_001)
+    assert not scanner.is_excluded_arkham_token("ALPHA", 100_000)
+
+
 def test_arkham_scanner_static_binance_listed_fallback(monkeypatch):
     scanner = _load_scanner()
 

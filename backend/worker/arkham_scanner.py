@@ -59,6 +59,18 @@ LOW_SIGNAL_SYMBOLS = {
     "XAUT", "XAUT0", "PAXG",
 }
 
+EXCLUDED_SYMBOLS = {
+    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
+    "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
+    "EURC", "EUROC", "EURI", "EURT", "EURQ", "BSC-USD", "USYC",
+    "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+    "CBBTC", "SPENDLE", "SENA", "BBTC", "BTCB", "PAXG", "XAUT",
+    "BNB", "ETH", "BTC", "SOL", "XRP", "ADA", "DOGE", "TRX", "MATIC",
+}
+EXCLUDED_PREFIXES = ("W", "CB", "S", "BSC", "USD", "EUR")
+EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "USD", "EUR", "USDT", "BNB")
+MAX_SIGNAL_VALUE_USD = 500_000_000
+
 LOW_SIGNAL_SMART_MONEY_SYMBOLS = LOW_SIGNAL_SYMBOLS | {
     "USDBC", "UBTC", "UETH", "USDH", "BUIDL",
 }
@@ -488,6 +500,21 @@ def is_low_signal_exchange_asset(symbol: str, listed: set[str] | None = None) ->
     return False
 
 
+def is_excluded_arkham_token(symbol: str, value_usd: float = 0) -> bool:
+    normalized = _normalize_symbol(symbol)
+    if not normalized:
+        return True
+    if normalized in EXCLUDED_SYMBOLS:
+        return True
+    if normalized.startswith(EXCLUDED_PREFIXES):
+        return True
+    if normalized.endswith(EXCLUDED_SUFFIXES):
+        return True
+    if value_usd > MAX_SIGNAL_VALUE_USD:
+        return True
+    return False
+
+
 def is_listed_on_exchange(symbol: str, listed: set[str]) -> bool:
     return any(candidate in listed for candidate in listing_symbol_candidates(symbol))
 
@@ -753,6 +780,8 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
 
         for token in tokens:
             symbol = token["symbol"]
+            if is_excluded_arkham_token(symbol, token["value_usd"]):
+                continue
             if is_low_signal_exchange_asset(symbol, listed) or is_listed_on_exchange(symbol, listed):
                 continue
 
@@ -832,6 +861,8 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
 
         for token in tokens:
             symbol = token["symbol"]
+            if is_excluded_arkham_token(symbol, token["value_usd"]):
+                continue
             if is_low_signal_smart_money_asset(symbol):
                 continue
 
@@ -897,6 +928,8 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
 
         for token in tokens:
             symbol = token["symbol"]
+            if is_excluded_arkham_token(symbol, token["value_usd"]):
+                continue
             if is_low_signal_smart_money_asset(symbol):
                 continue
 
@@ -928,9 +961,13 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             if key in seen_keys:
                 continue
             symbol = str(previous.get("token") or "").strip().upper()
-            if not symbol or is_low_signal_smart_money_asset(symbol):
-                continue
             previous_value = _float_or_zero(previous.get("value_usd"))
+            if (
+                not symbol
+                or is_excluded_arkham_token(symbol, previous_value)
+                or is_low_signal_smart_money_asset(symbol)
+            ):
+                continue
             if previous_value < SMART_MONEY_THRESHOLD_USD:
                 continue
 
