@@ -289,11 +289,24 @@ async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
     return (last_tool_answer or _fallback).strip()
 
 
+_EN_PROMPT_TOKENS = {
+    "analyze", "analyse", "analysis", "what", "which", "how", "show", "tell",
+    "give", "find", "list", "top", "best", "near", "support", "resistance",
+    "buy", "sell", "price", "token", "coin", "market", "wallet", "exchange",
+    "listing", "unlisted", "radar", "signal", "chart", "trend",
+}
+
+def _detect_lang(prompt: str) -> str:
+    words = set(re.sub(r"[^a-zA-Z\s]", " ", prompt).lower().split())
+    return "en" if words & _EN_PROMPT_TOKENS else "pt"
+
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     try:
+        lang = _detect_lang(req.prompt)
         if _is_onboarding_question(req.prompt):
-            return StreamingResponse(_format_onboarding(req.prompt, lang=req.lang)(), media_type="text/plain")
+            return StreamingResponse(_format_onboarding(req.prompt, lang=lang)(), media_type="text/plain")
 
         _q = req.prompt.lower()
         _is_delta_q = (
@@ -303,38 +316,38 @@ async def chat_stream(req: ChatRequest):
         if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q:
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():
-                yield result.get("answer") or ("Could not fetch top100 ranking now." if req.lang == "en" else "Nao consegui obter o ranking tecnico top100 agora.")
+                yield result.get("answer") or ("Could not fetch top100 ranking now." if lang == "en" else "Nao consegui obter o ranking tecnico top100 agora.")
             return StreamingResponse(_top100(), media_type="text/plain")
 
         if _is_listing_tool_question(req.prompt):
             result = await execute_tool("get_listing_predictions")
             def _listings():
-                yield result.get("answer") or ("Could not fetch listing signals now." if req.lang == "en" else "Nao consegui obter potenciais listings agora.")
+                yield result.get("answer") or ("Could not fetch listing signals now." if lang == "en" else "Nao consegui obter potenciais listings agora.")
             return StreamingResponse(_listings(), media_type="text/plain")
 
         if _is_recent_holdings_tool_question(req.prompt):
             result = await execute_tool("get_recent_holdings")
             def _holdings():
-                yield result.get("answer") or ("Could not fetch recent holdings now." if req.lang == "en" else "Nao consegui obter holdings recentes agora.")
+                yield result.get("answer") or ("Could not fetch recent holdings now." if lang == "en" else "Nao consegui obter holdings recentes agora.")
             return StreamingResponse(_holdings(), media_type="text/plain")
 
         if _is_top100_recommendation_followup(req.prompt):
-            fn = _format_top100_recommendation(req.history or [], lang=req.lang)
+            fn = _format_top100_recommendation(req.history or [], lang=lang)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
 
         if _is_trade_followup(req.prompt):
-            fn = _format_trade_followup(req.prompt, req.history, lang=req.lang)
+            fn = _format_trade_followup(req.prompt, req.history, lang=lang)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
 
         if _is_sell_followup(req.prompt) or _is_entry_price_followup(req.prompt):
-            fn = _format_text_sell_followup(req.prompt, req.history, lang=req.lang)
+            fn = _format_text_sell_followup(req.prompt, req.history, lang=lang)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
 
         if _is_analysis_detail_followup(req.prompt):
-            fn = _format_text_analysis_detail_followup(req.prompt, req.history, lang=req.lang)
+            fn = _format_text_analysis_detail_followup(req.prompt, req.history, lang=lang)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
 
@@ -342,11 +355,11 @@ async def chat_stream(req: ChatRequest):
         _prompt_upper = req.prompt.upper()
         _mentioned_coins = [s for s in _KNOWN_SYMBOLS if re.search(rf"(?<![A-Z0-9]){re.escape(s)}(?![A-Z0-9])", _prompt_upper)]
         if len(_mentioned_coins) >= 2:
-            fn = _format_comparison_followup(_mentioned_coins[:3], req.history or [], lang=req.lang)
+            fn = _format_comparison_followup(_mentioned_coins[:3], req.history or [], lang=lang)
             if fn:
                 return StreamingResponse(fn(), media_type="text/plain")
             def _comparison_hint():
-                if req.lang == "en":
+                if lang == "en":
                     yield (
                         f"To compare {' vs '.join(_mentioned_coins[:3])}, the best approach is to analyse each one separately and then compare the results.\n\n"
                         f"Try:\n"
@@ -379,7 +392,7 @@ async def chat_stream(req: ChatRequest):
                         LAST_COIN_ANALYSIS.clear()
                         LAST_COIN_ANALYSIS.update({"coin": coin, "result": result})
                         def _analysis():
-                            yield from _format_coin_analysis(coin, result, lang=req.lang)
+                            yield from _format_coin_analysis(coin, result, lang=lang)
                         return StreamingResponse(_analysis(), media_type="text/plain")
                     else:
                         def _err():
@@ -387,7 +400,7 @@ async def chat_stream(req: ChatRequest):
                         return StreamingResponse(_err(), media_type="text/plain")
                 else:
                     def _ask_coin():
-                        if req.lang == "en":
+                        if lang == "en":
                             yield "Please specify which cryptocurrency you want to analyse.\nExamples: `analyse BTC`, `analyse SOL`, `analyse NEAR`\n"
                         else:
                             yield "Por favor especifica qual criptomoeda queres analisar.\nExemplos: `analisa BTC`, `analisa SOL`, `analisa NEAR`\n"

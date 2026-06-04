@@ -818,39 +818,64 @@ def _load_listed_tokens_map(log=None) -> Dict[str, set]:
             log.warning("Erro ao carregar exchange_tokens: %s", e)
         return _load_live_listing_fallbacks(log)
 
-def _load_live_listing_fallbacks(log=None) -> Dict[str, set]:
-    """Fallback curto para evitar falsos positives quando exchange_tokens ficou incompleto."""
-    exchanges = ("Binance",)
-    out: Dict[str, set] = {}
-    for exchange in exchanges:
-        if exchange in _LIVE_LISTING_CACHE:
-            out[exchange] = _LIVE_LISTING_CACHE[exchange]
-            continue
-        tokens = set()
+def _fetch_live_tokens(exchange: str) -> set:
+    """Fetch currently listed spot tokens from exchange public API."""
+    try:
         if exchange == "Binance":
             for url in (
                 "https://data-api.binance.vision/api/v3/exchangeInfo",
                 "https://api.binance.com/api/v3/exchangeInfo",
             ):
-                try:
-                    r = requests.get(url, timeout=8)
-                    if r.status_code != 200:
-                        continue
-                    data = r.json()
-                    tokens = {
-                        str(s.get("baseAsset") or "").upper()
-                        for s in data.get("symbols", [])
-                        if s.get("status") == "TRADING" and s.get("baseAsset")
-                    }
-                    if tokens:
-                        break
-                except Exception:
+                r = requests.get(url, timeout=8)
+                if r.status_code != 200:
                     continue
+                data = r.json()
+                tokens = {
+                    str(s.get("baseAsset") or "").upper()
+                    for s in data.get("symbols", [])
+                    if s.get("status") == "TRADING" and s.get("baseAsset")
+                }
+                if tokens:
+                    return tokens
+        elif exchange == "Gate.io":
+            r = requests.get("https://api.gateio.ws/api/v4/spot/currency_pairs", timeout=8)
+            if r.status_code == 200:
+                return {str(p.get("base") or "").upper() for p in r.json() if p.get("base")}
+        elif exchange == "Coinbase":
+            r = requests.get("https://api.exchange.coinbase.com/products", timeout=8)
+            if r.status_code == 200:
+                return {str(p.get("base_currency") or "").upper() for p in r.json() if p.get("base_currency")}
+        elif exchange == "OKX":
+            r = requests.get("https://www.okx.com/api/v5/public/instruments?instType=SPOT", timeout=8)
+            if r.status_code == 200:
+                return {str(p.get("baseCcy") or "").upper() for p in r.json().get("data", []) if p.get("baseCcy")}
+        elif exchange == "Bybit":
+            r = requests.get("https://api.bybit.com/v5/market/instruments-info?category=spot", timeout=8)
+            if r.status_code == 200:
+                return {str(p.get("baseCoin") or "").upper() for p in r.json().get("result", {}).get("list", []) if p.get("baseCoin")}
+        elif exchange == "Kraken":
+            r = requests.get("https://api.kraken.com/0/public/Assets", timeout=8)
+            if r.status_code == 200:
+                return {str(k).upper().lstrip("XZ") for k in r.json().get("result", {}).keys()}
+    except Exception:
+        pass
+    return set()
+
+
+def _load_live_listing_fallbacks(log=None) -> Dict[str, set]:
+    """Load live listed tokens from all major exchange public APIs."""
+    exchanges = ("Binance", "Gate.io", "Coinbase", "OKX", "Bybit", "Kraken")
+    out: Dict[str, set] = {}
+    for exchange in exchanges:
+        if exchange in _LIVE_LISTING_CACHE:
+            out[exchange] = _LIVE_LISTING_CACHE[exchange]
+            continue
+        tokens = _fetch_live_tokens(exchange)
         tokens.update(STATIC_LIVE_LISTING_FALLBACKS.get(exchange, set()))
         _LIVE_LISTING_CACHE[exchange] = tokens
         out[exchange] = tokens
         if log and tokens:
-            log.info("Fallback live listings carregado: %s (%s tokens)", exchange, len(tokens))
+            log.info("Live listings carregados: %s (%s tokens)", exchange, len(tokens))
     return out
 
 def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set]) -> bool:
