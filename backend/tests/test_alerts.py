@@ -756,7 +756,9 @@ def test_predictions_filter_live_binance_blocks_missing_table_token(monkeypatch)
 
     assert alerts._filter_prediction_rows(rows, {"Binance": set()}) == []
 
-def test_predictions_filter_only_blocks_own_exchange_listing():
+def test_predictions_filter_only_blocks_own_exchange_listing(monkeypatch):
+    monkeypatch.setattr(alerts, "_load_live_listing_fallbacks", lambda log=None: {})
+
     listed = {
         "Binance": {"TRUMP"},
         "Gate.io": {"BTC"},

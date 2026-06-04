@@ -44,31 +44,37 @@ def test_get_top100_delta_calls_existing_alerts_code(monkeypatch):
 
 
 def test_get_listing_predictions_uses_existing_ask_formatter(monkeypatch):
-    calls = []
     monkeypatch.setattr(
         tools.alerts,
-        "ask_alerts",
-        lambda payload: calls.append(payload.prompt) or {"ok": True, "answer": "MEW Gate.io", "count": 1},
+        "get_predictions",
+        lambda: [{
+            "token": "MEW",
+            "exchange": "Gate.io",
+            "chain": "solana",
+            "score": 80,
+            "value_usd": 250000,
+            "liquidity": 1000000,
+            "pair_url": "https://dexscreener.com/search?q=MEW",
+        }],
     )
 
     result = tools.get_listing_predictions()
 
     assert result["count"] == 1
     assert "MEW" in result["answer"]
-    assert "ainda nao foram listados" in calls[0]
 
 
 def test_get_listing_predictions_preserves_empty_ask_response(monkeypatch):
     monkeypatch.setattr(
         tools.alerts,
-        "ask_alerts",
-        lambda payload: {"ok": True, "answer": "Nao encontrei tokens", "count": 0, "items": []},
+        "get_predictions",
+        lambda: [],
     )
 
     result = tools.get_listing_predictions()
 
-    assert result["count"] == 0
-    assert "Nao encontrei" in result["answer"]
+    assert result["ok"] is True
+    assert "No fresh unlisted-token signals" in result["answer"]
 
 
 def test_get_recent_holdings_uses_existing_ask_formatter(monkeypatch):
