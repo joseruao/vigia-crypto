@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import json
 import time
+import base64
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,11 +124,26 @@ def _require_env() -> None:
         missing.append("SUPABASE_SERVICE_ROLE_KEY")
     if missing:
         raise RuntimeError(f"Missing env vars: {', '.join(missing)}")
-    if SUPABASE_KEY_SOURCE == "SUPABASE_ANON_KEY":
+    role = _supabase_jwt_role(SUPABASE_KEY)
+    if SUPABASE_KEY_SOURCE == "SUPABASE_ANON_KEY" or role != "service_role":
         raise RuntimeError(
-            "ARKHAM scanner needs SUPABASE_SERVICE_ROLE_KEY in Render. "
-            "Anon key cannot insert into arkham_signals with RLS."
+            "ARKHAM scanner needs a real Supabase service_role key in Render. "
+            f"Detected env={SUPABASE_KEY_SOURCE or 'missing'}, jwt_role={role or 'unknown'}. "
+            "Anon/authenticated keys cannot insert into arkham_signals with RLS."
         )
+
+
+def _supabase_jwt_role(token: str) -> str:
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return ""
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        decoded = base64.urlsafe_b64decode(payload.encode("ascii"))
+        data = json.loads(decoded.decode("utf-8"))
+        return str(data.get("role") or "").strip()
+    except Exception:
+        return ""
 
 
 def _normalize_symbol(value: Any) -> str:

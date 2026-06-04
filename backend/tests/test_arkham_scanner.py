@@ -1,5 +1,8 @@
 import importlib.util
+import base64
+import json
 from pathlib import Path
+import pytest
 
 
 def _load_scanner():
@@ -11,6 +14,11 @@ def _load_scanner():
     return module
 
 
+def _fake_jwt(payload: dict) -> str:
+    encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    return f"header.{encoded}.signature"
+
+
 def test_arkham_scanner_score_candidate_value_and_exchange_count():
     scanner = _load_scanner()
 
@@ -18,6 +26,17 @@ def test_arkham_scanner_score_candidate_value_and_exchange_count():
     assert scanner.score_candidate(150_000, 1) == 15
     assert scanner.score_candidate(600_000, 2) == 45
     assert scanner.score_candidate(1_500_000, 3) == 95
+
+
+def test_arkham_scanner_requires_real_service_role_key(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(scanner, "ARKHAM_API_KEY", "arkham")
+    monkeypatch.setattr(scanner, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(scanner, "SUPABASE_KEY", _fake_jwt({"role": "anon"}))
+    monkeypatch.setattr(scanner, "SUPABASE_KEY_SOURCE", "SUPABASE_SERVICE_ROLE_KEY")
+
+    with pytest.raises(RuntimeError, match="jwt_role=anon"):
+        scanner._require_env()
 
 
 def test_arkham_scanner_extracts_common_portfolio_shapes():
