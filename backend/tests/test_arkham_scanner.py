@@ -199,10 +199,30 @@ def test_arkham_scanner_filters_listed_aliases_and_low_signal_assets():
     assert scanner.is_listed_on_exchange("cbBTC", {"BTC"})
     assert scanner.is_low_signal_exchange_asset("USDT0", {"USDT"})
     assert scanner.is_low_signal_exchange_asset("WETH", {"ETH"})
+    assert scanner.is_low_signal_exchange_asset("BSC-USD", set())
+    assert scanner.is_low_signal_exchange_asset("XAUT0", set())
     assert scanner.is_low_signal_smart_money_asset("NVDAON")
     assert scanner.is_low_signal_smart_money_asset("USDBC")
     assert not scanner.is_low_signal_exchange_asset("BEAM", {"BTC", "ETH"})
     assert not scanner.is_low_signal_smart_money_asset("HYPE")
+
+
+def test_arkham_scanner_static_binance_listed_fallback(monkeypatch):
+    scanner = _load_scanner()
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return []
+
+    monkeypatch.setattr(scanner.requests, "get", lambda *args, **kwargs: Response())
+
+    listed = scanner.fetch_listed_tokens("Binance")
+
+    assert "BEAM" in listed
+    assert "BABYDOGE" in listed
 
 
 def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):

@@ -52,10 +52,11 @@ SMART_MONEY_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_SMART_MONEY_MIN_SAVE_SCORE", 
 
 LOW_SIGNAL_SYMBOLS = {
     "USDT", "USDT0", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDE", "USDS", "USD1",
-    "EUR", "EURC", "EURS", "PYUSD",
-    "BTC", "WBTC", "BTCB", "CBBTC", "TBTC",
-    "ETH", "WETH", "STETH", "WSTETH", "RETH", "CBETH",
+    "USDTE", "BSC-USD", "USYC", "EUR", "EURC", "EURS", "PYUSD", "IDRT",
+    "BTC", "WBTC", "BTCB", "CBBTC", "TBTC", "BBTC", "HBTC",
+    "ETH", "WETH", "STETH", "WSTETH", "RETH", "CBETH", "BETH",
     "BNB", "WBNB", "SOL", "WSOL", "AVAX", "WAVAX", "MATIC", "WMATIC",
+    "XAUT", "XAUT0", "PAXG",
 }
 
 LOW_SIGNAL_SMART_MONEY_SYMBOLS = LOW_SIGNAL_SYMBOLS | {
@@ -85,6 +86,14 @@ EXCHANGE_PROFILES = {
     "kraken": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
     "bitget": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
     "mexc": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+}
+
+KNOWN_LISTED_BY_EXCHANGE = {
+    # Safety net for Arkham entity portfolios when exchange_tokens is stale or
+    # incomplete. Keep this conservative: only obvious already-listed assets.
+    "binance": {
+        "BABYDOGE", "BEAM", "BTT", "CAT", "CHEEMS", "EOS", "WNXM",
+    },
 }
 
 SMART_MONEY_FUNDS = [
@@ -431,6 +440,8 @@ def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD
 
 
 def fetch_listed_tokens(exchange: str) -> set[str]:
+    exchange_key = _normalize_symbol(exchange).replace(".", "").replace(" ", "").replace("-", "").lower()
+    fallback = set(KNOWN_LISTED_BY_EXCHANGE.get(exchange_key, set()))
     url = f"{SUPABASE_URL}/rest/v1/exchange_tokens"
     params = {
         "select": "token",
@@ -444,8 +455,8 @@ def fetch_listed_tokens(exchange: str) -> set[str]:
             f"HTTP {response.status_code} - {response.text[:200]}",
             flush=True,
         )
-        return set()
-    return {_normalize_symbol(row.get("token")) for row in response.json() if row.get("token")}
+        return fallback
+    return fallback | {_normalize_symbol(row.get("token")) for row in response.json() if row.get("token")}
 
 
 def listing_symbol_candidates(symbol: str) -> set[str]:
@@ -464,8 +475,13 @@ def listing_symbol_candidates(symbol: str) -> set[str]:
 
 
 def is_low_signal_exchange_asset(symbol: str, listed: set[str] | None = None) -> bool:
+    normalized = _normalize_symbol(symbol)
     candidates = listing_symbol_candidates(symbol)
     if candidates & LOW_SIGNAL_SYMBOLS:
+        return True
+    if any(part in normalized for part in ("-USD", "USD.", ".USD")):
+        return True
+    if normalized.endswith("0") and normalized[:-1] in LOW_SIGNAL_SYMBOLS:
         return True
     if listed and len(candidates) > 1 and any(candidate in listed for candidate in candidates if candidate != _normalize_symbol(symbol)):
         return True
@@ -899,6 +915,8 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             previous = existing.get(key)
             previous_value = _float_or_zero((previous or {}).get("value_usd"))
             direction = signal_direction(candidate["value_usd"], previous_value)
+            if direction == "flat":
+                continue
             candidate["score"] = smart_money_score(candidate["value_usd"], exchange_count, direction)
             if candidate["score"] < SMART_MONEY_MIN_SAVE_SCORE:
                 continue
