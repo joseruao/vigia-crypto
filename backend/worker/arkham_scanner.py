@@ -119,20 +119,40 @@ def _float_or_zero(value: Any) -> float:
         return 0.0
 
 
-def _extract_token_rows(payload: Any) -> list[dict[str, Any]]:
+def _extract_token_rows(payload: Any, chain_hint: str | None = None) -> list[dict[str, Any]]:
     """Accept common Arkham portfolio shapes and return raw token rows."""
     if isinstance(payload, list):
-        return [row for row in payload if isinstance(row, dict)]
+        rows = []
+        for row in payload:
+            if isinstance(row, dict):
+                rows.append({"chain": chain_hint, **row} if chain_hint and not row.get("chain") else row)
+        return rows
 
     if not isinstance(payload, dict):
         return []
 
+    balances = payload.get("balances")
+    if isinstance(balances, dict):
+        rows: list[dict[str, Any]] = []
+        for chain, value in balances.items():
+            if isinstance(value, list):
+                for row in value:
+                    if isinstance(row, dict):
+                        rows.append({"chain": chain, **row})
+            elif isinstance(value, dict):
+                for token_id, row in value.items():
+                    if isinstance(row, dict):
+                        rows.append({"chain": chain, "pricingID": token_id, **row})
+                    else:
+                        rows.append({"chain": chain, "pricingID": token_id, "balance": row})
+        return rows
+
     for key in ("tokens", "portfolio", "balances", "holdings", "data"):
         value = payload.get(key)
         if isinstance(value, list):
-            return [row for row in value if isinstance(row, dict)]
+            return _extract_token_rows(value, chain_hint=chain_hint)
         if isinstance(value, dict):
-            nested = _extract_token_rows(value)
+            nested = _extract_token_rows(value, chain_hint=chain_hint)
             if nested:
                 return nested
 
@@ -143,15 +163,24 @@ def _extract_token_rows(payload: Any) -> list[dict[str, Any]]:
             for row in value:
                 if isinstance(row, dict):
                     rows.append({"chain": chain, **row})
+        elif isinstance(value, dict) and any(k in value for k in ("symbol", "usd", "value", "balance", "token")):
+            rows.append({"chain": chain_hint, "pricingID": chain, **value})
     return rows
 
 
 def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
+    token_meta = row.get("token") if isinstance(row.get("token"), dict) else {}
     symbol = _normalize_symbol(
         row.get("symbol")
         or row.get("tokenSymbol")
+        or row.get("token_symbol")
         or row.get("ticker")
+        or token_meta.get("symbol")
+        or token_meta.get("ticker")
         or row.get("name")
+        or token_meta.get("name")
+        or row.get("pricingID")
+        or row.get("id")
     )
     if not symbol:
         return None
@@ -161,13 +190,29 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         or row.get("valueUsd")
         or row.get("value_usd")
         or row.get("usdValue")
+        or row.get("usd")
+        or row.get("balanceUsd")
+        or row.get("balance_usd")
+        or row.get("totalValue")
+        or row.get("totalValueUsd")
     )
-    amount = _float_or_zero(row.get("amount") or row.get("balance") or row.get("quantity"))
-    chain = _normalize_chain(row.get("chain") or row.get("network"))
+    amount = _float_or_zero(
+        row.get("amount")
+        or row.get("balance")
+        or row.get("quantity")
+        or row.get("holdings")
+        or row.get("tokenBalance")
+    )
+    chain = _normalize_chain(row.get("chain") or row.get("network") or row.get("chainName"))
     token_address = str(
         row.get("address")
         or row.get("tokenAddress")
+        or row.get("token_address")
         or row.get("contractAddress")
+        or row.get("contract_address")
+        or row.get("identifier")
+        or token_meta.get("address")
+        or token_meta.get("tokenAddress")
         or ""
     ).strip()
 

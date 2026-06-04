@@ -40,6 +40,32 @@ def test_arkham_scanner_extracts_common_portfolio_shapes():
     assert tokens[1]["chain"] == "solana"
 
 
+def test_arkham_scanner_extracts_chain_grouped_balances_with_usd_field():
+    scanner = _load_scanner()
+
+    payload = {
+        "balances": {
+            "hyperliquid": [
+                {
+                    "token": {"symbol": "WHYPE", "name": "wrapped-hype"},
+                    "balance": 4_473_000,
+                    "price": 66.29,
+                    "usd": 296_510_000,
+                }
+            ]
+        },
+        "totalBalance": {"hyperliquid": 296_510_000},
+    }
+
+    rows = scanner._extract_token_rows(payload)
+    token = scanner._normalize_token(rows[0])
+
+    assert token["symbol"] == "WHYPE"
+    assert token["chain"] == "hyperliquid"
+    assert token["amount"] == 4_473_000
+    assert token["value_usd"] == 296_510_000
+
+
 def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
     scanner = _load_scanner()
     calls = []
