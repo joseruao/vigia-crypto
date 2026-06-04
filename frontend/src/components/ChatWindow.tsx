@@ -268,10 +268,7 @@ export function ChatWindow() {
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
-              <img src="/logo_full.png" alt="José Ruão.com" className="mb-5 h-36 w-auto max-w-[82vw] object-contain opacity-95 sm:h-72" />
-              <p className="mb-6 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-                Tracks exchange wallets to detect unlisted-token signals before listings.
-              </p>
+              <img src="/logo_full.png" alt="Exchange Wallet Radar" className="mb-10 h-auto w-[min(520px,82vw)] object-contain opacity-95 sm:mb-12" />
               <div className="w-full max-w-2xl">
                 <Suggestions
                   visible={!hasMessages}
