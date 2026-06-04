@@ -180,12 +180,38 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD) -> list[dict[str, Any]]:
-    url = f"{ARKHAM_BASE_URL}/portfolio/entity/{slug}"
-    response = requests.get(url, headers=ARKHAM_HEADERS, timeout=30)
-    response.raise_for_status()
+def _raise_arkham_error(response: requests.Response, endpoint: str) -> None:
+    body = response.text[:500].replace("\n", " ")
+    raise requests.HTTPError(
+        f"{response.status_code} Client Error for {endpoint}: {body}",
+        response=response,
+    )
 
-    raw_rows = _extract_token_rows(response.json())
+
+def _arkham_get_json(endpoint: str) -> Any:
+    url = f"{ARKHAM_BASE_URL}{endpoint}"
+    response = requests.get(url, headers=ARKHAM_HEADERS, timeout=30)
+    if response.status_code >= 400:
+        _raise_arkham_error(response, endpoint)
+    return response.json()
+
+
+def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD) -> list[dict[str, Any]]:
+    # Balances is the current-token-holdings endpoint. Portfolio is kept as a
+    # fallback because some API docs/examples still mention it for entities.
+    errors: list[str] = []
+    payload = None
+    for endpoint in (f"/balances/entity/{slug}", f"/portfolio/entity/{slug}"):
+        try:
+            payload = _arkham_get_json(endpoint)
+            break
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if payload is None:
+        raise RuntimeError(" | ".join(errors))
+
+    raw_rows = _extract_token_rows(payload)
     tokens: list[dict[str, Any]] = []
     for row in raw_rows:
         token = _normalize_token(row)
