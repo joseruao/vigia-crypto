@@ -147,8 +147,10 @@ _LIVE_LISTING_CACHE = {}
 STABLE_OR_FIAT_SYMBOLS = {
     "USDT", "USDC", "DAI", "BUSD", "TUSD", "FDUSD", "USDE", "USDS", "PYUSD",
     "USD1", "EURC", "EUROC", "EURI", "EURT", "EURQ", "PAXG", "WBTC", "WETH",
-    "STETH", "WSTETH", "RETH", "CBETH",
+    "STETH", "WSTETH", "RETH", "CBETH", "CBBTC", "SPENDLE",
 }
+WRAPPED_OR_STAKED_PREFIXES = ("CB", "S", "W")
+WRAPPED_OR_STAKED_SUFFIXES = ("BTC", "ETH", "SOL", "PENDLE")
 
 # ===========================
 # WALLETS
@@ -491,7 +493,12 @@ def is_token_listed_on_exchange(token_symbol, exchange_name):
 
 def is_stable_or_wrapped_token(symbol):
     normalized = (symbol or "").strip().upper().lstrip("$")
-    return normalized in STABLE_OR_FIAT_SYMBOLS
+    if normalized in STABLE_OR_FIAT_SYMBOLS:
+        return True
+    return (
+        any(normalized.startswith(prefix) for prefix in WRAPPED_OR_STAKED_PREFIXES)
+        and any(normalized.endswith(suffix) for suffix in WRAPPED_OR_STAKED_SUFFIXES)
+    )
 
 
 def calculate_holding_score(holding_data, exchange_name):

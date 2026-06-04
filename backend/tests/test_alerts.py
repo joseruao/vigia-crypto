@@ -149,6 +149,7 @@ def test_top100_buy_question_uses_ranking_table(monkeypatch):
                 {
                     "symbol": "BTC",
                     "name": "Bitcoin",
+                    "price": 70000,
                     "score": 82.5,
                     "signal": "FORTE",
                     "risk": "BAIXO/MODERADO",
@@ -189,8 +190,8 @@ def test_top100_answer_filters_stablecoins(monkeypatch):
         status_code = 200
         def json(self):
             return [
-                {"symbol": "USDT", "name": "Tether", "score": 99, "signal": "FORTE", "risk": "BAIXO"},
-                {"symbol": "SOL", "name": "Solana", "score": 75, "signal": "BOA", "risk": "MODERADO"},
+                {"symbol": "USDT", "name": "Tether", "price": 1, "score": 99, "signal": "FORTE", "risk": "BAIXO"},
+                {"symbol": "SOL", "name": "Solana", "price": 100, "score": 75, "signal": "BOA", "risk": "MODERADO"},
             ]
     monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
     client = TestClient(app)
@@ -238,14 +239,45 @@ def test_predictions_filter_stable_fiat_tokens(monkeypatch):
     assert "ALPHA" in answer
     assert "EURC" not in answer
 
+def test_predictions_filter_wrapped_and_staked_derivatives():
+    rows = [
+        {"exchange": "Binance 8", "token": "cbBTC", "token_address": "0xcbbtc", "chain": "ethereum", "score": 90},
+        {"exchange": "Binance 8", "token": "sPENDLE", "token_address": "0xspendle", "chain": "ethereum", "score": 90},
+        {"exchange": "Binance 8", "token": "ALPHA", "token_address": "0xalpha", "chain": "ethereum", "score": 80},
+    ]
+
+    filtered = alerts._filter_prediction_rows(rows, {"Binance": set()})
+
+    assert [row["token"] for row in filtered] == ["ALPHA"]
+
+def test_top100_endpoint_filters_zero_price(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {"symbol": "FLR", "name": "Flare", "price": 0, "score": 90, "current_position": 20},
+                {"symbol": "TAO", "name": "Bittensor", "price": 227, "score": 80, "current_position": 25},
+            ]
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+
+    r = client.get("/alerts/top100?mode=near_support&limit=5")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert [row["symbol"] for row in data["items"]] == ["TAO"]
+
 def test_top100_risk_question_sorts_by_low_risk(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     class FakeResponse:
         status_code = 200
         def json(self):
             return [
-                {"symbol": "RISKY", "name": "Risky", "score": 95, "risk": "ELEVADO", "signal": "FORTE"},
-                {"symbol": "SAFE", "name": "Safe", "score": 70, "risk": "BAIXO/MODERADO", "signal": "BOA"},
+                {"symbol": "RISKY", "name": "Risky", "price": 10, "score": 95, "risk": "ELEVADO", "signal": "FORTE"},
+                {"symbol": "SAFE", "name": "Safe", "price": 10, "score": 70, "risk": "BAIXO/MODERADO", "signal": "BOA"},
             ]
     monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
     client = TestClient(app)
@@ -260,8 +292,8 @@ def test_top100_support_question_sorts_by_current_position(monkeypatch):
         status_code = 200
         def json(self):
             return [
-                {"symbol": "HIGH", "name": "High", "score": 90, "current_position": 90, "risk": "MODERADO"},
-                {"symbol": "SUP", "name": "Support", "score": 70, "current_position": 24, "risk": "MODERADO"},
+                {"symbol": "HIGH", "name": "High", "price": 10, "score": 90, "current_position": 90, "risk": "MODERADO"},
+                {"symbol": "SUP", "name": "Support", "price": 10, "score": 70, "current_position": 24, "risk": "MODERADO"},
             ]
     monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
     client = TestClient(app)
@@ -532,6 +564,13 @@ def test_daily_holdings_binance_live_listing_fallback(monkeypatch):
 
     assert worker.is_token_listed_on_exchange("TRUMP", "Binance 2") is True
     assert worker.is_token_listed_on_exchange("BEAM", "Binance 8") is True
+
+def test_daily_holdings_filters_wrapped_and_staked_derivatives():
+    from dailyworker import daily_holdings_worker as worker
+
+    assert worker.is_stable_or_wrapped_token("cbBTC") is True
+    assert worker.is_stable_or_wrapped_token("sPENDLE") is True
+    assert worker.is_stable_or_wrapped_token("ALPHA") is False
 
 def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
     import asyncio

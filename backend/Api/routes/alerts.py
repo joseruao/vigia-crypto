@@ -61,11 +61,17 @@ TOP100_EXCLUDED_SYMBOLS = {
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
     "EURC", "EUROC", "EURI", "EURT", "EURQ",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+    "CBBTC", "SPENDLE",
     "PAXG", "XAUT",
 }
+LISTING_EXCLUDED_PREFIXES = ("CB", "S", "W")
+LISTING_EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "PENDLE")
 DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 36
 PREDICTIONS_LIMIT = 10
 _LIVE_LISTING_CACHE: Dict[str, set] = {}
+STATIC_LIVE_LISTING_FALLBACKS = {
+    "Binance": {"BEAM"},
+}
 
 def _prediction_max_age_hours() -> int:
     try:
@@ -589,6 +595,7 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
         row for row in raw
         if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
         and float(row.get("score") or 0) > 0
+        and float(row.get("price") or 0) > 0
     ]
     rows = _sort_top100_rows(rows, mode)[:10]
     if not rows:
@@ -646,6 +653,7 @@ def get_top100_rankings(mode: str = "near_support", limit: int = 5):
         row for row in (raw or [])
         if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
         and float(row.get("score") or 0) > 0
+        and float(row.get("price") or 0) > 0
     ]
     allowed_modes = {"score", "near_support", "low_rsi", "low_risk", "risk_reward", "bounce"}
     selected_mode = mode if mode in allowed_modes else "near_support"
@@ -663,6 +671,10 @@ def _is_test_token(row: Dict[str, Any]) -> bool:
     return (
         token in TEST_TOKENS
         or token in TOP100_EXCLUDED_SYMBOLS
+        or (
+            any(token.startswith(prefix) for prefix in LISTING_EXCLUDED_PREFIXES)
+            and any(token.endswith(suffix) for suffix in LISTING_EXCLUDED_SUFFIXES)
+        )
         or token_address.startswith("test")
         or "/test" in pair_url
         or "registo de teste" in analysis
@@ -827,6 +839,7 @@ def _load_live_listing_fallbacks(log=None) -> Dict[str, set]:
                         break
                 except Exception:
                     continue
+        tokens.update(STATIC_LIVE_LISTING_FALLBACKS.get(exchange, set()))
         _LIVE_LISTING_CACHE[exchange] = tokens
         out[exchange] = tokens
         if log and tokens:
