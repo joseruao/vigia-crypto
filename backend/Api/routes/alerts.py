@@ -892,6 +892,16 @@ def _is_listed_on_own_exchange(row: Dict[str, Any], listed_tokens: Dict[str, set
         return any(token in live_tokens for token in candidates)
     return False
 
+def _is_raw_arkham_row(row: Dict[str, Any]) -> bool:
+    signature = str(row.get("signature") or "").lower()
+    token_address = str(row.get("token_address") or "").lower()
+    row_type = str(row.get("type") or "").lower()
+    return (
+        signature.startswith("arkham-")
+        or token_address.startswith("arkham:")
+        or row_type.startswith("arkham_")
+    )
+
 def _filter_prediction_rows(
     rows: List[Dict[str, Any]],
     listed_tokens: Dict[str, set],
@@ -901,6 +911,8 @@ def _filter_prediction_rows(
     filtered = []
     excluded_listed = []
     for row in rows:
+        if _is_raw_arkham_row(row):
+            continue
         if _score(row) < min_score or _is_test_token(row):
             continue
         if _is_listed_on_own_exchange(row, listed_tokens):

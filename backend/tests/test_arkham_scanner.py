@@ -140,6 +140,33 @@ def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
     assert saved[0][0]["score"] == 45
 
 
+def test_arkham_scanner_exchange_scan_uses_separate_signal_type(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_portfolio",
+        lambda slug, min_value_usd: [{
+            "symbol": "ABC",
+            "chain": "ethereum",
+            "amount": 10,
+            "value_usd": 200_000,
+            "token_address": "0xabc",
+        }],
+    )
+    monkeypatch.setattr(scanner, "fetch_listed_tokens", lambda exchange: set())
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "EXCHANGES", [{"slug": "binance", "exchange": "Binance"}])
+    saved = []
+    monkeypatch.setattr(scanner, "save_candidate", lambda candidate, signal_type="holding": saved.append((candidate, signal_type)) or True)
+
+    token_exchanges, count, saved_count = scanner.scan_exchange_candidates()
+
+    assert token_exchanges == {"ABC": {"Binance"}}
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][1] == "arkham_exchange"
+
+
 def test_arkham_scanner_limits_entities_from_env(monkeypatch):
     scanner = _load_scanner()
     monkeypatch.setenv("ARKHAM_EXCHANGE_SLUGS", "binance")

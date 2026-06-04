@@ -366,6 +366,30 @@ def test_predictions_backfill_merges_recent_and_historical():
     merged = alerts._merge_prediction_backfill(recent, fallback)
     assert [row["token"] for row in merged] == ["AAA", "BBB", "CCC"]
 
+def test_prediction_filter_ignores_raw_arkham_rows():
+    rows = [
+        {
+            "exchange": "Binance",
+            "token": "RAW",
+            "chain": "ethereum",
+            "score": 90,
+            "signature": "arkham-holding-binance-ethereum-RAW",
+            "token_address": "arkham:holding:binance:ethereum:RAW",
+        },
+        {
+            "exchange": "Gate.io",
+            "token": "REAL",
+            "chain": "solana",
+            "score": 80,
+            "signature": "daily-worker-real",
+            "token_address": "real-token-address",
+        },
+    ]
+
+    filtered = alerts._filter_prediction_rows(rows, listed_tokens={})
+
+    assert [row["token"] for row in filtered] == ["REAL"]
+
 def test_coinpaprika_top100_mapping():
     from dailyworker.top100_rankings_worker import build_top100_rows, fetch_top100_market_data_coinpaprika
 

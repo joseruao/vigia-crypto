@@ -487,7 +487,7 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
 
     saved = 0
     for candidate in sorted(candidates, key=lambda row: row["score"], reverse=True):
-        if save_candidate(candidate):
+        if save_candidate(candidate, signal_type="arkham_exchange"):
             saved += 1
             print(
                 f"💾 {candidate['token']} · {candidate['exchange']} · "
