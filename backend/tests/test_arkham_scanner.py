@@ -143,7 +143,10 @@ def test_arkham_scanner_filters_listed_aliases_and_low_signal_assets():
     assert scanner.is_listed_on_exchange("cbBTC", {"BTC"})
     assert scanner.is_low_signal_exchange_asset("USDT0", {"USDT"})
     assert scanner.is_low_signal_exchange_asset("WETH", {"ETH"})
+    assert scanner.is_low_signal_smart_money_asset("NVDAON")
+    assert scanner.is_low_signal_smart_money_asset("USDBC")
     assert not scanner.is_low_signal_exchange_asset("BEAM", {"BTC", "ETH"})
+    assert not scanner.is_low_signal_smart_money_asset("HYPE")
 
 
 def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
@@ -170,6 +173,40 @@ def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
     assert saved_count == 1
     assert saved[0][1] == "smart_money"
     assert saved[0][0]["score"] == 45
+
+
+def test_arkham_scanner_smart_money_skips_low_score_noise(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_portfolio",
+        lambda slug, min_value_usd: [
+            {
+                "symbol": "ABC",
+                "chain": "ethereum",
+                "amount": 10,
+                "value_usd": 150_000,
+                "token_address": "0xabc",
+            },
+            {
+                "symbol": "NVDAON",
+                "chain": "ethereum",
+                "amount": 10,
+                "value_usd": 900_000,
+                "token_address": "0xstock",
+            },
+        ],
+    )
+    saved = []
+    monkeypatch.setattr(scanner, "save_candidate", lambda candidate, signal_type="holding": saved.append((candidate, signal_type)) or True)
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "wintermute", "name": "Wintermute"}])
+
+    count, saved_count = scanner.scan_smart_money({})
+
+    assert count == 0
+    assert saved_count == 0
+    assert saved == []
 
 
 def test_arkham_scanner_exchange_scan_uses_separate_signal_type(monkeypatch):

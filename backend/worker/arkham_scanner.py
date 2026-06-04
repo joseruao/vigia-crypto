@@ -47,6 +47,7 @@ for _key_name in ("SUPABASE_SERVICE_ROLE", "SUPABASE_SERVICE_ROLE_KEY", "SUPABAS
 VALUE_THRESHOLD_USD = float(os.getenv("ARKHAM_MIN_VALUE_USD", "50000"))
 SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", "100000"))
 ARKHAM_SIGNALS_TABLE = os.getenv("ARKHAM_SIGNALS_TABLE", "arkham_signals")
+SMART_MONEY_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_SMART_MONEY_MIN_SAVE_SCORE", "25"))
 
 LOW_SIGNAL_SYMBOLS = {
     "USDT", "USDT0", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDE", "USDS", "USD1",
@@ -54,6 +55,10 @@ LOW_SIGNAL_SYMBOLS = {
     "BTC", "WBTC", "BTCB", "CBBTC", "TBTC",
     "ETH", "WETH", "STETH", "WSTETH", "RETH", "CBETH",
     "BNB", "WBNB", "SOL", "WSOL", "AVAX", "WAVAX", "MATIC", "WMATIC",
+}
+
+LOW_SIGNAL_SMART_MONEY_SYMBOLS = LOW_SIGNAL_SYMBOLS | {
+    "USDBC", "UBTC", "UETH", "USDH", "BUIDL",
 }
 
 EXCHANGES = [
@@ -425,6 +430,16 @@ def is_listed_on_exchange(symbol: str, listed: set[str]) -> bool:
     return any(candidate in listed for candidate in listing_symbol_candidates(symbol))
 
 
+def is_low_signal_smart_money_asset(symbol: str) -> bool:
+    normalized = _normalize_symbol(symbol)
+    if normalized in LOW_SIGNAL_SMART_MONEY_SYMBOLS:
+        return True
+    # Arkham can return tokenized stock/ETF tickers like NVDAON, TSLAON, QQQON.
+    if normalized.endswith("ON") and len(normalized) > 4:
+        return True
+    return False
+
+
 def score_candidate(value_usd: float, exchange_count: int) -> int:
     score = 0
     if value_usd > 1_000_000:
@@ -597,12 +612,15 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
 
         for token in tokens:
             symbol = token["symbol"]
+            if is_low_signal_smart_money_asset(symbol):
+                continue
+
             exchange_count = len(token_exchanges.get(symbol, set()))
             score = score_candidate(token["value_usd"], 1)
             if exchange_count >= 1:
                 score += 30
             score = min(score, 100)
-            if score <= 0:
+            if score < SMART_MONEY_MIN_SAVE_SCORE:
                 continue
 
             candidates.append({
