@@ -276,7 +276,58 @@ def test_predictions_endpoint_does_not_backfill_old_rows(monkeypatch):
 
     assert r.status_code == 200
     assert r.json() == []
-    assert calls["count"] == 1
+    assert calls["count"] == 2
+
+def test_predictions_endpoint_reads_arkham_exchange_signals(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    class FakeResponse:
+        status_code = 200
+        def __init__(self, rows):
+            self._rows = rows
+            self.text = ""
+        def json(self):
+            return self._rows
+
+    def fake_rest_get(table, params=None, timeout=8):
+        if table == "transacted_tokens":
+            return FakeResponse([])
+        if table == "arkham_signals":
+            return FakeResponse([
+                {
+                    "id": 10,
+                    "entity": "Binance",
+                    "exchange": "Binance",
+                    "token": "ALPHA",
+                    "token_address": "0xalpha",
+                    "chain": "ethereum",
+                    "score": 82,
+                    "ts": "2026-06-04T20:03:50+00:00",
+                    "pair_url": "https://dexscreener.com/search?q=ALPHA",
+                    "value_usd": 1_000_000,
+                    "liquidity_usd": 5_000_000,
+                    "market_cap_usd": 20_000_000,
+                    "position_pct": 5,
+                    "liquidity_pct": 20,
+                    "exchange_count": 1,
+                    "analysis_text": "Arkham signal",
+                }
+            ])
+        return FakeResponse([])
+
+    monkeypatch.setattr(alerts.supa, "rest_get", fake_rest_get)
+    client = TestClient(app)
+
+    r = client.get("/alerts/predictions")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["token"] == "ALPHA"
+    assert data[0]["exchange"] == "Binance"
+    assert data[0]["liquidity"] == 5_000_000
+    assert data[0]["source"] == "arkham"
 
 def test_listing_ask_does_not_backfill_old_rows_by_default(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)

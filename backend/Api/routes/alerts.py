@@ -751,6 +751,54 @@ def _apply_listing_score(row: Dict[str, Any]) -> Dict[str, Any]:
     updated["score"] = _listing_score(row)
     return updated
 
+def _arkham_signal_to_prediction(row: Dict[str, Any]) -> Dict[str, Any]:
+    token_address = str(row.get("token_address") or "").strip()
+    if token_address.startswith("arkham:"):
+        token_address = ""
+    return {
+        "id": row.get("id") or row.get("signal_key"),
+        "exchange": row.get("exchange") or row.get("entity"),
+        "token": row.get("token"),
+        "token_address": token_address,
+        "chain": row.get("chain"),
+        "score": row.get("score"),
+        "ts": row.get("ts"),
+        "pair_url": row.get("pair_url"),
+        "value_usd": row.get("value_usd"),
+        "liquidity": row.get("liquidity_usd") or row.get("liquidity"),
+        "volume_24h": row.get("volume_24h") or 0,
+        "analysis_text": row.get("analysis_text"),
+        "source": "arkham",
+        "market_cap_usd": row.get("market_cap_usd"),
+        "position_pct": row.get("position_pct"),
+        "liquidity_pct": row.get("liquidity_pct"),
+        "exchange_count": row.get("exchange_count"),
+    }
+
+def _fetch_arkham_exchange_predictions(log=None) -> List[Dict[str, Any]]:
+    params = {
+        "entity_type": "eq.exchange",
+        "select": (
+            "id,signal_key,entity,exchange,token,token_address,chain,score,ts,pair_url,"
+            "value_usd,liquidity_usd,market_cap_usd,position_pct,liquidity_pct,"
+            "exchange_count,analysis_text"
+        ),
+        "limit": "500",
+        "order": "score.desc",
+        "ts": f"gte.{_prediction_since_iso()}",
+    }
+    try:
+        r = supa.rest_get("arkham_signals", params=params, timeout=8)
+        if r.status_code != 200:
+            if log:
+                log.warning("Erro ao buscar Arkham predictions: HTTP %s - %s", r.status_code, r.text[:200])
+            return []
+        return [_arkham_signal_to_prediction(row) for row in (r.json() or [])]
+    except Exception as e:
+        if log:
+            log.warning("Erro ao buscar Arkham predictions: %s", e)
+        return []
+
 def _normalize_exchange(exchange: str) -> str:
     exchange = str(exchange or "").strip()
     return EXCHANGE_NORMALIZE.get(exchange, exchange)
@@ -1123,7 +1171,11 @@ def get_predictions():
             return []
 
         data = r.json() or []
-        log.info(f"Recebidos {len(data)} registos do Supabase")
+        arkham_data = _fetch_arkham_exchange_predictions(log)
+        if arkham_data:
+            log.info("Recebidos %s registos Arkham exchange", len(arkham_data))
+            data.extend(arkham_data)
+        log.info(f"Recebidos {len(data)} registos do Supabase/Arkham")
         
         # Filtra por score mínimo de 50 e ordena por score desc
         filtered = _filter_prediction_rows(data, listed_tokens, log=log)
