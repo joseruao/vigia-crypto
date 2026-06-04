@@ -66,6 +66,33 @@ def test_arkham_scanner_extracts_chain_grouped_balances_with_usd_field():
     assert token["value_usd"] == 296_510_000
 
 
+def test_arkham_scanner_extracts_list_grouped_balances_with_asset_field():
+    scanner = _load_scanner()
+
+    payload = {
+        "balances": [
+            {
+                "chain": "ethereum",
+                "assets": [
+                    {
+                        "asset": {"symbol": "MKR", "name": "maker", "identifier": "maker"},
+                        "holdings": 19_501,
+                        "marketValueUsd": 30_030_000,
+                    }
+                ],
+            }
+        ]
+    }
+
+    rows = scanner._extract_token_rows(payload)
+    token = scanner._normalize_token(rows[0])
+
+    assert token["symbol"] == "MKR"
+    assert token["chain"] == "ethereum"
+    assert token["amount"] == 19_501
+    assert token["value_usd"] == 30_030_000
+
+
 def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
     scanner = _load_scanner()
     calls = []

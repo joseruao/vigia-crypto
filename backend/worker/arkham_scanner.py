@@ -10,6 +10,7 @@ exchange, then stores candidates in Supabase transacted_tokens.
 from __future__ import annotations
 
 import os
+import json
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -132,6 +133,26 @@ def _extract_token_rows(payload: Any, chain_hint: str | None = None) -> list[dic
         return []
 
     balances = payload.get("balances")
+    if isinstance(balances, list):
+        rows: list[dict[str, Any]] = []
+        for item in balances:
+            if not isinstance(item, dict):
+                continue
+            chain = item.get("chain") or item.get("network") or item.get("chainName") or chain_hint
+            nested = []
+            for key in ("tokens", "balances", "holdings", "assets", "tokenBalances", "token_balances"):
+                value = item.get(key)
+                if isinstance(value, list):
+                    nested = value
+                    break
+            if nested:
+                for row in nested:
+                    if isinstance(row, dict):
+                        rows.append({"chain": chain, **row})
+            elif any(k in item for k in ("symbol", "usd", "value", "balance", "token", "asset")):
+                rows.append(item)
+        return rows
+
     if isinstance(balances, dict):
         rows: list[dict[str, Any]] = []
         for chain, value in balances.items():
@@ -147,7 +168,7 @@ def _extract_token_rows(payload: Any, chain_hint: str | None = None) -> list[dic
                         rows.append({"chain": chain, "pricingID": token_id, "balance": row})
         return rows
 
-    for key in ("tokens", "portfolio", "balances", "holdings", "data"):
+    for key in ("tokens", "portfolio", "balances", "holdings", "assets", "tokenBalances", "token_balances", "data"):
         value = payload.get(key)
         if isinstance(value, list):
             return _extract_token_rows(value, chain_hint=chain_hint)
@@ -169,14 +190,21 @@ def _extract_token_rows(payload: Any, chain_hint: str | None = None) -> list[dic
 
 
 def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
-    token_meta = row.get("token") if isinstance(row.get("token"), dict) else {}
+    token_meta = {}
+    for meta_key in ("token", "asset", "currency", "arkhamToken", "tokenInfo", "metadata"):
+        if isinstance(row.get(meta_key), dict):
+            token_meta = row[meta_key]
+            break
     symbol = _normalize_symbol(
         row.get("symbol")
         or row.get("tokenSymbol")
         or row.get("token_symbol")
         or row.get("ticker")
+        or row.get("assetSymbol")
+        or row.get("currencySymbol")
         or token_meta.get("symbol")
         or token_meta.get("ticker")
+        or token_meta.get("assetSymbol")
         or row.get("name")
         or token_meta.get("name")
         or row.get("pricingID")
@@ -195,6 +223,11 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         or row.get("balance_usd")
         or row.get("totalValue")
         or row.get("totalValueUsd")
+        or row.get("balanceUSD")
+        or row.get("marketValue")
+        or row.get("marketValueUsd")
+        or row.get("holdingValue")
+        or row.get("holdingValueUsd")
     )
     amount = _float_or_zero(
         row.get("amount")
@@ -202,6 +235,8 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         or row.get("quantity")
         or row.get("holdings")
         or row.get("tokenBalance")
+        or row.get("holdingsAmount")
+        or row.get("tokenAmount")
     )
     chain = _normalize_chain(row.get("chain") or row.get("network") or row.get("chainName"))
     token_address = str(
@@ -211,8 +246,10 @@ def _normalize_token(row: dict[str, Any]) -> dict[str, Any] | None:
         or row.get("contractAddress")
         or row.get("contract_address")
         or row.get("identifier")
+        or row.get("tokenIdentifier")
         or token_meta.get("address")
         or token_meta.get("tokenAddress")
+        or token_meta.get("identifier")
         or ""
     ).strip()
 
@@ -241,6 +278,20 @@ def _arkham_get_json(endpoint: str) -> Any:
     return response.json()
 
 
+def _payload_debug(payload: Any) -> str:
+    try:
+        if isinstance(payload, dict):
+            keys = list(payload.keys())[:12]
+            sample = json.dumps(payload, ensure_ascii=False, default=str)[:900]
+            return f"type=dict keys={keys} sample={sample}"
+        if isinstance(payload, list):
+            sample = json.dumps(payload[:2], ensure_ascii=False, default=str)[:900]
+            return f"type=list len={len(payload)} sample={sample}"
+        return f"type={type(payload).__name__} value={str(payload)[:300]}"
+    except Exception as exc:
+        return f"debug_failed={exc}"
+
+
 def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD) -> list[dict[str, Any]]:
     # Balances is the current-token-holdings endpoint. Portfolio is kept as a
     # fallback because some API docs/examples still mention it for entities.
@@ -258,10 +309,19 @@ def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD
 
     raw_rows = _extract_token_rows(payload)
     tokens: list[dict[str, Any]] = []
+    normalized_seen = 0
     for row in raw_rows:
         token = _normalize_token(row)
-        if token and token["value_usd"] > min_value_usd:
-            tokens.append(token)
+        if token:
+            normalized_seen += 1
+            if token["value_usd"] > min_value_usd:
+                tokens.append(token)
+    if not tokens:
+        print(
+            f"   Arkham debug {slug}: raw_rows={len(raw_rows)} normalized={normalized_seen} "
+            f"threshold=${min_value_usd:,.0f} {_payload_debug(payload)}",
+            flush=True,
+        )
     return tokens
 
 
