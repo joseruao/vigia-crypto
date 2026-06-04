@@ -121,13 +121,14 @@ def _require_env() -> None:
     if not SUPABASE_URL:
         missing.append("SUPABASE_URL")
     if not SUPABASE_KEY:
-        missing.append("SUPABASE_SERVICE_ROLE_KEY")
+        missing.append("SUPABASE_SERVICE_ROLE or SUPABASE_SERVICE_ROLE_KEY")
     if missing:
         raise RuntimeError(f"Missing env vars: {', '.join(missing)}")
     role = _supabase_jwt_role(SUPABASE_KEY)
     if SUPABASE_KEY_SOURCE == "SUPABASE_ANON_KEY" or role != "service_role":
         raise RuntimeError(
-            "ARKHAM scanner needs a real Supabase service_role key in Render. "
+            "ARKHAM scanner needs a real Supabase service_role key in Render "
+            "(SUPABASE_SERVICE_ROLE or SUPABASE_SERVICE_ROLE_KEY). "
             f"Detected env={SUPABASE_KEY_SOURCE or 'missing'}, jwt_role={role or 'unknown'}. "
             "Anon/authenticated keys cannot insert into arkham_signals with RLS."
         )
