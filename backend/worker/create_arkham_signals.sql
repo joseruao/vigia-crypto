@@ -9,6 +9,10 @@ create table if not exists public.arkham_signals (
   chain text,
   amount numeric,
   value_usd numeric,
+  market_cap_usd numeric,
+  liquidity_usd numeric,
+  position_pct numeric,
+  liquidity_pct numeric,
   score numeric,
   exchange_count integer default 1,
   type text,
@@ -20,8 +24,17 @@ create table if not exists public.arkham_signals (
   updated_at timestamptz not null default now()
 );
 
+alter table public.arkham_signals add column if not exists market_cap_usd numeric;
+alter table public.arkham_signals add column if not exists liquidity_usd numeric;
+alter table public.arkham_signals add column if not exists position_pct numeric;
+alter table public.arkham_signals add column if not exists liquidity_pct numeric;
+alter table public.arkham_signals add column if not exists exchange_count integer default 1;
+
 create index if not exists arkham_signals_entity_type_score_idx
   on public.arkham_signals (entity_type, score desc, ts desc);
+
+create index if not exists arkham_signals_position_pct_idx
+  on public.arkham_signals (entity_type, position_pct desc);
 
 create index if not exists arkham_signals_token_idx
   on public.arkham_signals (token);

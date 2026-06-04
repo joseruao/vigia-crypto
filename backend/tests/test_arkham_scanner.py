@@ -32,7 +32,9 @@ def test_arkham_scanner_exchange_score_uses_listing_scale():
     scanner = _load_scanner()
 
     assert scanner.score_exchange_candidate(100_000, 1, exchange="Binance") == 40
-    assert scanner.score_exchange_candidate(100_000, 1, exchange="Gate.io", market_cap_usd=1_500_000) == 91
+    assert scanner.score_exchange_candidate(100_000, 1, exchange="Gate.io", market_cap_usd=1_500_000) == 93
+    assert scanner.score_exchange_candidate(100_000, 1, exchange="KuCoin", market_cap_usd=1_500_000) == 93
+    assert scanner.score_exchange_candidate(100_000, 1, exchange="Binance", market_cap_usd=1_500_000) == 70
     assert scanner.score_exchange_candidate(1_500_000, 1, exchange="Binance") == 60
     assert scanner.score_exchange_candidate(10_000_000, 2, exchange="Binance") == 88
     assert scanner.score_exchange_candidate(25_000_000, 3, exchange="Coinbase") == 100
@@ -145,6 +147,7 @@ def test_arkham_scanner_builds_stable_synthetic_token_address(monkeypatch):
     assert calls[0][0]["signal_key"] == "holding:binance:ethereum:arkham:holding:binance:ethereum:abc"
     assert calls[0][0]["entity"] == "Binance"
     assert calls[0][0]["entity_type"] == "exchange"
+    assert calls[0][0]["exchange_count"] == 1
     assert calls[0][1] == ["signal_key"]
 
 

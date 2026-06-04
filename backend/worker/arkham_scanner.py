@@ -66,12 +66,26 @@ EXCHANGES = [
     {"slug": "binance", "exchange": "Binance"},
     {"slug": "coinbase", "exchange": "Coinbase"},
     {"slug": "gate-io", "exchange": "Gate.io"},
+    {"slug": "kucoin", "exchange": "KuCoin"},
     {"slug": "okx", "exchange": "OKX"},
     {"slug": "bybit", "exchange": "Bybit"},
     {"slug": "kraken", "exchange": "Kraken"},
     {"slug": "bitget", "exchange": "Bitget"},
     {"slug": "mexc", "exchange": "MEXC"},
 ]
+
+EXCHANGE_PROFILES = {
+    "binance": {"tier": "major", "bonus": 5, "min_mcap": 20_000_000, "small_cap_penalty": 25},
+    "coinbase": {"tier": "major", "bonus": 5, "min_mcap": 20_000_000, "small_cap_penalty": 25},
+    "okx": {"tier": "large", "bonus": 3, "min_mcap": 5_000_000, "small_cap_penalty": 12},
+    "bybit": {"tier": "large", "bonus": 3, "min_mcap": 5_000_000, "small_cap_penalty": 12},
+    "gate.io": {"tier": "listing", "bonus": 3, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+    "gate": {"tier": "listing", "bonus": 3, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+    "kucoin": {"tier": "listing", "bonus": 3, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+    "kraken": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+    "bitget": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+    "mexc": {"tier": "listing", "bonus": 2, "min_mcap": 1_000_000, "small_cap_penalty": 5},
+}
 
 SMART_MONEY_FUNDS = [
     {"slug": "wintermute", "name": "Wintermute"},
@@ -498,11 +512,13 @@ def score_exchange_candidate(
 ) -> int:
     mcap_pct = (value_usd / market_cap_usd * 100) if market_cap_usd > 0 else 0
     liquidity_pct = (value_usd / liquidity_usd * 100) if liquidity_usd > 0 else 0
+    exchange_norm = str(exchange or "").strip().lower()
+    profile = EXCHANGE_PROFILES.get(exchange_norm, {"bonus": 0, "min_mcap": 2_000_000, "small_cap_penalty": 8})
 
     if mcap_pct >= 10:
         score = 95
     elif mcap_pct >= 5:
-        score = 88
+        score = 90
     elif mcap_pct >= 2:
         score = 80
     elif mcap_pct >= 1:
@@ -537,20 +553,18 @@ def score_exchange_candidate(
         else:
             score = 0
 
-    exchange_norm = str(exchange or "").strip().lower()
-    if exchange_norm in {"binance", "coinbase"}:
-        score += 5
-    elif exchange_norm in {"gate.io", "gate", "okx", "bybit"}:
-        score += 3
-    elif exchange_norm in {"kraken", "bitget", "mexc"}:
-        score += 2
+    score += int(profile.get("bonus", 0))
+
+    min_mcap = float(profile.get("min_mcap", 0) or 0)
+    if market_cap_usd > 0 and min_mcap > 0 and market_cap_usd < min_mcap:
+        score -= int(profile.get("small_cap_penalty", 0))
 
     if exchange_count >= 2:
         score += 8
     if exchange_count >= 3:
         score += 7
 
-    return min(score, 100)
+    return max(0, min(score, 100))
 
 
 def supabase_upsert(table: str, row: dict[str, Any], conflict_cols: list[str]) -> bool:
@@ -588,6 +602,11 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         "chain": chain,
         "amount": candidate.get("amount", 0),
         "value_usd": candidate["value_usd"],
+        "market_cap_usd": candidate.get("market_cap_usd") or 0,
+        "liquidity_usd": candidate.get("liquidity_usd") or 0,
+        "position_pct": candidate.get("position_pct") or 0,
+        "liquidity_pct": candidate.get("liquidity_pct") or 0,
+        "exchange_count": candidate.get("exchange_count", 1),
         "score": candidate["score"],
         "ts": now,
         "type": signal_type,
@@ -596,6 +615,7 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding") -> b
         "analysis_text": (
             f"{token} detected in Arkham {exchange} entity portfolio. "
             f"Value: ${candidate['value_usd']:,.0f}. "
+            f"Position: {candidate.get('position_pct') or 0:.2f}% of market cap. "
             f"Seen across {candidate['exchange_count']} monitored exchange(s)."
         ),
     }
@@ -665,6 +685,16 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
                 "chain": token["chain"],
                 "amount": token["amount"],
                 "value_usd": token["value_usd"],
+                "market_cap_usd": token.get("market_cap_usd", 0),
+                "liquidity_usd": token.get("liquidity_usd", 0),
+                "position_pct": (
+                    token["value_usd"] / token.get("market_cap_usd", 0) * 100
+                    if token.get("market_cap_usd", 0) > 0 else 0
+                ),
+                "liquidity_pct": (
+                    token["value_usd"] / token.get("liquidity_usd", 0) * 100
+                    if token.get("liquidity_usd", 0) > 0 else 0
+                ),
                 "token_address": token["token_address"],
                 "exchange_count": exchange_count,
                 "score": score,
