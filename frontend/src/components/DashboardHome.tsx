@@ -70,9 +70,13 @@ export function DashboardHome({ onAsk }: Props) {
   const [predictions, setPredictions] = useState<Holding[]>([]);
   const [top100, setTop100] = useState<Top100Coin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [slowWakeup, setSlowWakeup] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    const timer = window.setTimeout(() => {
+      if (mounted) setSlowWakeup(true);
+    }, 3500);
     (async () => {
       const [listingRows, topRows] = await Promise.all([
         fetchPredictions(),
@@ -82,9 +86,11 @@ export function DashboardHome({ onAsk }: Props) {
       setPredictions(Array.isArray(listingRows) ? listingRows.slice(0, 6) : []);
       setTop100(Array.isArray(topRows) ? topRows.slice(0, 5) : []);
       setLoading(false);
+      setSlowWakeup(false);
     })();
     return () => {
       mounted = false;
+      window.clearTimeout(timer);
     };
   }, []);
 
@@ -108,11 +114,20 @@ export function DashboardHome({ onAsk }: Props) {
               Exchange Wallet Radar
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-              Sinais on-chain antes do mercado reparar.
+              Exchange wallet intelligence for early listing signals.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-              Tokens ainda nao listados numa exchange, mas ja detectados em wallets monitorizadas dessa exchange.
+              Tracks exchange wallets, detects tokens that are not listed on that exchange yet, scores listing signals, and sends alerts for high-confidence candidates.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-500">
+              <a className="rounded-full border border-zinc-200 bg-white px-3 py-1 hover:bg-zinc-50" href="mailto:jose@joseruao.com">
+                jose@joseruao.com
+              </a>
+              <a className="rounded-full border border-zinc-200 bg-white px-3 py-1 hover:bg-zinc-50" href="https://github.com/joseruao/vigia-crypto" target="_blank" rel="noopener noreferrer">
+                GitHub
+              </a>
+              <span className="rounded-full border border-zinc-200 bg-white px-3 py-1">Telegram alerts</span>
+            </div>
           </div>
           <button
             type="button"
@@ -150,7 +165,9 @@ export function DashboardHome({ onAsk }: Props) {
             </div>
 
             {loading ? (
-              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">A carregar sinais...</div>
+              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                {slowWakeup ? 'The backend may take a few seconds to wake up on the first request.' : 'A carregar sinais...'}
+              </div>
             ) : predictions.length === 0 ? (
               <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">Sem sinais ativos neste momento.</div>
             ) : (
@@ -214,7 +231,9 @@ export function DashboardHome({ onAsk }: Props) {
             </div>
 
             {loading ? (
-              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">A carregar ranking...</div>
+              <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                {slowWakeup ? 'The backend may take a few seconds to wake up on the first request.' : 'A carregar ranking...'}
+              </div>
             ) : top100.length === 0 ? (
               <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">Sem ranking top100 disponivel.</div>
             ) : (

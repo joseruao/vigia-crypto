@@ -177,7 +177,7 @@ export function ChatWindow() {
         if (!answer && Array.isArray(data?.items) && data.items.length > 0) {
           answer = `Encontrei ${data.items.length} resultado(s).`;
         }
-        if (!answer) answer = '⚠️ Sem resposta do servidor. Verifica os logs do backend.';
+        if (!answer) answer = 'The backend may take a few seconds to wake up on the first request. Please try again in a moment.';
 
         addMessage({
           role: 'assistant',
@@ -205,7 +205,7 @@ export function ChatWindow() {
         }
 
         if (!acc.trim()) {
-          updateLastAssistantMessage('⚠️ Sem resposta do servidor. Pode ser cold start do Render — tenta novamente em alguns segundos.', convId);
+          updateLastAssistantMessage('The backend may take a few seconds to wake up on the first request. Please try again in a moment.', convId);
         }
       }
     } catch (e: unknown) {
