@@ -44,9 +44,9 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Movimentos de wallets',
-      description: 'Entradas grandes detectadas on-chain.',
-      prompt: 'Mostra holdings recentes',
+      label: 'Holdings recentes',
+      description: 'Maiores posicoes em wallets monitorizadas.',
+      prompt: 'Mostra holdings recentes em wallets de exchanges',
       icon: Activity,
       tone: 'text-amber-700 bg-amber-50',
     },
@@ -88,8 +88,8 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Wallet movements',
-      description: 'Latest large on-chain exchange-wallet holdings.',
+      label: 'Recent holdings',
+      description: 'Largest positions in monitored wallets.',
       prompt: 'Show recent exchange wallet holdings',
       icon: Activity,
       tone: 'text-amber-700 bg-amber-50',
