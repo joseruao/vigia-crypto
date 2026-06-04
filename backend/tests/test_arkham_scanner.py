@@ -138,3 +138,13 @@ def test_arkham_scanner_smart_money_gets_overlap_bonus(monkeypatch):
     assert saved_count == 1
     assert saved[0][1] == "smart_money"
     assert saved[0][0]["score"] == 45
+
+
+def test_arkham_scanner_limits_entities_from_env(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setenv("ARKHAM_EXCHANGE_SLUGS", "binance")
+
+    filtered = scanner._limit_entities(scanner.EXCHANGES, "ARKHAM_EXCHANGE_SLUGS")
+
+    assert len(filtered) == 1
+    assert filtered[0]["slug"] == "binance"

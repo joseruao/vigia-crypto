@@ -67,6 +67,27 @@ SMART_MONEY_FUNDS = [
     {"slug": "dwr-cumberland", "name": "DWR Cumberland"},
 ]
 
+
+def _limit_entities(items: list[dict[str, str]], env_name: str, slug_key: str = "slug") -> list[dict[str, str]]:
+    raw = os.getenv(env_name, "").strip()
+    if not raw:
+        return items
+
+    allowed = {part.strip().lower() for part in raw.split(",") if part.strip()}
+    if not allowed:
+        return items
+
+    filtered = [
+        item for item in items
+        if str(item.get(slug_key) or "").lower() in allowed
+        or str(item.get("exchange") or item.get("name") or "").lower() in allowed
+    ]
+    if not filtered:
+        print(f"{env_name} definido, mas sem matches: {raw}. A usar lista completa.", flush=True)
+        return items
+    print(f"{env_name}: limitado a {len(filtered)} entidade(s): {raw}", flush=True)
+    return filtered
+
 ARKHAM_HEADERS = {
     "API-Key": ARKHAM_API_KEY,
     "Accept": "application/json",
@@ -416,7 +437,8 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
     exchange_holdings: dict[str, list[dict[str, Any]]] = {}
     token_exchanges: dict[str, set[str]] = defaultdict(set)
 
-    for index, item in enumerate(EXCHANGES):
+    exchanges = _limit_entities(EXCHANGES, "ARKHAM_EXCHANGE_SLUGS")
+    for index, item in enumerate(exchanges):
         slug = item["slug"]
         exchange = item["exchange"]
         try:
@@ -430,7 +452,7 @@ def scan_exchange_candidates() -> tuple[dict[str, set[str]], int, int]:
             exchange_holdings[exchange] = []
             print(f"   ⚠️ Arkham falhou para {exchange}: {exc}", flush=True)
 
-        if index < len(EXCHANGES) - 1:
+        if index < len(exchanges) - 1:
             time.sleep(1.1)
 
     candidates: list[dict[str, Any]] = []
@@ -488,7 +510,8 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
     candidates: list[dict[str, Any]] = []
     seen_slugs: set[str] = set()
 
-    for index, item in enumerate(SMART_MONEY_FUNDS):
+    funds = _limit_entities(SMART_MONEY_FUNDS, "ARKHAM_SMART_MONEY_SLUGS")
+    for index, item in enumerate(funds):
         slug = item["slug"]
         fund_name = item["name"]
         if slug in seen_slugs:
@@ -524,7 +547,7 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
                 "score": score,
             })
 
-        if index < len(SMART_MONEY_FUNDS) - 1:
+        if index < len(funds) - 1:
             time.sleep(1.1)
 
     saved = 0
