@@ -37,7 +37,7 @@ ARKHAM_API_KEY = os.getenv("ARKHAM_API_KEY", "").strip()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY_SOURCE = ""
 SUPABASE_KEY = ""
-for _key_name in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE", "SUPABASE_ANON_KEY"):
+for _key_name in ("SUPABASE_SERVICE_ROLE", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY"):
     _key_value = os.getenv(_key_name, "").strip()
     if _key_value:
         SUPABASE_KEY_SOURCE = _key_name
