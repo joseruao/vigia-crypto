@@ -239,12 +239,12 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
   const copy = lang === 'pt'
     ? {
-        placeholder: 'Escreve a tua mensagem...',
-        disclaimer: 'Pode cometer erros. Verifica informações importantes. Conteúdo informativo; não é aconselhamento financeiro.',
+        placeholder: 'Ask about listings, top100 setups, or a coin...',
+        disclaimer: 'May contain errors. Verify important information. Informational only; not financial advice.',
       }
     : {
-        placeholder: 'Ask anything about crypto markets...',
-        disclaimer: 'May make mistakes. Check important information. Informational only; not financial advice.',
+        placeholder: 'Ask about listings, top100 setups, or a coin...',
+        disclaimer: 'May contain errors. Verify important information. Informational only; not financial advice.',
       };
 
   return (

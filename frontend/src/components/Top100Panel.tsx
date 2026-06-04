@@ -26,20 +26,20 @@ function coingeckoUrl(symbol?: string | null, coinId?: string | null) {
 }
 
 function zoneLabel(zone?: string | null) {
-  if (zone === 'ZONA_DE_COMPRA') return 'Compra';
-  if (zone === 'ZONA_NEUTRA') return 'Neutra';
-  if (zone === 'ZONA_ESTICADA') return 'Esticada';
+  if (zone === 'ZONA_DE_COMPRA') return 'Buy zone';
+  if (zone === 'ZONA_NEUTRA') return 'Neutral';
+  if (zone === 'ZONA_ESTICADA') return 'Extended';
   return 'Setup';
 }
 
 function reason(coin: Top100Coin) {
   const parts = [];
   if (coin.rsi) parts.push(`RSI ${coin.rsi.toFixed(0)}`);
-  if (coin.support) parts.push(`suporte ${compactUsd(coin.support)}`);
+  if (coin.support) parts.push(`support ${compactUsd(coin.support)}`);
   if (coin.current_position !== undefined && coin.current_position !== null) {
-    parts.push(`${Number(coin.current_position).toFixed(0)}% do range`);
+    parts.push(`${Number(coin.current_position).toFixed(0)}% of range`);
   }
-  return parts.join(' · ') || 'Score tecnico favoravel';
+  return parts.join(' · ') || 'Favorable technical score';
 }
 
 export function Top100Panel() {
@@ -74,8 +74,8 @@ export function Top100Panel() {
                 <LineChart className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Top100 hoje</div>
-                <div className="mt-0.5 text-[10px] text-zinc-500">Setups tecnicos perto de suporte</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Top100 Today</div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">Technical setups near support</div>
               </div>
             </div>
             {items.length > 0 ? (
@@ -88,9 +88,9 @@ export function Top100Panel() {
 
         <div className="max-h-[18rem] space-y-2 overflow-auto p-3">
           {loading ? (
-            <div className="text-xs text-zinc-500">A carregar...</div>
+            <div className="text-xs text-zinc-500">Loading ranking...</div>
           ) : items.length === 0 ? (
-            <div className="text-xs text-zinc-500">Sem ranking top100 disponivel.</div>
+            <div className="text-xs text-zinc-500">No top100 ranking available.</div>
           ) : (
             items.map((coin) => (
               <div key={coin.symbol} className="rounded-xl border border-zinc-200 bg-white p-3 text-xs shadow-sm">

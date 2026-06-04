@@ -147,7 +147,7 @@ export function PredictionsPanel() {
   const { active } = useChatHistoryContext();
 
   const hasMessages = (active?.messages?.length ?? 0) > 0;
-  const title = lang === 'pt' ? 'Radar de Listings' : 'Listing Radar';
+  const title = 'Listing Radar';
   const visibleItems = expanded ? items.slice(0, 10) : items.slice(0, 3);
 
   useEffect(() => {
@@ -182,7 +182,7 @@ export function PredictionsPanel() {
               <div>
                 <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">{title}</div>
                 <div className="mt-0.5 text-[10px] text-zinc-500">
-                  {lang === 'pt' ? 'Wallets de exchanges monitorizadas' : 'Monitored exchange wallets'}
+                  Unlisted tokens detected in exchange wallets
                 </div>
               </div>
             </div>
@@ -196,10 +196,10 @@ export function PredictionsPanel() {
 
         <div className="max-h-[22rem] space-y-2.5 overflow-auto p-3">
           {loading ? (
-            <div className="text-xs text-zinc-500">A carregar...</div>
+            <div className="text-xs text-zinc-500">Loading signals...</div>
           ) : items.length === 0 ? (
             <div className="text-xs text-zinc-500">
-              {lang === 'pt' ? 'Sem sinais novos.' : 'No fresh signals.'}
+              No fresh unlisted-token signals in the last 36h. Monitoring continues.
             </div>
           ) : (
             visibleItems.map((h) => {
@@ -208,8 +208,8 @@ export function PredictionsPanel() {
               const explorer = explorerFor(h.chain, h.token_address);
               const chain = chainLabel(h.chain);
               const metrics = [
-                metric('Valor', h.value_usd),
-                metric('Liquidez', h.liquidity),
+                metric('Wallet', h.value_usd),
+                metric('Liquidity', h.liquidity),
                 metric('Volume', h.volume_24h),
               ].filter(Boolean) as Array<{ label: string; value: string }>;
 
