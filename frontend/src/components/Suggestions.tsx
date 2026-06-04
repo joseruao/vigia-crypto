@@ -36,8 +36,8 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-emerald-700 bg-emerald-50',
     },
     {
-      label: 'Unlisted radar',
-      description: 'Tokens found in exchange wallets.',
+      label: 'Unlisted token radar',
+      description: 'Tokens not listed on that exchange yet.',
       prompt: 'Which tokens are in exchange wallets but not listed yet?',
       icon: Radar,
       tone: 'text-blue-700 bg-blue-50',
@@ -73,8 +73,8 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       tone: 'text-emerald-700 bg-emerald-50',
     },
     {
-      label: 'Possible listings',
-      description: 'Signals appearing in monitored exchange wallets.',
+      label: 'Unlisted token radar',
+      description: 'Tokens not listed on that exchange yet.',
       prompt: 'Which tokens are exchanges accumulating that are not yet listed?',
       icon: Radar,
       tone: 'text-blue-700 bg-blue-50',

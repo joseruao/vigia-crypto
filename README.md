@@ -58,6 +58,17 @@ High-confidence listing candidates can trigger Telegram alerts automatically. Te
 
 ---
 
+## Why Entity-Level Data Matters
+
+Better entity labels, historical balance changes, and wallet clustering would improve signal quality by:
+
+- validating whether a wallet really belongs to an exchange
+- detecting fresh balance increases instead of static holdings
+- reducing false positives from wrappers, staked assets, and operational wallets
+- separating listing-like accumulation from normal exchange inventory
+
+---
+
 ## Tech Stack
 
 | Layer | Stack |
