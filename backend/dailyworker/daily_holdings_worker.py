@@ -144,6 +144,7 @@ MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
 MIN_SCORE_SAVE = 50      # Guardar mais candidatos para o painel de predictions
 MIN_SCORE_ALERT = 70     # Telegram para candidatos bons e ainda nao listados
 _LIVE_LISTING_CACHE = {}
+EVM_CHAIN_DISABLED_REASON = {}
 STABLE_OR_FIAT_SYMBOLS = {
     "USDT", "USDC", "DAI", "BUSD", "TUSD", "FDUSD", "USDE", "USDS", "PYUSD",
     "USD1", "EURC", "EUROC", "EURI", "EURT", "EURQ", "PAXG", "WBTC", "WETH",
@@ -675,6 +676,10 @@ def _evm_api_configs(chain):
 async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
     """Busca holdings de uma wallet EVM (Ethereum, BNB Chain ou Avalanche C-Chain)."""
     try:
+        if chain in EVM_CHAIN_DISABLED_REASON:
+            print(f"   ⚠️ API {chain} indisponivel neste ciclo: {EVM_CHAIN_DISABLED_REASON[chain]}")
+            return []
+
         holdings = []
         processed_tokens = set()
         stats = {
@@ -695,6 +700,7 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
 
         data = None
         api_url = api_key = chain_id = None
+        unsupported_reasons = []
         for candidate_url, candidate_key, candidate_chain_id in api_configs:
             params = {
                 "module": "account",
@@ -722,6 +728,8 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
             message = candidate_data.get("message") or "NOTOK"
             detail = str(candidate_data.get("result") or "")[:160]
             print(f"   ⚠️ API {chain} sem token txs validas: {message} {detail}".strip())
+            if "Free API access is not supported" in detail or "deprecated V1 endpoint" in detail:
+                unsupported_reasons.append(detail)
 
         if data:
             if data.get('status') == '1' and data.get('result'):
@@ -813,6 +821,10 @@ async def get_ethereum_holdings(wallet_address, wallet_name, chain="ethereum"):
                     
                     except Exception as e:
                         continue
+
+        if not data and unsupported_reasons:
+            EVM_CHAIN_DISABLED_REASON[chain] = unsupported_reasons[-1]
+            print(f"   ⚠️ Desativando {chain} neste ciclo: provider sem acesso free/endpoint invalido.")
 
         if chain in {"bsc", "avalanche"}:
             print(

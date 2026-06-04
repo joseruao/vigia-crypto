@@ -572,6 +572,35 @@ def test_daily_holdings_filters_wrapped_and_staked_derivatives():
     assert worker.is_stable_or_wrapped_token("sPENDLE") is True
     assert worker.is_stable_or_wrapped_token("ALPHA") is False
 
+def test_evm_chain_disables_after_unsupported_provider(monkeypatch):
+    from dailyworker import daily_holdings_worker as worker
+
+    worker.EVM_CHAIN_DISABLED_REASON.clear()
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {
+                "status": "0",
+                "message": "NOTOK",
+                "result": "Free API access is not supported for this chain.",
+            }
+
+    def fake_get(*args, **kwargs):
+        calls["count"] += 1
+        return FakeResponse()
+
+    monkeypatch.setattr(worker, "BSCSCAN_API_KEY", "bsc-key")
+    monkeypatch.setattr(worker, "ETHERSCAN_API_KEY", "")
+    monkeypatch.setattr(worker.requests, "get", fake_get)
+
+    import asyncio
+    assert asyncio.run(worker.get_ethereum_holdings("0xabc", "Binance BNB 7", "bsc")) == []
+    assert asyncio.run(worker.get_ethereum_holdings("0xdef", "Binance BNB 51", "bsc")) == []
+    assert calls["count"] == 1
+    worker.EVM_CHAIN_DISABLED_REASON.clear()
+
 def test_daily_holdings_skips_telegram_for_listed_token(monkeypatch):
     import asyncio
     from dailyworker import daily_holdings_worker as worker
