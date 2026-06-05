@@ -385,54 +385,68 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
         scan_targets = [(entity_id, entity_id)]
         print("No labeled addresses in entity payload; falling back to entity-level transfers.", flush=True)
 
-    first_hop_for_depth: list[dict[str, str]] = []
+    seen_scan_targets: set[str] = set()
+    frontier = list(scan_targets)
 
-    for index, (target, source_label) in enumerate(scan_targets, 1):
-        print(f"[{index}/{len(scan_targets)}] transfers out from {target[:18]}...", flush=True)
-        try:
-            transfers = (
-                fetch_outgoing_transfers(target)
-                if target in known_addresses
-                else fetch_entity_outgoing_transfers(target)
-            )
-        except Exception as exc:
-            print(f"  transfer fetch failed: {exc}", flush=True)
-            transfers = []
+    for depth in range(1, max(1, MAX_DEPTH) + 1):
+        if not frontier:
+            break
+        next_frontier: list[tuple[str, str]] = []
+        print(f"Depth {depth}: scanning {len(frontier)} target(s).", flush=True)
 
-        for transfer in transfers:
-            candidate = transfer["address"]
-            if candidate in known_addresses:
+        for index, (target, source_label) in enumerate(frontier, 1):
+            if target in seen_scan_targets:
                 continue
-            filtered_destinations.append(transfer)
-            candidate_sources[candidate].add(source_label)
-            if transfer.get("chain"):
-                candidate_chains[candidate].add(transfer["chain"])
-            if MAX_DEPTH >= 2 and not _is_pool_or_service_transfer(transfer):
-                first_hop_for_depth.append(transfer)
-
-        time.sleep(1.05)
-
-    if MAX_DEPTH >= 2 and first_hop_for_depth:
-        second_hop_targets = first_hop_for_depth[:MAX_SECOND_HOP_TARGETS]
-        print(f"Depth 2 enabled; scanning {len(second_hop_targets)} first-hop wallet(s).", flush=True)
-        for index, transfer in enumerate(second_hop_targets, 1):
-            target = transfer["address"]
-            source_label = f"{transfer.get('found_via') or entity_id} -> {target}"
-            print(f"[2.{index}/{len(second_hop_targets)}] transfers out from {target[:18]}...", flush=True)
+            seen_scan_targets.add(target)
+            print(f"[{depth}.{index}/{len(frontier)}] transfers out from {target[:18]}...", flush=True)
+            is_known_seed = target in known_addresses
+            is_entity_seed = target == entity_id and not _looks_like_address(target)
             try:
-                second_hop = fetch_outgoing_transfers(target)
+                transfers = (
+                    fetch_entity_outgoing_transfers(target)
+                    if is_entity_seed
+                    else fetch_outgoing_transfers(target)
+                )
             except Exception as exc:
-                print(f"  second-hop transfer fetch failed: {exc}", flush=True)
-                second_hop = []
-            for hop in second_hop:
-                candidate = hop["address"]
+                print(f"  transfer fetch failed: {exc}", flush=True)
+                transfers = []
+
+            for transfer in transfers:
+                candidate = transfer["address"]
                 if candidate in known_addresses:
                     continue
-                filtered_destinations.append(hop)
+                filtered_destinations.append(transfer)
                 candidate_sources[candidate].add(source_label)
-                if hop.get("chain"):
-                    candidate_chains[candidate].add(hop["chain"])
+                if transfer.get("chain"):
+                    candidate_chains[candidate].add(transfer["chain"])
+                if (
+                    depth < MAX_DEPTH
+                    and candidate not in seen_scan_targets
+                    and not _is_pool_or_service_transfer(transfer)
+                ):
+                    next_frontier.append((candidate, f"{source_label} -> {candidate}"))
+
             time.sleep(1.05)
+
+        if next_frontier:
+            deduped: list[tuple[str, str]] = []
+            seen_next: set[str] = set()
+            for target, source_label in sorted(
+                next_frontier,
+                key=lambda item: _float(next((row.get("transfer_value_usd") for row in filtered_destinations if row["address"] == item[0]), 0)),
+                reverse=True,
+            ):
+                if target in seen_next:
+                    continue
+                seen_next.add(target)
+                deduped.append((target, source_label))
+                if len(deduped) >= MAX_SECOND_HOP_TARGETS:
+                    break
+            frontier = deduped
+            if depth < MAX_DEPTH:
+                print(f"Depth {depth + 1} queued: {len(frontier)} target(s).", flush=True)
+        else:
+            frontier = []
 
     results: list[dict[str, Any]] = []
     for address, sources in sorted(candidate_sources.items(), key=lambda item: len(item[1]), reverse=True):
