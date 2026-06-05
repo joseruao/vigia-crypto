@@ -40,6 +40,17 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
 ENTITY_ID = os.getenv("ARKHAM_CLUSTER_ENTITY", "wintermute").strip() or "wintermute"
+DEFAULT_CLUSTER_ENTITIES = [
+    "wintermute",
+    "jump-trading",
+    "paradigm",
+    "a16z",
+    "multicoin-capital",
+    "drw-cumberland",
+    "galaxy-digital",
+    "pantera-capital",
+    "dwr-cumberland",
+]
 MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
 MAX_SEED_ADDRESSES = int(os.getenv("ARKHAM_CLUSTER_MAX_SEED_ADDRESSES", "10"))
 TRANSFER_LIMIT = int(os.getenv("ARKHAM_CLUSTER_TRANSFER_LIMIT", "50"))
@@ -192,6 +203,26 @@ def _parse_seed_addresses(raw: str | None = None) -> list[dict[str, str]]:
             "label": parts[2] if len(parts) > 2 else "manual seed",
         })
     return seeds
+
+
+def _cluster_entities_from_env(raw: str | None = None) -> list[str]:
+    """Return the entity scan list while preserving old single-entity runs."""
+    raw_value = raw if raw is not None else os.getenv("ARKHAM_CLUSTER_ENTITIES", "").strip()
+    if not raw_value:
+        return [ENTITY_ID]
+    normalized = raw_value.strip().lower()
+    if normalized in {"all", "*"}:
+        return DEFAULT_CLUSTER_ENTITIES.copy()
+
+    entities: list[str] = []
+    seen: set[str] = set()
+    for chunk in raw_value.replace(";", ",").replace("\n", ",").split(","):
+        entity = chunk.strip()
+        if not entity or entity in seen:
+            continue
+        seen.add(entity)
+        entities.append(entity)
+    return entities or [ENTITY_ID]
 
 
 def _extract_addresses(payload: Any) -> list[dict[str, str]]:
@@ -649,11 +680,11 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     return results
 
 
-def main() -> None:
-    results = cluster_entity(ENTITY_ID)
+def print_and_save_results(results: list[dict[str, Any]], limit: int = 25) -> int:
     print(f"\nCandidate wallets: {len(results)}", flush=True)
     saved = 0
-    for row in results[:25]:
+    visible = results[:limit]
+    for row in visible:
         chains = ",".join(row["chains"]) or "unknown"
         print(
             f"- {row['address']} | score={row['score']} | balance=${row['balance_usd']:,.0f} | "
@@ -669,7 +700,34 @@ def main() -> None:
         if save_candidate_wallet(row):
             saved += 1
     if SAVE_TO_SUPABASE:
-        print(f"\nSaved candidate wallets: {saved}/{len(results[:25])}", flush=True)
+        print(f"\nSaved candidate wallets: {saved}/{len(visible)}", flush=True)
+    return saved
+
+
+def main() -> None:
+    entities = _cluster_entities_from_env()
+    all_results: list[dict[str, Any]] = []
+    total_saved = 0
+
+    for index, entity_id in enumerate(entities, 1):
+        if len(entities) > 1:
+            print(f"\n{'=' * 72}\n[{index}/{len(entities)}] {entity_id}\n{'=' * 72}", flush=True)
+        try:
+            results = cluster_entity(entity_id)
+        except Exception as exc:
+            print(f"Cluster scan failed for {entity_id}: {exc}", flush=True)
+            results = []
+        all_results.extend(results)
+        total_saved += print_and_save_results(results)
+        if index < len(entities):
+            time.sleep(1.1)
+
+    if len(entities) > 1:
+        print(
+            f"\nARKHAM CLUSTER SUMMARY: {len(all_results)} candidates across {len(entities)} entities; "
+            f"{total_saved} saved.",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

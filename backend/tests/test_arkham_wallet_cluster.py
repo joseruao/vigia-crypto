@@ -143,6 +143,23 @@ def test_cluster_parses_manual_seed_addresses():
     ]
 
 
+def test_cluster_entities_from_env_preserves_single_entity(monkeypatch):
+    cluster = _load_cluster()
+    monkeypatch.setattr(cluster, "ENTITY_ID", "wintermute")
+
+    assert cluster._cluster_entities_from_env("") == ["wintermute"]
+
+
+def test_cluster_entities_from_env_supports_all_and_lists():
+    cluster = _load_cluster()
+
+    assert "multicoin-capital" in cluster._cluster_entities_from_env("all")
+    assert cluster._cluster_entities_from_env("wintermute, multicoin-capital;wintermute") == [
+        "wintermute",
+        "multicoin-capital",
+    ]
+
+
 def test_cluster_identifies_pool_or_service_transfers():
     cluster = _load_cluster()
 
