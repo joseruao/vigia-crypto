@@ -251,6 +251,19 @@ def test_predictions_filter_wrapped_and_staked_derivatives():
 
     assert [row["token"] for row in filtered] == ["ALPHA"]
 
+def test_predictions_filter_old_arkham_noise_rows():
+    rows = [
+        {"exchange": "Binance", "token": "BBTC", "chain": "ethereum", "score": 90, "value_usd": 139_000_000},
+        {"exchange": "Binance", "token": "BSC-USD", "chain": "bsc", "score": 90, "value_usd": 671_000_000},
+        {"exchange": "Binance", "token": "USYC", "chain": "bsc", "score": 90, "value_usd": 2_100_000_000},
+        {"exchange": "Binance", "token": "USDTE", "chain": "avalanche", "score": 50, "value_usd": 811_000},
+        {"exchange": "Binance", "token": "ALPHA", "chain": "ethereum", "score": 80, "value_usd": 100_000},
+    ]
+
+    filtered = alerts._filter_prediction_rows(rows, {"Binance": set()})
+
+    assert [row["token"] for row in filtered] == ["ALPHA"]
+
 def test_predictions_endpoint_does_not_backfill_old_rows(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})

@@ -59,13 +59,17 @@ TEST_TOKENS = {"TEST", "FOO", "PNUT"}
 TOP100_EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
-    "EURC", "EUROC", "EURI", "EURT", "EURQ",
+    "EURC", "EUROC", "EURI", "EURT", "EURQ", "BSC-USD", "USYC", "USDTE", "IDRT",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
-    "CBBTC", "SPENDLE", "SENA",
-    "PAXG", "XAUT",
+    "CBBTC", "SPENDLE", "SENA", "BBTC", "BTCB", "HBTC",
+    "PAXG", "XAUT", "XAUT0",
 }
-LISTING_EXCLUDED_PREFIXES = ("CB", "S", "W")
-LISTING_EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "PENDLE")
+LISTING_EXCLUDED_SYMBOLS = TOP100_EXCLUDED_SYMBOLS | {
+    "BNB", "ETH", "BTC", "SOL", "XRP", "ADA", "DOGE", "TRX", "MATIC",
+}
+LISTING_EXCLUDED_PREFIXES = ("W", "CB", "S", "BSC", "USD", "EUR")
+LISTING_EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "USD", "EUR", "USDT", "BNB", "PENDLE")
+LISTING_EXCLUDED_MAX_VALUE_USD = 500_000_000
 DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 336
 PREDICTIONS_LIMIT = 10
 _LIVE_LISTING_CACHE: Dict[str, set] = {}
@@ -677,7 +681,10 @@ def _is_test_token(row: Dict[str, Any]) -> bool:
     )
     return (
         token in TEST_TOKENS
-        or token in TOP100_EXCLUDED_SYMBOLS
+        or token in LISTING_EXCLUDED_SYMBOLS
+        or _num(row, "value_usd") > LISTING_EXCLUDED_MAX_VALUE_USD
+        or any(token.startswith(prefix) for prefix in LISTING_EXCLUDED_PREFIXES)
+        or any(token.endswith(suffix) for suffix in LISTING_EXCLUDED_SUFFIXES)
         or (
             any(token.startswith(prefix) for prefix in LISTING_EXCLUDED_PREFIXES)
             and any(token.endswith(suffix) for suffix in LISTING_EXCLUDED_SUFFIXES)
