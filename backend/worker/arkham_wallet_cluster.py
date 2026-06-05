@@ -242,6 +242,7 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
         value = _float(row.get("usdValue") or row.get("valueUsd") or row.get("value") or 0)
         to_obj = row.get("toAddress") if isinstance(row.get("toAddress"), dict) else {}
         to_entity = to_obj.get("arkhamEntity") if isinstance(to_obj.get("arkhamEntity"), dict) else {}
+        to_predicted = to_obj.get("predictedEntity") if isinstance(to_obj.get("predictedEntity"), dict) else {}
         to_label = to_obj.get("arkhamLabel") if isinstance(to_obj.get("arkhamLabel"), dict) else {}
         candidates.append({
             "address": to_addr,
@@ -249,6 +250,8 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
             "found_via": source,
             "transfer_value_usd": str(value or _float(row.get("historicalUSD"))),
             "to_entity": str(to_entity.get("name") or "").strip(),
+            "to_predicted_entity": str(to_predicted.get("name") or "").strip(),
+            "to_predicted_type": str(to_predicted.get("type") or "").strip(),
             "to_entity_type": str(to_entity.get("type") or "").strip(),
             "to_label": str(to_label.get("name") or "").strip(),
             "to_is_contract": str(bool(row.get("toIsContract") or to_obj.get("contract"))),
@@ -285,9 +288,10 @@ def _is_exchange_label(label: str) -> bool:
 
 def _is_pool_or_service_transfer(transfer: dict[str, str]) -> bool:
     entity_type = str(transfer.get("to_entity_type") or "").strip().lower()
+    predicted_type = str(transfer.get("to_predicted_type") or "").strip().lower()
     label = str(transfer.get("to_label") or "").strip().lower()
-    entity = str(transfer.get("to_entity") or "").strip().lower()
-    if entity_type in {"dex", "cex", "exchange", "bridge"}:
+    entity = str(transfer.get("to_entity") or transfer.get("to_predicted_entity") or "").strip().lower()
+    if entity_type in {"dex", "cex", "exchange", "bridge"} or predicted_type in {"dex", "cex", "exchange", "bridge"}:
         return True
     if any(term in label for term in ("pool", "router", "vault", "contract")):
         return True
@@ -394,6 +398,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     candidate_sources: dict[str, set[str]] = defaultdict(set)
     candidate_chains: dict[str, set[str]] = defaultdict(set)
     filtered_destinations: list[dict[str, str]] = []
+    destination_meta: dict[str, dict[str, str]] = {}
 
     if seed_addresses:
         scan_targets = [(row["address"], row["address"]) for row in seed_addresses]
@@ -432,6 +437,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
                 if candidate in known_addresses:
                     continue
                 filtered_destinations.append(transfer)
+                destination_meta.setdefault(candidate, transfer)
                 candidate_sources[candidate].add(source_label)
                 if transfer.get("chain"):
                     candidate_chains[candidate].add(transfer["chain"])
@@ -468,6 +474,12 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     for address, sources in sorted(candidate_sources.items(), key=lambda item: len(item[1]), reverse=True):
         label = fetch_address_label(address)
         time.sleep(0.25)
+        meta = destination_meta.get(address, {})
+        inferred_label = meta.get("to_entity") or meta.get("to_predicted_entity") or meta.get("to_label") or ""
+        if inferred_label:
+            if DEBUG:
+                print(f"  skip labeled/predicted {address[:10]}... -> {inferred_label}", flush=True)
+            continue
         if label:
             # This prototype is looking for unlabeled satellite wallets. A
             # labeled address, even an exchange hot wallet, is context rather
@@ -493,6 +505,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             "found_via": sorted(sources),
             "entity_source_count": len(sources),
             "label": label,
+            "inferred_label": inferred_label,
             "exchange_connected": address_has_exchange_link(address) if CHECK_EXCHANGE_LINKS else False,
         }
         candidate["score"] = score_candidate(candidate)
@@ -502,8 +515,8 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     if DEBUG and not results and filtered_destinations:
         print("\nNo unlabeled balance candidates. Top transfer destinations seen:", flush=True)
         for row in filtered_destinations[:10]:
-            meta = row.get("to_entity") or row.get("to_label") or "unlabeled/unknown"
-            kind = row.get("to_entity_type") or ("contract" if row.get("to_is_contract") == "True" else "wallet")
+            meta = row.get("to_entity") or row.get("to_predicted_entity") or row.get("to_label") or "unlabeled/unknown"
+            kind = row.get("to_entity_type") or row.get("to_predicted_type") or ("contract" if row.get("to_is_contract") == "True" else "wallet")
             print(
                 f"- {row['address']} | {meta} | {kind} | {row.get('chain') or 'unknown'} | "
                 f"{row.get('token_symbol') or 'token'} | transfer=${_float(row.get('transfer_value_usd')):,.0f}",

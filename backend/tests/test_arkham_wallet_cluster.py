@@ -63,6 +63,8 @@ def test_cluster_extracts_outgoing_transfer_destinations():
         "found_via": source,
         "transfer_value_usd": "125000.0",
         "to_entity": "",
+        "to_predicted_entity": "",
+        "to_predicted_type": "",
         "to_entity_type": "",
         "to_label": "",
         "to_is_contract": "False",
@@ -148,6 +150,27 @@ def test_cluster_identifies_pool_or_service_transfers():
     assert cluster._is_pool_or_service_transfer({"to_label": "V3 Pool"})
     assert cluster._is_pool_or_service_transfer({"to_entity": "PancakeSwap"})
     assert not cluster._is_pool_or_service_transfer({"to_entity": "", "to_label": ""})
+
+
+def test_cluster_skips_predicted_entity_candidates(monkeypatch):
+    cluster = _load_cluster()
+    monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
+    monkeypatch.setattr(cluster, "fetch_entity_addresses", lambda entity: [])
+    monkeypatch.setattr(cluster, "fetch_entity_outgoing_transfers", lambda entity: [{
+        "address": "0xfb19085ac3951cb0af7b5a6126f4bff8e2d1f8ee",
+        "chain": "ethereum",
+        "found_via": entity,
+        "transfer_value_usd": "100000",
+        "to_predicted_entity": "GSR Markets",
+        "to_predicted_type": "fund",
+        "to_entity": "",
+        "to_label": "",
+    }])
+    monkeypatch.setattr(cluster, "fetch_address_label", lambda address: "")
+    monkeypatch.setattr(cluster, "fetch_address_balance", lambda address: 5_000_000)
+    monkeypatch.setattr(cluster.time, "sleep", lambda _: None)
+
+    assert cluster.cluster_entity("multicoin-capital") == []
 
 
 def test_cluster_skips_labeled_candidate_wallets(monkeypatch):
