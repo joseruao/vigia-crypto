@@ -165,6 +165,49 @@ def test_cluster_candidate_notes_explain_routes():
     assert "market-maker route seen" in notes
 
 
+def test_cluster_classifies_candidates_from_notes_and_paths():
+    cluster = _load_cluster()
+
+    assert cluster.classify_candidate({"notes": ["custody counterparty seen"], "paths": []}) == "custody_cluster"
+    assert cluster.classify_candidate({"notes": ["market-maker route seen"], "paths": []}) == "market_maker_route"
+    assert cluster.classify_candidate({"notes": ["exchange route seen"], "paths": []}) == "exchange_route"
+    assert cluster.classify_candidate({"notes": [], "paths": ["multicoin -> GSR Markets -> wallet"]}) == "market_maker_route"
+    assert cluster.classify_candidate({"notes": [], "paths": []}) == "unknown"
+
+
+def test_cluster_save_candidate_wallet_posts_to_supabase(monkeypatch):
+    cluster = _load_cluster()
+    monkeypatch.setattr(cluster, "SAVE_TO_SUPABASE", True)
+    monkeypatch.setattr(cluster, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(cluster, "SUPABASE_KEY", "service-role")
+    calls = []
+
+    class Response:
+        status_code = 204
+        text = ""
+
+    def fake_post(url, headers=None, params=None, data=None, timeout=None):
+        calls.append((url, headers, params, data, timeout))
+        return Response()
+
+    monkeypatch.setattr(cluster.requests, "post", fake_post)
+
+    ok = cluster.save_candidate_wallet({
+        "entity": "multicoin-capital",
+        "address": "0xabc",
+        "chains": ["ethereum"],
+        "score": 65,
+        "balance_usd": 1_000_000,
+        "notes": ["custody counterparty seen"],
+        "paths": ["multicoin -> custody -> 0xabc"],
+    })
+
+    assert ok is True
+    assert calls[0][0] == "https://example.supabase.co/rest/v1/candidate_wallets"
+    assert calls[0][2] == {"on_conflict": "entity,address"}
+    assert '"classification": "custody_cluster"' in calls[0][3]
+
+
 def test_cluster_skips_predicted_entity_candidates(monkeypatch):
     cluster = _load_cluster()
     monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")

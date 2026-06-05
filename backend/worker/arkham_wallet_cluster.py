@@ -17,6 +17,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,8 @@ for _env in (
 
 ARKHAM_BASE_URL = "https://api.arkm.com"
 ARKHAM_API_KEY = os.getenv("ARKHAM_API_KEY", "").strip()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
 ENTITY_ID = os.getenv("ARKHAM_CLUSTER_ENTITY", "wintermute").strip() or "wintermute"
 MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
@@ -46,6 +49,8 @@ CHECK_EXCHANGE_LINKS = os.getenv("ARKHAM_CLUSTER_CHECK_EXCHANGES", "0").strip().
 DEBUG = os.getenv("ARKHAM_CLUSTER_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_CLUSTER_TIMEOUT", "60"))
 REQUEST_RETRIES = int(os.getenv("ARKHAM_CLUSTER_RETRIES", "2"))
+SAVE_TO_SUPABASE = os.getenv("ARKHAM_CLUSTER_SAVE", "0").strip().lower() in {"1", "true", "yes"}
+CANDIDATE_WALLETS_TABLE = os.getenv("CANDIDATE_WALLETS_TABLE", "candidate_wallets")
 
 EXCHANGE_NAMES = {
     "binance", "coinbase", "gate.io", "gate", "okx", "bybit", "kraken",
@@ -66,9 +71,20 @@ def _headers() -> dict[str, str]:
     }
 
 
+def _supabase_headers() -> dict[str, str]:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal",
+    }
+
+
 def _require_env() -> None:
     if not ARKHAM_API_KEY:
         raise RuntimeError("Missing ARKHAM_API_KEY")
+    if SAVE_TO_SUPABASE and (not SUPABASE_URL or not SUPABASE_KEY):
+        raise RuntimeError("ARKHAM_CLUSTER_SAVE=1 needs SUPABASE_URL and SUPABASE_SERVICE_ROLE")
 
 
 def _arkham_get_json(endpoint: str, params: dict[str, Any] | None = None) -> Any:
@@ -429,6 +445,49 @@ def score_candidate(candidate: dict[str, Any]) -> int:
     return min(score, 100)
 
 
+def classify_candidate(candidate: dict[str, Any]) -> str:
+    notes = candidate.get("notes") or []
+    joined = " ".join(str(note).lower() for note in notes)
+    paths = " ".join(candidate.get("paths") or candidate.get("found_via") or []).lower()
+    if "custody" in joined:
+        return "custody_cluster"
+    if "market-maker" in joined or any(name in paths for name in ("gsr", "flowdesk", "wintermute", "jump", "cumberland")):
+        return "market_maker_route"
+    if "exchange" in joined:
+        return "exchange_route"
+    return "unknown"
+
+
+def save_candidate_wallet(candidate: dict[str, Any]) -> bool:
+    if not SAVE_TO_SUPABASE:
+        return False
+    row = {
+        "entity": candidate.get("entity"),
+        "address": candidate.get("address"),
+        "chain": ",".join(candidate.get("chains") or []),
+        "score": candidate.get("score") or 0,
+        "balance_usd": candidate.get("balance_usd") or 0,
+        "classification": candidate.get("classification") or classify_candidate(candidate),
+        "notes": candidate.get("notes") or [],
+        "paths": candidate.get("paths") or candidate.get("found_via") or [],
+        "source": "arkham_cluster",
+        "last_seen": datetime.now(timezone.utc).isoformat(),
+        "raw": candidate,
+    }
+    url = f"{SUPABASE_URL}/rest/v1/{CANDIDATE_WALLETS_TABLE}"
+    response = requests.post(
+        url,
+        headers=_supabase_headers(),
+        params={"on_conflict": "entity,address"},
+        data=json.dumps(row),
+        timeout=30,
+    )
+    if response.status_code not in (200, 201, 204):
+        print(f"  Supabase save failed for {row['address'][:10]}...: HTTP {response.status_code} {response.text[:300]}", flush=True)
+        return False
+    return True
+
+
 def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     _require_env()
     print(f"ARKHAM WALLET CLUSTER - entity={entity_id}", flush=True)
@@ -573,6 +632,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
         candidate["score"] = score_candidate(candidate)
         if any(note.startswith("fan-out") for note in candidate["notes"]):
             candidate["score"] = min(100, candidate["score"] + 10)
+        candidate["classification"] = classify_candidate(candidate)
         results.append(candidate)
 
     results.sort(key=lambda row: (row["score"], row["balance_usd"], row["entity_source_count"]), reverse=True)
@@ -592,11 +652,13 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
 def main() -> None:
     results = cluster_entity(ENTITY_ID)
     print(f"\nCandidate wallets: {len(results)}", flush=True)
+    saved = 0
     for row in results[:25]:
         chains = ",".join(row["chains"]) or "unknown"
         print(
             f"- {row['address']} | score={row['score']} | balance=${row['balance_usd']:,.0f} | "
-            f"sources={row['entity_source_count']} | chains={chains} | label={row.get('label') or 'unlabeled'}",
+            f"sources={row['entity_source_count']} | chains={chains} | class={row.get('classification')} | "
+            f"label={row.get('label') or 'unlabeled'}",
             flush=True,
         )
         if row.get("notes"):
@@ -604,6 +666,10 @@ def main() -> None:
         path = " | ".join(row.get("paths") or row.get("found_via") or [])
         if path:
             print(f"  path: {path[:240]}", flush=True)
+        if save_candidate_wallet(row):
+            saved += 1
+    if SAVE_TO_SUPABASE:
+        print(f"\nSaved candidate wallets: {saved}/{len(results[:25])}", flush=True)
 
 
 if __name__ == "__main__":
