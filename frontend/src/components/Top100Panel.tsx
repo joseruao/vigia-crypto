@@ -65,7 +65,7 @@ export function Top100Panel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[30.5rem] z-20 hidden w-[43rem] xl:block">
+    <div className="fixed right-4 top-[40rem] z-20 hidden w-[21rem] min-[2100px]:top-[30.5rem] min-[2100px]:w-[43rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
@@ -86,7 +86,7 @@ export function Top100Panel() {
           </div>
         </div>
 
-        <div className="grid max-h-[15rem] grid-cols-2 gap-2 overflow-auto p-3">
+        <div className="grid max-h-[15rem] grid-cols-1 gap-2 overflow-auto p-3 min-[2100px]:grid-cols-2">
           {loading ? (
             <div className="text-xs text-zinc-500">Loading ranking...</div>
           ) : items.length === 0 ? (

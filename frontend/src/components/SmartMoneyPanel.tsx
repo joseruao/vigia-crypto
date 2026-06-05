@@ -58,7 +58,7 @@ export function SmartMoneyPanel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-[23rem] top-[8.25rem] z-20 hidden w-[21rem] xl:block">
+    <div className="fixed right-4 top-[26.75rem] z-20 hidden w-[21rem] min-[2100px]:right-[23rem] min-[2100px]:top-[8.25rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-indigo-100 bg-indigo-50/55 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
