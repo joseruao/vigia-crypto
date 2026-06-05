@@ -65,6 +65,27 @@ def test_cluster_extracts_outgoing_transfer_destinations():
     }]
 
 
+def test_cluster_extracts_nested_transfer_address_objects():
+    cluster = _load_cluster()
+    source = "0x1111111111111111111111111111111111111111"
+    payload = {
+        "transfers": [
+            {
+                "fromAddress": {"address": source},
+                "toAddress": {"address": "0x3333333333333333333333333333333333333333"},
+                "network": "base",
+                "valueUsd": 250000,
+            }
+        ]
+    }
+
+    transfers = cluster._extract_transfer_addresses(payload, source)
+
+    assert transfers[0]["address"] == "0x3333333333333333333333333333333333333333"
+    assert transfers[0]["chain"] == "base"
+    assert transfers[0]["transfer_value_usd"] == "250000.0"
+
+
 def test_cluster_scores_repeated_entity_connections_and_balance():
     cluster = _load_cluster()
 

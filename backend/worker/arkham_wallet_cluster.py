@@ -41,6 +41,7 @@ MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
 MAX_SEED_ADDRESSES = int(os.getenv("ARKHAM_CLUSTER_MAX_SEED_ADDRESSES", "10"))
 TRANSFER_LIMIT = int(os.getenv("ARKHAM_CLUSTER_TRANSFER_LIMIT", "50"))
 CHECK_EXCHANGE_LINKS = os.getenv("ARKHAM_CLUSTER_CHECK_EXCHANGES", "0").strip().lower() in {"1", "true", "yes"}
+DEBUG = os.getenv("ARKHAM_CLUSTER_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
 
 EXCHANGE_NAMES = {
     "binance", "coinbase", "gate.io", "gate", "okx", "bybit", "kraken",
@@ -87,6 +88,11 @@ def _walk_values(value: Any):
 
 
 def _normalize_address(value: Any) -> str:
+    if isinstance(value, dict):
+        for key in ("address", "id", "hash"):
+            if value.get(key):
+                value = value[key]
+                break
     text = str(value or "").strip()
     if text.startswith("0x") and len(text) == 42:
         return text.lower()
@@ -100,6 +106,36 @@ def _looks_like_address(value: Any) -> bool:
     # Solana/Base58-ish addresses. Keep broad, then Arkham label/balance calls
     # decide if the candidate is useful.
     return 32 <= len(text) <= 64 and " " not in text
+
+
+def _first_address(*values: Any) -> str:
+    for value in values:
+        if isinstance(value, dict):
+            nested = _first_address(
+                value.get("address"),
+                value.get("id"),
+                value.get("hash"),
+                value.get("account"),
+            )
+            if nested:
+                return nested
+        elif _looks_like_address(value):
+            return _normalize_address(value)
+    return ""
+
+
+def _payload_summary(payload: Any) -> str:
+    if isinstance(payload, list):
+        keys = sorted(payload[0].keys()) if payload and isinstance(payload[0], dict) else []
+        return f"list len={len(payload)} first_keys={keys[:20]}"
+    if isinstance(payload, dict):
+        parts = [f"dict keys={sorted(payload.keys())[:20]}"]
+        for key in ("transfers", "items", "data", "results"):
+            if isinstance(payload.get(key), list):
+                first = payload[key][0] if payload[key] and isinstance(payload[key][0], dict) else {}
+                parts.append(f"{key}.len={len(payload[key])} first_keys={sorted(first.keys())[:20]}")
+        return " ".join(parts)
+    return type(payload).__name__
 
 
 def _extract_addresses(payload: Any) -> list[dict[str, str]]:
@@ -147,17 +183,21 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
     for row in rows:
         if not isinstance(row, dict):
             continue
-        from_addr = _normalize_address(
+        from_addr = _first_address(
             row.get("fromAddress")
             or row.get("from_address")
             or row.get("from")
-            or (row.get("fromEntity") or {}).get("address")
+            or row.get("fromArkhamAddress")
+            or row.get("fromEntity")
+            or row.get("fromArkhamEntity")
         )
-        to_addr = _normalize_address(
+        to_addr = _first_address(
             row.get("toAddress")
             or row.get("to_address")
             or row.get("to")
-            or (row.get("toEntity") or {}).get("address")
+            or row.get("toArkhamAddress")
+            or row.get("toEntity")
+            or row.get("toArkhamEntity")
         )
         if source and from_addr and from_addr != source:
             continue
@@ -217,12 +257,20 @@ def fetch_entity_addresses(entity_id: str) -> list[dict[str, str]]:
 
 def fetch_outgoing_transfers(address: str) -> list[dict[str, str]]:
     payload = _arkham_get_json("/transfers", params={"base": address, "flow": "out", "limit": TRANSFER_LIMIT})
-    return _extract_transfer_addresses(payload, address)
+    transfers = _extract_transfer_addresses(payload, address)
+    if DEBUG:
+        print(f"Transfer payload debug for {address[:18]}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
+        print(json.dumps(payload, ensure_ascii=False)[:1200], flush=True)
+    return transfers
 
 
 def fetch_entity_outgoing_transfers(entity_id: str) -> list[dict[str, str]]:
     payload = _arkham_get_json("/transfers", params={"base": entity_id, "flow": "out", "limit": TRANSFER_LIMIT})
-    return _extract_transfer_addresses(payload, "")
+    transfers = _extract_transfer_addresses(payload, "")
+    if DEBUG:
+        print(f"Transfer payload debug for entity {entity_id}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
+        print(json.dumps(payload, ensure_ascii=False)[:1200], flush=True)
+    return transfers
 
 
 def fetch_address_label(address: str) -> str:
