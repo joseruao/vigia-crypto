@@ -227,3 +227,46 @@ def test_cluster_falls_back_to_entity_level_transfers(monkeypatch):
     assert results[0]["address"] == "0x3333333333333333333333333333333333333333"
     assert results[0]["found_via"] == ["wintermute"]
     assert results[0]["score"] == 45
+
+
+def test_cluster_boosts_shared_intermediary_fanout(monkeypatch):
+    cluster = _load_cluster()
+    monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
+    monkeypatch.setattr(cluster, "fetch_entity_addresses", lambda entity: [])
+
+    first_hop = "0x1111111111111111111111111111111111111111"
+    wallets = [
+        "0x3333333333333333333333333333333333333333",
+        "0x4444444444444444444444444444444444444444",
+        "0x5555555555555555555555555555555555555555",
+    ]
+
+    def fake_entity_transfers(entity):
+        return [{
+            "address": first_hop,
+            "chain": "ethereum",
+            "found_via": entity,
+            "transfer_value_usd": "100000",
+        }]
+
+    def fake_outgoing(address):
+        assert address == first_hop
+        return [{
+            "address": wallet,
+            "chain": "ethereum",
+            "found_via": first_hop,
+            "transfer_value_usd": "100000",
+        } for wallet in wallets]
+
+    monkeypatch.setattr(cluster, "fetch_entity_outgoing_transfers", fake_entity_transfers)
+    monkeypatch.setattr(cluster, "fetch_outgoing_transfers", fake_outgoing)
+    monkeypatch.setattr(cluster, "fetch_address_label", lambda address: "")
+    monkeypatch.setattr(cluster, "fetch_address_balance", lambda address: 500_000)
+    monkeypatch.setattr(cluster.time, "sleep", lambda _: None)
+    monkeypatch.setattr(cluster, "MAX_DEPTH", 2)
+
+    results = cluster.cluster_entity("multicoin-capital")
+
+    assert len(results) == 3
+    assert all("fan-out from same intermediary (3 candidates)" in row["notes"] for row in results)
+    assert all(row["score"] == 55 for row in results)

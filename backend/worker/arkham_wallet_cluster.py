@@ -327,6 +327,26 @@ def _candidate_notes(address: str, sources: set[str], meta: dict[str, str]) -> l
     return notes
 
 
+def _short(value: str, size: int = 10) -> str:
+    text = str(value or "")
+    if len(text) <= size + 4:
+        return text
+    return f"{text[:size]}...{text[-4:]}"
+
+
+def _transfer_target_label(transfer: dict[str, str]) -> str:
+    label = (
+        transfer.get("to_entity")
+        or transfer.get("to_predicted_entity")
+        or transfer.get("to_label")
+        or ""
+    )
+    address = transfer.get("address") or ""
+    if label:
+        return f"{label} ({_short(address)})"
+    return address
+
+
 def _balance_usd(payload: Any) -> float:
     best = 0.0
     for node in _walk_values(payload):
@@ -426,6 +446,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     candidate_chains: dict[str, set[str]] = defaultdict(set)
     filtered_destinations: list[dict[str, str]] = []
     destination_meta: dict[str, dict[str, str]] = {}
+    candidate_paths: dict[str, set[str]] = defaultdict(set)
 
     if seed_addresses:
         scan_targets = [(row["address"], row["address"]) for row in seed_addresses]
@@ -466,6 +487,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
                 filtered_destinations.append(transfer)
                 destination_meta.setdefault(candidate, transfer)
                 candidate_sources[candidate].add(source_label)
+                candidate_paths[candidate].add(f"{source_label} -> {_transfer_target_label(transfer)}")
                 if transfer.get("chain"):
                     candidate_chains[candidate].add(transfer["chain"])
                 if (
@@ -473,7 +495,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
                     and candidate not in seen_scan_targets
                     and not _is_pool_or_service_transfer(transfer)
                 ):
-                    next_frontier.append((candidate, f"{source_label} -> {candidate}"))
+                    next_frontier.append((candidate, f"{source_label} -> {_transfer_target_label(transfer)}"))
 
             time.sleep(1.05)
 
@@ -497,8 +519,16 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
         else:
             frontier = []
 
+    parent_counts: dict[str, int] = defaultdict(int)
+    for address, meta in destination_meta.items():
+        parent = str(meta.get("found_via") or "")
+        if parent:
+            parent_counts[parent] += 1
+
     results: list[dict[str, Any]] = []
     for address, sources in sorted(candidate_sources.items(), key=lambda item: len(item[1]), reverse=True):
+        if address in seen_scan_targets and MAX_DEPTH > 1:
+            continue
         label = fetch_address_label(address)
         time.sleep(0.25)
         meta = destination_meta.get(address, {})
@@ -530,13 +560,19 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             "balance_usd": balance,
             "chains": sorted(candidate_chains.get(address) or []),
             "found_via": sorted(sources),
+            "paths": sorted(candidate_paths.get(address) or sources),
             "entity_source_count": len(sources),
             "label": label,
             "inferred_label": inferred_label,
             "notes": _candidate_notes(address, sources, meta),
             "exchange_connected": address_has_exchange_link(address) if CHECK_EXCHANGE_LINKS else False,
         }
+        parent = str(meta.get("found_via") or "")
+        if parent and parent_counts.get(parent, 0) >= 3:
+            candidate["notes"].append(f"fan-out from same intermediary ({parent_counts[parent]} candidates)")
         candidate["score"] = score_candidate(candidate)
+        if any(note.startswith("fan-out") for note in candidate["notes"]):
+            candidate["score"] = min(100, candidate["score"] + 10)
         results.append(candidate)
 
     results.sort(key=lambda row: (row["score"], row["balance_usd"], row["entity_source_count"]), reverse=True)
@@ -565,7 +601,7 @@ def main() -> None:
         )
         if row.get("notes"):
             print(f"  notes: {', '.join(row['notes'])}", flush=True)
-        path = " | ".join(row.get("found_via") or [])
+        path = " | ".join(row.get("paths") or row.get("found_via") or [])
         if path:
             print(f"  path: {path[:240]}", flush=True)
 
