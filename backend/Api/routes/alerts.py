@@ -1479,13 +1479,13 @@ def ask_alerts(payload: AskIn):
                 now = datetime.now(timezone.utc)
                 diff = now - dt
                 if diff.days >= 2:
-                    return f"há {diff.days} dias"
+                    return f"{diff.days}d ago" if wants_english else f"ha {diff.days} dias"
                 if diff.days == 1:
-                    return "ontem"
+                    return "yesterday" if wants_english else "ontem"
                 hours = diff.seconds // 3600
                 if hours >= 1:
-                    return f"há {hours}h"
-                return "agora mesmo"
+                    return f"{hours}h ago" if wants_english else f"ha {hours}h"
+                return "just now" if wants_english else "agora mesmo"
             except Exception:
                 return ""
 
@@ -1595,14 +1595,14 @@ def ask_alerts(payload: AskIn):
             pair_url = item.get("pair_url", "")
             ts = item.get("last_seen_ts") or item.get("ts")
 
-            line = f"### {i}. {token} · {exchange}"
+            line = f"### {i}. {token} - {exchange}"
             if chain:
-                line += f" · {chain}"
+                line += f" - {chain}"
             line += "\n\n"
-            line += f"**Score:** {float(score or 0):.0f}/100 · **{_listing_verdict(score)}**\n"
-            line += f"**Wallet:** {_fmt_money(value_usd)} · **Liquidez:** {_fmt_money(liquidity)}"
+            line += f"**Score:** {float(score or 0):.0f}/100 - **{_listing_verdict(score)}**\n"
+            line += f"**Wallet:** {_fmt_money(value_usd)} - **Liquidez:** {_fmt_money(liquidity)}"
             if volume and float(volume or 0) > 0:
-                line += f" · **Volume:** {_fmt_money(volume)}"
+                line += f" - **Volume:** {_fmt_money(volume)}"
             line += "\n"
 
             when = _fmt_ts(ts)
@@ -1632,10 +1632,15 @@ def ask_alerts(payload: AskIn):
 
         if wants_english:
             replacements = {
-                "Â·": "·",
+                " - **Liquidez:**": " - **Liquidity:**",
                 "**Radar on-chain de possiveis listings**": "**On-chain listing radar**",
+                "**Watchlist propria de hoje**": "**Own watchlist today**",
+                "**Top sinais on-chain detetados**": "**Top on-chain signals**",
                 "candidatos filtrados. Mostro": "filtered candidates. Showing",
                 "sinais fortes.": "strong signals.",
+                "sinais on-chain filtrados. Mostro os": "filtered on-chain signals. Showing the",
+                "mais relevantes.": "most relevant.",
+                "sinais filtrados. Mostro os": "filtered signals. Showing the",
                 "sinais ocultos. Escreve **ver mais listings** para expandir.": "hidden signals. Type **more listings** to expand.",
                 "Detectado na wallet monitorizada da": "Detected in a monitored",
                 "**Liquidez:**": "**Liquidity:**",
