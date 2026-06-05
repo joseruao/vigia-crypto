@@ -59,6 +59,14 @@ LOW_SIGNAL_SYMBOLS = {
     "XAUT", "XAUT0", "PAXG",
 }
 
+STABLE_OR_FIAT_SYMBOLS = {
+    "USDT", "USDT0", "USDC", "USDC.E", "BUSD", "DAI", "TUSD", "FDUSD", "USDE", "USDS",
+    "USD1", "USDB", "USDX", "USDTE", "BSC-USD", "USYC", "PYUSD", "GUSD", "LUSD",
+    "FRAX", "SUSD", "USDBC", "USDH",
+    "EUR", "EURC", "EUROC", "EURI", "EURT", "EURQ", "EURS",
+    "IDRT",
+}
+
 EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
     "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
@@ -71,8 +79,10 @@ EXCLUDED_PREFIXES = ("W", "CB", "S", "BSC", "USD", "EUR")
 EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "USD", "EUR", "USDT", "BNB")
 MAX_SIGNAL_VALUE_USD = 500_000_000
 
-LOW_SIGNAL_SMART_MONEY_SYMBOLS = LOW_SIGNAL_SYMBOLS | {
-    "USDBC", "UBTC", "UETH", "USDH", "BUIDL",
+LOW_SIGNAL_SMART_MONEY_SYMBOLS = STABLE_OR_FIAT_SYMBOLS | {
+    # Tokenized funds / cash-like assets. Wrapped majors are intentionally not
+    # here: for smart money, WETH/WBTC/WHYPE can be useful exposure signals.
+    "BUIDL",
 }
 
 EXCHANGES = [
@@ -515,18 +525,28 @@ def is_excluded_arkham_token(symbol: str, value_usd: float = 0) -> bool:
     return False
 
 
-def is_listed_on_exchange(symbol: str, listed: set[str]) -> bool:
-    return any(candidate in listed for candidate in listing_symbol_candidates(symbol))
-
-
-def is_low_signal_smart_money_asset(symbol: str) -> bool:
+def is_excluded_smart_money_token(symbol: str) -> bool:
     normalized = _normalize_symbol(symbol)
+    if not normalized:
+        return True
     if normalized in LOW_SIGNAL_SMART_MONEY_SYMBOLS:
+        return True
+    if any(part in normalized for part in ("-USD", "USD.", ".USD")):
+        return True
+    if normalized.startswith(("USD", "EUR")):
         return True
     # Arkham can return tokenized stock/ETF tickers like NVDAON, TSLAON, QQQON.
     if normalized.endswith("ON") and len(normalized) > 4:
         return True
     return False
+
+
+def is_listed_on_exchange(symbol: str, listed: set[str]) -> bool:
+    return any(candidate in listed for candidate in listing_symbol_candidates(symbol))
+
+
+def is_low_signal_smart_money_asset(symbol: str) -> bool:
+    return is_excluded_smart_money_token(symbol)
 
 
 def score_candidate(value_usd: float, exchange_count: int) -> int:
@@ -861,9 +881,7 @@ def scan_smart_money(token_exchanges: dict[str, set[str]]) -> tuple[int, int]:
 
         for token in tokens:
             symbol = token["symbol"]
-            if is_excluded_arkham_token(symbol, token["value_usd"]):
-                continue
-            if is_low_signal_smart_money_asset(symbol):
+            if is_excluded_smart_money_token(symbol):
                 continue
 
             exchange_count = len(token_exchanges.get(symbol, set()))
@@ -928,9 +946,7 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
 
         for token in tokens:
             symbol = token["symbol"]
-            if is_excluded_arkham_token(symbol, token["value_usd"]):
-                continue
-            if is_low_signal_smart_money_asset(symbol):
+            if is_excluded_smart_money_token(symbol):
                 continue
 
             exchange_count = len(token_exchanges.get(symbol, set()))
@@ -964,8 +980,7 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             previous_value = _float_or_zero(previous.get("value_usd"))
             if (
                 not symbol
-                or is_excluded_arkham_token(symbol, previous_value)
-                or is_low_signal_smart_money_asset(symbol)
+                or is_excluded_smart_money_token(symbol)
             ):
                 continue
             if previous_value < SMART_MONEY_THRESHOLD_USD:
