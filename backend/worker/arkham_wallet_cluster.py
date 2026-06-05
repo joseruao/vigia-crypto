@@ -44,6 +44,8 @@ MAX_DEPTH = int(os.getenv("ARKHAM_CLUSTER_DEPTH", "1"))
 MAX_SECOND_HOP_TARGETS = int(os.getenv("ARKHAM_CLUSTER_MAX_SECOND_HOP", "5"))
 CHECK_EXCHANGE_LINKS = os.getenv("ARKHAM_CLUSTER_CHECK_EXCHANGES", "0").strip().lower() in {"1", "true", "yes"}
 DEBUG = os.getenv("ARKHAM_CLUSTER_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
+REQUEST_TIMEOUT = int(os.getenv("ARKHAM_CLUSTER_TIMEOUT", "60"))
+REQUEST_RETRIES = int(os.getenv("ARKHAM_CLUSTER_RETRIES", "2"))
 
 EXCHANGE_NAMES = {
     "binance", "coinbase", "gate.io", "gate", "okx", "bybit", "kraken",
@@ -65,12 +67,26 @@ def _require_env() -> None:
 
 
 def _arkham_get_json(endpoint: str, params: dict[str, Any] | None = None) -> Any:
-    response = requests.get(
-        f"{ARKHAM_BASE_URL}{endpoint}",
-        headers=_headers(),
-        params=params or {},
-        timeout=30,
-    )
+    last_error: Exception | None = None
+    for attempt in range(REQUEST_RETRIES + 1):
+        try:
+            response = requests.get(
+                f"{ARKHAM_BASE_URL}{endpoint}",
+                headers=_headers(),
+                params=params or {},
+                timeout=REQUEST_TIMEOUT,
+            )
+            break
+        except requests.Timeout as exc:
+            last_error = exc
+            if attempt >= REQUEST_RETRIES:
+                raise
+            wait = 2 + attempt * 2
+            print(f"  Arkham timeout on {endpoint}; retry {attempt + 1}/{REQUEST_RETRIES} in {wait}s", flush=True)
+            time.sleep(wait)
+    else:
+        raise last_error or RuntimeError(f"Arkham request failed: {endpoint}")
+
     if response.status_code >= 400:
         detail = response.text[:400]
         raise requests.HTTPError(f"{response.status_code} {endpoint}: {detail}", response=response)
