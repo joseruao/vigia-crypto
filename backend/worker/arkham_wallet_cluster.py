@@ -159,7 +159,7 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
             or row.get("to")
             or (row.get("toEntity") or {}).get("address")
         )
-        if from_addr and from_addr != source:
+        if source and from_addr and from_addr != source:
             continue
         if not to_addr or to_addr == source or not _looks_like_address(to_addr):
             continue
@@ -216,8 +216,13 @@ def fetch_entity_addresses(entity_id: str) -> list[dict[str, str]]:
 
 
 def fetch_outgoing_transfers(address: str) -> list[dict[str, str]]:
-    payload = _arkham_get_json("/transfers", params={"from": address, "flow": "out", "limit": TRANSFER_LIMIT})
+    payload = _arkham_get_json("/transfers", params={"base": address, "flow": "out", "limit": TRANSFER_LIMIT})
     return _extract_transfer_addresses(payload, address)
+
+
+def fetch_entity_outgoing_transfers(entity_id: str) -> list[dict[str, str]]:
+    payload = _arkham_get_json("/transfers", params={"base": entity_id, "flow": "out", "limit": TRANSFER_LIMIT})
+    return _extract_transfer_addresses(payload, "")
 
 
 def fetch_address_label(address: str) -> str:
@@ -276,11 +281,20 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     candidate_sources: dict[str, set[str]] = defaultdict(set)
     candidate_chains: dict[str, set[str]] = defaultdict(set)
 
-    for index, row in enumerate(seed_addresses, 1):
-        address = row["address"]
-        print(f"[{index}/{len(seed_addresses)}] transfers out from {address[:10]}...", flush=True)
+    if seed_addresses:
+        scan_targets = [(row["address"], row["address"]) for row in seed_addresses]
+    else:
+        scan_targets = [(entity_id, entity_id)]
+        print("No labeled addresses in entity payload; falling back to entity-level transfers.", flush=True)
+
+    for index, (target, source_label) in enumerate(scan_targets, 1):
+        print(f"[{index}/{len(scan_targets)}] transfers out from {target[:18]}...", flush=True)
         try:
-            transfers = fetch_outgoing_transfers(address)
+            transfers = (
+                fetch_outgoing_transfers(target)
+                if target in known_addresses
+                else fetch_entity_outgoing_transfers(target)
+            )
         except Exception as exc:
             print(f"  transfer fetch failed: {exc}", flush=True)
             transfers = []
@@ -289,7 +303,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             candidate = transfer["address"]
             if candidate in known_addresses:
                 continue
-            candidate_sources[candidate].add(address)
+            candidate_sources[candidate].add(source_label)
             if transfer.get("chain"):
                 candidate_chains[candidate].add(transfer["chain"])
 
