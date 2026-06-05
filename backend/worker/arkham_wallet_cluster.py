@@ -205,7 +205,20 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
             continue
         chain = str(row.get("chain") or row.get("network") or "").strip().lower()
         value = _float(row.get("usdValue") or row.get("valueUsd") or row.get("value") or 0)
-        candidates.append({"address": to_addr, "chain": chain, "found_via": source, "transfer_value_usd": str(value)})
+        to_obj = row.get("toAddress") if isinstance(row.get("toAddress"), dict) else {}
+        to_entity = to_obj.get("arkhamEntity") if isinstance(to_obj.get("arkhamEntity"), dict) else {}
+        to_label = to_obj.get("arkhamLabel") if isinstance(to_obj.get("arkhamLabel"), dict) else {}
+        candidates.append({
+            "address": to_addr,
+            "chain": chain or str(to_obj.get("chain") or "").strip().lower(),
+            "found_via": source,
+            "transfer_value_usd": str(value or _float(row.get("historicalUSD"))),
+            "to_entity": str(to_entity.get("name") or "").strip(),
+            "to_entity_type": str(to_entity.get("type") or "").strip(),
+            "to_label": str(to_label.get("name") or "").strip(),
+            "to_is_contract": str(bool(row.get("toIsContract") or to_obj.get("contract"))),
+            "token_symbol": str(row.get("tokenSymbol") or "").strip(),
+        })
     return candidates
 
 
@@ -328,6 +341,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
 
     candidate_sources: dict[str, set[str]] = defaultdict(set)
     candidate_chains: dict[str, set[str]] = defaultdict(set)
+    filtered_destinations: list[dict[str, str]] = []
 
     if seed_addresses:
         scan_targets = [(row["address"], row["address"]) for row in seed_addresses]
@@ -351,6 +365,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             candidate = transfer["address"]
             if candidate in known_addresses:
                 continue
+            filtered_destinations.append(transfer)
             candidate_sources[candidate].add(source_label)
             if transfer.get("chain"):
                 candidate_chains[candidate].add(transfer["chain"])
@@ -392,6 +407,16 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
         results.append(candidate)
 
     results.sort(key=lambda row: (row["score"], row["balance_usd"], row["entity_source_count"]), reverse=True)
+    if DEBUG and not results and filtered_destinations:
+        print("\nNo unlabeled balance candidates. Top transfer destinations seen:", flush=True)
+        for row in filtered_destinations[:10]:
+            meta = row.get("to_entity") or row.get("to_label") or "unlabeled/unknown"
+            kind = row.get("to_entity_type") or ("contract" if row.get("to_is_contract") == "True" else "wallet")
+            print(
+                f"- {row['address']} | {meta} | {kind} | {row.get('chain') or 'unknown'} | "
+                f"{row.get('token_symbol') or 'token'} | transfer=${_float(row.get('transfer_value_usd')):,.0f}",
+                flush=True,
+            )
     return results
 
 

@@ -62,6 +62,11 @@ def test_cluster_extracts_outgoing_transfer_destinations():
         "chain": "ethereum",
         "found_via": source,
         "transfer_value_usd": "125000.0",
+        "to_entity": "",
+        "to_entity_type": "",
+        "to_label": "",
+        "to_is_contract": "False",
+        "token_symbol": "",
     }]
 
 
