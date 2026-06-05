@@ -355,6 +355,71 @@ def test_predictions_endpoint_reads_arkham_exchange_signals(monkeypatch):
     assert data[0]["liquidity"] == 5_000_000
     assert data[0]["source"] == "arkham"
 
+def test_arkham_listing_score_keeps_raw_score_without_liquidity():
+    row = {
+        "source": "arkham",
+        "exchange": "Binance",
+        "token": "VELO",
+        "score": 60,
+        "value_usd": 3_297_715,
+        "liquidity": None,
+        "market_cap_usd": 0,
+        "ts": "2026-06-05T00:50:44+00:00",
+    }
+
+    scored = alerts._apply_listing_score(row)
+
+    assert scored["raw_score"] == 60
+    assert scored["score"] >= 60
+
+def test_listing_ask_responds_in_english_and_more_expands(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+    monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+        def __init__(self, rows):
+            self._rows = rows
+        def json(self):
+            return self._rows
+
+    rows = [
+        {
+            "id": i,
+            "entity": "Binance",
+            "exchange": "Binance",
+            "token": f"ALPHA{i}",
+            "token_address": f"0xalpha{i}",
+            "chain": "ethereum",
+            "score": 70,
+            "ts": "2026-06-05T00:50:44+00:00",
+            "pair_url": "https://dexscreener.com/search?q=ALPHA",
+            "value_usd": 1_000_000 + i,
+            "liquidity_usd": 5_000_000,
+        }
+        for i in range(5)
+    ]
+
+    def fake_rest_get(table, params=None, timeout=8):
+        if table == "arkham_signals":
+            return FakeResponse(rows)
+        return FakeResponse([])
+
+    monkeypatch.setattr(alerts.supa, "rest_get", fake_rest_get)
+    client = TestClient(app)
+
+    r = client.post("/alerts/ask", json={"prompt": "Which tokens are in exchange wallets but not listed yet?"})
+    answer = r.json()["answer"]
+    assert "On-chain listing radar" in answer
+    assert "Liquidity" in answer
+    assert "Liquidez" not in answer
+
+    r_more = client.post("/alerts/ask", json={"prompt": "more"})
+    assert r_more.status_code == 200
+    assert r_more.json()["count"] == 5
+    assert "hidden signals" not in r_more.json()["answer"]
+
 def test_listing_ask_does_not_backfill_old_rows_by_default(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)
     monkeypatch.setattr(alerts, "_load_listed_tokens_map", lambda log=None: {})
@@ -378,7 +443,7 @@ def test_listing_ask_does_not_backfill_old_rows_by_default(monkeypatch):
 
     assert r.status_code == 200
     assert "Nao encontrei tokens com potencial" in r.json()["answer"]
-    assert calls["count"] == 1
+    assert calls["count"] == 2
 
 def test_top100_endpoint_filters_zero_price(monkeypatch):
     monkeypatch.setattr(alerts.supa, "ok", lambda: True)

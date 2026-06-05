@@ -74,8 +74,20 @@ DEFAULT_PREDICTIONS_MAX_AGE_HOURS = 336
 PREDICTIONS_LIMIT = 10
 _LIVE_LISTING_CACHE: Dict[str, set] = {}
 STATIC_LIVE_LISTING_FALLBACKS = {
-    "Binance": {"BEAM"},
+    "Binance": {"BABYDOGE", "BEAM", "BTT", "CAT", "CHEEMS", "EOS", "WNXM"},
 }
+
+def _is_english_prompt(text: str) -> bool:
+    q = (text or "").lower()
+    english_terms = (
+        "what", "which", "show", "more", "listing", "listings", "unlisted",
+        "exchange", "wallet", "wallets", "token", "tokens", "today",
+    )
+    portuguese_terms = (
+        "que ", "quais", "mais ", "listados", "acumular", "carteira",
+        "moeda", "moedas", "hoje", "comprar",
+    )
+    return any(term in q for term in english_terms) and not any(term in q for term in portuguese_terms)
 
 def _prediction_max_age_hours() -> int:
     try:
@@ -756,6 +768,8 @@ def _apply_listing_score(row: Dict[str, Any]) -> Dict[str, Any]:
     updated = dict(row)
     updated["raw_score"] = _score(row)
     updated["score"] = _listing_score(row)
+    if row.get("source") == "arkham":
+        updated["score"] = max(float(updated["score"] or 0), _score(row))
     return updated
 
 def _arkham_signal_to_prediction(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1207,6 +1221,7 @@ def ask_alerts(payload: AskIn):
         return {"ok": False, "answer": "Supabase nao configurado. Verifica as variaveis de ambiente no Render.", "count": 0, "items": []}
 
     q = (payload.prompt or "").lower()
+    wants_english = _is_english_prompt(payload.prompt)
     log.info("/alerts/ask: %s", payload.prompt)
 
     is_top100_context = "top100" in q or "top 100" in q
@@ -1248,7 +1263,19 @@ def ask_alerts(payload: AskIn):
     is_buy_watchlist_question = _is_buy_watchlist_question(q)
 
     # Se perguntar sobre "tokens que vão ser listados" sem exchange específica, usa score mínimo
-    is_listing_question = "listados" in q or "listing" in q or "vão ser" in q or "vao ser" in q or "vai ser" in q or "achas" in q
+    is_more_listing_question = q.strip() in {"more", "show more", "more please"} or "more listings" in q
+    is_listing_question = (
+        is_more_listing_question
+        or "listados" in q
+        or "unlisted" in q
+        or "exchange wallet" in q
+        or "exchange wallets" in q
+        or "listing" in q
+        or "vão ser" in q
+        or "vao ser" in q
+        or "vai ser" in q
+        or "achas" in q
+    )
     if is_listing_question and not any(ex in q for ex in ["binance", "gate", "bybit", "bitget", "kraken", "okx", "mexc", "coinbase"]):
         min_score = 50  # Score mínimo para predictions
         log.info(f"Detectada pergunta sobre listings - aplicando score mínimo: {min_score}")
@@ -1303,6 +1330,11 @@ def ask_alerts(payload: AskIn):
         return {"ok": False, "error": error_msg, "answer": f"Erro ao buscar dados: {error_msg}", "count": 0, "items": []}
 
     data: List[Dict[str, Any]] = r.json() or []
+    if is_listing_question or is_buy_watchlist_question:
+        arkham_data = _fetch_arkham_exchange_predictions(log)
+        if arkham_data:
+            data = arkham_data
+            log.info("Ask usando %s sinais Arkham exchange", len(arkham_data))
     log.info(f"Recebidos {len(data)} holdings do Supabase")
 
     # Normalizar exchange → ex_norm
@@ -1375,7 +1407,7 @@ def ask_alerts(payload: AskIn):
                 answer = "Nao encontrei tokens que correspondam a tua pesquisa."
             return {"ok": True, "answer": answer, "count": 0, "items": []}
 
-        wants_more = any(t in q for t in ["ver mais", "mais listings", "mais sinais", "mostrar mais", "show more", "more listings"])
+        wants_more = is_more_listing_question or any(t in q for t in ["ver mais", "mais listings", "mais sinais", "mostrar mais", "show more", "more listings"])
         display_limit = 10 if wants_more else 3
         shown = out[:display_limit]
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
@@ -1408,7 +1440,13 @@ def ask_alerts(payload: AskIn):
             try:
                 s = float(score_val or 0)
             except (TypeError, ValueError):
-                return "desconhecida"
+                return "unknown" if wants_english else "desconhecida"
+            if wants_english:
+                if s >= 80:
+                    return "high"
+                if s >= 60:
+                    return "moderate"
+                return "low"
             if s >= 80:
                 return "alta"
             if s >= 60:
@@ -1432,7 +1470,15 @@ def ask_alerts(payload: AskIn):
             try:
                 s = float(score_val or 0)
             except (TypeError, ValueError):
-                return "Sinal em observacao"
+                return "Signal under observation"
+            if wants_english:
+                if s >= 85:
+                    return "Strong listing candidate"
+                if s >= 75:
+                    return "Good signal to watch"
+                if s >= 65:
+                    return "Useful signal to monitor"
+                return "Early signal, confirm in the next cycles"
             if s >= 85:
                 return "Forte candidato a listing"
             if s >= 75:
@@ -1530,6 +1576,33 @@ def ask_alerts(payload: AskIn):
             answer += f"\n\n_+ {len(out) - len(shown)} sinais ocultos. Escreve **ver mais listings** para expandir._"
         if is_listing_question or "listados" in q or "listing" in q or "acumular" in q:
             answer += "\n\n_O radar filtra tokens ja listados na propria exchange e ignora stablecoins/wrapped assets._"
+
+        if wants_english:
+            replacements = {
+                "Â·": "·",
+                "**Radar on-chain de possiveis listings**": "**On-chain listing radar**",
+                "candidatos filtrados. Mostro": "filtered candidates. Showing",
+                "sinais fortes.": "strong signals.",
+                "sinais ocultos. Escreve **ver mais listings** para expandir.": "hidden signals. Type **more listings** to expand.",
+                "Detectado na wallet monitorizada da": "Detected in a monitored",
+                "**Liquidez:**": "**Liquidity:**",
+                "**Leitura:** probabilidade": "**Read:**",
+                "Monitorizar se a posicao cresce nos proximos ciclos.": "Watch whether the position keeps growing in the next cycles.",
+                "[Ver no DexScreener]": "[Open DexScreener]",
+                "_O radar filtra tokens ja listados na propria exchange e ignora stablecoins/wrapped assets._": "_The radar filters tokens already listed on the same exchange and ignores stablecoins/wrapped assets._",
+                "Forte candidato a listing": "Strong listing candidate",
+                "Bom sinal, merece atencao": "Good signal to watch",
+                "Sinal util para acompanhar": "Useful signal to monitor",
+                "Sinal inicial, confirmar nos proximos ciclos": "Early signal, confirm in the next cycles",
+            }
+            for old, new in replacements.items():
+                answer = answer.replace(old, new)
+            answer = answer.replace(" **Binance**", " **Binance** wallet")
+            answer = answer.replace(" **Coinbase**", " **Coinbase** wallet")
+            answer = answer.replace(" **Gate.io**", " **Gate.io** wallet")
+            answer = answer.replace(" **Bybit**", " **Bybit** wallet")
+            answer = answer.replace(" **Bitget**", " **Bitget** wallet")
+            answer = answer.replace(" **Kraken**", " **Kraken** wallet")
 
         return {"ok": True, "answer": answer, "count": len(out), "items": out}
 
