@@ -43,13 +43,10 @@ ENTITY_ID = os.getenv("ARKHAM_CLUSTER_ENTITY", "wintermute").strip() or "winterm
 DEFAULT_CLUSTER_ENTITIES = [
     "wintermute",
     "jump-trading",
-    "paradigm",
     "a16z",
     "multicoin-capital",
-    "drw-cumberland",
     "galaxy-digital",
     "pantera-capital",
-    "dwr-cumberland",
 ]
 MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
 MAX_SEED_ADDRESSES = int(os.getenv("ARKHAM_CLUSTER_MAX_SEED_ADDRESSES", "10"))
