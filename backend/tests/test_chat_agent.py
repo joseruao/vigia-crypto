@@ -109,3 +109,26 @@ def test_chat_stream_routes_recent_holdings_question_to_internal_tool(monkeypatc
 
     assert response.status_code == 200
     assert "FAST HOLDINGS" in response.text
+
+
+def test_chat_stream_routes_whale_suggestion_to_smart_money_before_top100(monkeypatch):
+    from Api import main
+
+    async def fake_execute_tool(name, arguments=None):
+        assert name == "get_smart_money"
+        return {"ok": True, "answer": "FAST SMART MONEY"}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "execute_tool", fake_execute_tool)
+    monkeypatch.setattr(
+        main,
+        "answer_top100_buy_watchlist",
+        lambda log=None, prompt="": {"ok": True, "answer": "WRONG TOP100", "count": 1, "items": []},
+    )
+
+    client = TestClient(app)
+    response = client.post("/chat/stream", json={"prompt": "O que as whales compraram hoje?", "history": []})
+
+    assert response.status_code == 200
+    assert "FAST SMART MONEY" in response.text
+    assert "WRONG TOP100" not in response.text

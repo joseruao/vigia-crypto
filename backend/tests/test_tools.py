@@ -106,19 +106,27 @@ def test_get_recent_holdings_preserves_empty_ask_response(monkeypatch):
 
 
 def test_get_smart_money_formats_supabase_rows(monkeypatch):
+    calls = []
+
     class FakeResponse:
         status_code = 200
         def json(self):
             return [{
                 "token": "ABC",
-                "exchange": "Wintermute",
+                "entity": "Wintermute",
                 "chain": "ethereum",
                 "score": 88,
                 "value_usd": 1_250_000,
+                "value_delta_usd": 250_000,
+                "signal_direction": "increased",
                 "pair_url": "https://dexscreener.com/search?q=ABC",
             }]
 
-    monkeypatch.setattr(tools.alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    def fake_rest_get(table, params=None, **kwargs):
+        calls.append((table, params or {}))
+        return FakeResponse()
+
+    monkeypatch.setattr(tools.alerts.supa, "rest_get", fake_rest_get)
 
     result = tools.get_smart_money()
 
@@ -126,6 +134,25 @@ def test_get_smart_money_formats_supabase_rows(monkeypatch):
     assert "ABC" in result["answer"]
     assert "Wintermute" in result["answer"]
     assert "$1,250,000" in result["answer"]
+    assert "Delta $250,000" in result["answer"]
+    assert calls[0][0] == "arkham_signals"
+    assert calls[0][1]["signal_direction"] == "in.(new,increased,decreased)"
+
+
+def test_get_smart_money_orders_by_delta(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [
+                {"token": "LOW", "entity": "Wintermute", "chain": "ethereum", "score": 99, "value_usd": 10_000_000, "value_delta_usd": 20_000, "signal_direction": "increased"},
+                {"token": "HIGH", "entity": "Galaxy", "chain": "ethereum", "score": 50, "value_usd": 1_000_000, "value_delta_usd": 500_000, "signal_direction": "increased"},
+            ]
+
+    monkeypatch.setattr(tools.alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    result = tools.get_smart_money()
+
+    assert result["answer"].find("HIGH") < result["answer"].find("LOW")
 
 
 def test_execute_tool_dispatches_known_sync_tool(monkeypatch):

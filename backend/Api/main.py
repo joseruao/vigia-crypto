@@ -314,7 +314,12 @@ async def chat_stream(req: ChatRequest):
             any(t in _q for t in ["mudou", "mudança", "subiu mais", "desceu mais", "novidades top"]) or
             ("ontem" in _q and any(t in _q for t in ["top100", "top 100", "ranking", "score", "moedas", "coins"]))
         )
-        if is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q:
+        _is_smart_money_q = any(t in _q for t in [
+            "smart money", "fundos", "whales", "whale", "insiders", "insider",
+            "market makers", "market maker", "institutions", "institucionais",
+            "jump", "wintermute", "paradigm", "galaxy", "a16z", "multicoin",
+        ])
+        if not _is_smart_money_q and (is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q):
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():
                 yield result.get("answer") or ("Could not fetch top100 ranking now." if lang == "en" else "Nao consegui obter o ranking tecnico top100 agora.")
@@ -326,10 +331,7 @@ async def chat_stream(req: ChatRequest):
                 yield result.get("answer") or ("Could not fetch listing signals now." if lang == "en" else "Nao consegui obter potenciais listings agora.")
             return StreamingResponse(_listings(), media_type="text/plain")
 
-        if any(t in _q for t in [
-            "smart money", "fundos", "whales", "institutions", "institucionais",
-            "jump", "wintermute", "paradigm",
-        ]):
+        if _is_smart_money_q:
             result = await execute_tool("get_smart_money")
             def _smart_money():
                 yield result.get("answer") or ("Could not fetch smart money signals now." if lang == "en" else "Nao consegui obter smart money agora.")

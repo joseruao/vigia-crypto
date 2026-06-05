@@ -218,6 +218,19 @@ def test_arkham_scanner_excludes_prompted_symbols_prefixes_suffixes_and_huge_val
     assert not scanner.is_excluded_arkham_token("ALPHA", 100_000)
 
 
+def test_arkham_scanner_smart_money_allows_wrapped_but_blocks_fiat_and_noise():
+    scanner = _load_scanner()
+
+    assert scanner.is_excluded_arkham_token("WHYPE", 100_000)
+    assert not scanner.is_excluded_smart_money_token("WHYPE")
+    assert not scanner.is_excluded_smart_money_token("WETH")
+    assert not scanner.is_excluded_smart_money_token("WBTC")
+    assert scanner.is_excluded_smart_money_token("USDC")
+    assert scanner.is_excluded_smart_money_token("EURC")
+    assert scanner.is_excluded_smart_money_token("NVDAON")
+    assert scanner.is_excluded_smart_money_token("B")
+
+
 def test_arkham_scanner_static_binance_listed_fallback(monkeypatch):
     scanner = _load_scanner()
 
@@ -341,6 +354,38 @@ def test_arkham_scanner_smart_money_delta_tracks_increase(monkeypatch):
     assert saved[0][1] == "smart_money"
     assert saved[0][2]["value_usd"] == 100_000
     assert saved[0][0]["score"] > scanner.score_candidate(180_000, 1)
+
+
+def test_arkham_scanner_smart_money_initial_snapshot_is_baseline(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(scanner, "fetch_existing_signals", lambda entity, entity_type: {})
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_portfolio",
+        lambda slug, min_value_usd: [{
+            "symbol": "WHYPE",
+            "chain": "hyperevm",
+            "amount": 10,
+            "value_usd": 200_000,
+            "token_address": "0xwhype",
+        }],
+    )
+    saved = []
+    monkeypatch.setattr(
+        scanner,
+        "save_candidate",
+        lambda candidate, signal_type="holding", previous=None: saved.append((candidate, signal_type, previous)) or True,
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "wintermute", "name": "Wintermute"}])
+
+    count, saved_count = scanner.scan_smart_money_with_deltas({})
+
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][1] == "smart_money"
+    assert saved[0][2]["value_usd"] == 200_000
+    assert scanner.signal_direction(saved[0][0]["value_usd"], saved[0][2]["value_usd"]) == "flat"
 
 
 def test_arkham_scanner_smart_money_marks_missing_position_as_moved(monkeypatch):

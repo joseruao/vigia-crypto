@@ -47,17 +47,21 @@ def get_listing_predictions() -> Dict[str, Any]:
     if not rows:
         return _answer_payload("No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.")
 
-    # Group by token+exchange to surface multi-wallet accumulation
     grouped: dict = {}
     for r in rows:
         key = f"{(r.get('token') or '').upper()}@{r.get('exchange') or ''}"
         if key not in grouped:
-            grouped[key] = {"rows": [], "token": r.get("token") or "—", "exchange": r.get("exchange") or "—",
-                            "chain": r.get("chain") or "—", "score": r.get("score"), "pair_url": r.get("pair_url")}
+            grouped[key] = {
+                "rows": [],
+                "token": r.get("token") or "-",
+                "exchange": r.get("exchange") or "-",
+                "chain": r.get("chain") or "-",
+                "score": r.get("score"),
+                "pair_url": r.get("pair_url"),
+            }
         grouped[key]["rows"].append(r)
 
     entries = list(grouped.values())
-    # Sort by score desc
     entries.sort(key=lambda x: x["score"] or 0, reverse=True)
 
     total = len(entries)
@@ -66,29 +70,31 @@ def get_listing_predictions() -> Dict[str, Any]:
     for i, entry in enumerate(entries[:limit], 1):
         token = entry["token"]
         exchange = entry["exchange"]
-        chain = entry["chain"].capitalize()
+        chain = str(entry["chain"] or "-").capitalize()
         score = entry["score"]
-        score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "—"
-        pair_url = entry["pair_url"] or f"https://dexscreener.com/search?q={token}"
+        score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "N/A"
         wallets = entry["rows"]
         total_val = sum(float(r.get("value_usd") or 0) for r in wallets)
         liq = wallets[0].get("liquidity")
         liq_txt = f"${liq:,.0f}" if isinstance(liq, (int, float)) else None
 
-        line = f"{i}. **{token}** · {exchange} · {chain}\n   Score: {score_txt}"
+        line = f"{i}. **{token}** - {exchange} - {chain}\n   Score: {score_txt}"
         if len(wallets) > 1:
-            line += f" · **{len(wallets)} wallets** · Total: ${total_val:,.0f}"
+            line += f" - {len(wallets)} wallets - Total: ${total_val:,.0f}"
             for w in wallets:
                 val = w.get("value_usd")
                 if isinstance(val, (int, float)):
-                    line += f"\n   └ wallet: ${val:,.0f}"
+                    line += f"\n   - wallet: ${val:,.0f}"
         else:
             val = wallets[0].get("value_usd")
-            line += f" · Wallet: ${val:,.0f}" if isinstance(val, (int, float)) else ""
+            line += f" - Wallet: ${val:,.0f}" if isinstance(val, (int, float)) else ""
         if liq_txt:
-            line += f" · Liquidity: {liq_txt}"
-        line += f"\n   [DexScreener]({pair_url})\n"
+            line += f" - Liquidity: {liq_txt}"
+        pair_url = entry.get("pair_url")
+        if pair_url:
+            line += f" - [DexScreener]({pair_url})"
         lines.append(line)
+
     if total > limit:
         lines.append(f"\n+ {total - limit} more signals. Ask *show more listings* to expand.")
     return _answer_payload("\n".join(lines), count=total, items=rows)
@@ -105,9 +111,10 @@ def get_top100_delta() -> Dict[str, Any]:
 def get_smart_money() -> Dict[str, Any]:
     params = {
         "entity_type": "eq.smart_money",
-        "select": "entity,exchange,token,chain,score,value_usd,ts,pair_url",
-        "order": "score.desc",
-        "limit": "10",
+        "signal_direction": "in.(new,increased,decreased)",
+        "select": "entity,exchange,token,chain,score,value_usd,value_delta_usd,signal_direction,ts,pair_url",
+        "order": "ts.desc",
+        "limit": "100",
     }
     try:
         response = alerts.supa.rest_get("arkham_signals", params=params, timeout=10)
@@ -130,23 +137,36 @@ def get_smart_money() -> Dict[str, Any]:
         return _answer_payload(f"Could not fetch smart money signals now: {exc}", count=0, items=[])
 
     if not rows:
-        return _answer_payload("No smart money signals stored yet. Let the Arkham scanner run once.", count=0, items=[])
+        return _answer_payload("No smart money moves stored yet. Let the Arkham scanner run twice so it can compare deltas.", count=0, items=[])
 
-    lines = ["**Smart money signals**\n"]
-    for row in rows[:10]:
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            abs(float(row.get("value_delta_usd") or 0)),
+            float(row.get("value_usd") or 0),
+        ),
+        reverse=True,
+    )[:10]
+
+    lines = ["**Smart money / whale moves**\n"]
+    for row in rows:
         token = str(row.get("token") or "?").upper()
         fund = row.get("entity") or row.get("exchange") or "Unknown fund"
         chain = str(row.get("chain") or "unknown").capitalize()
         score = row.get("score")
         value = row.get("value_usd")
+        delta = row.get("value_delta_usd")
+        direction = str(row.get("signal_direction") or "changed").replace("_", " ")
         score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "N/A"
         value_txt = f"${value:,.0f}" if isinstance(value, (int, float)) else "N/A"
-        line = f"- **{token}** · {fund} · {chain} · Score {score_txt} · Wallet value {value_txt}"
+        delta_txt = f"Delta ${delta:,.0f}" if isinstance(delta, (int, float)) else "Delta N/A"
+        line = f"- **{token}** - {fund} - {chain} - {direction} - {delta_txt} - Position {value_txt} - Score {score_txt}"
         pair_url = row.get("pair_url")
         if pair_url:
-            line += f" · [DexScreener]({pair_url})"
+            line += f" - [DexScreener]({pair_url})"
         lines.append(line)
 
+    lines.append("\n_Note: a position change is not automatically a buy/sell; it can also be a transfer, bridge, custody move or LP action._")
     return _answer_payload("\n".join(lines), count=len(rows), items=rows)
 
 
