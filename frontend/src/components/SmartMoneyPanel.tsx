@@ -44,7 +44,7 @@ export function SmartMoneyPanel() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const data = await fetchSmartMoneySignals({ limit: 4 });
+      const data = await fetchSmartMoneySignals({ limit: 3 });
       if (mounted) {
         setItems(Array.isArray(data) ? data : []);
         setLoading(false);
@@ -58,7 +58,7 @@ export function SmartMoneyPanel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[26.75rem] z-20 hidden w-[21rem] min-[2100px]:right-[23rem] min-[2100px]:top-[8.25rem] xl:block">
+    <div className="fixed right-4 top-[25rem] z-20 hidden w-[21rem] min-[2100px]:right-[23rem] min-[2100px]:top-[8.25rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-indigo-100 bg-indigo-50/55 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
@@ -67,8 +67,8 @@ export function SmartMoneyPanel() {
                 <Waves className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Smart Money</div>
-                <div className="mt-0.5 text-[10px] text-zinc-500">Position changes, not necessarily sales</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Whale Moves</div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">Arkham position deltas</div>
               </div>
             </div>
             {items.length > 0 ? (
@@ -79,7 +79,7 @@ export function SmartMoneyPanel() {
           </div>
         </div>
 
-        <div className="max-h-[14rem] space-y-2 overflow-auto p-3">
+        <div className="max-h-[10rem] space-y-2 overflow-auto p-3">
           {loading ? (
             <div className="text-xs text-zinc-500">Loading moves...</div>
           ) : items.length === 0 ? (
@@ -94,7 +94,7 @@ export function SmartMoneyPanel() {
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-zinc-950">{signal.token}</div>
                       <div className="truncate text-[10px] text-zinc-500">
-                        {signal.entity || 'Arkham'}{chain ? ` · ${chain}` : ''}
+                        {signal.entity || 'Arkham'}{chain ? ` - ${chain}` : ''}
                       </div>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${direction.tone}`}>
@@ -112,7 +112,7 @@ export function SmartMoneyPanel() {
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-100 pt-2">
-                    <span className="truncate text-[10px] text-zinc-500">Arkham entity move</span>
+                    <span className="truncate text-[10px] text-zinc-500">Position delta</span>
                     {signal.pair_url ? (
                       <a
                         href={signal.pair_url}

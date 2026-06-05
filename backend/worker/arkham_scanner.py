@@ -131,6 +131,55 @@ SMART_MONEY_FUNDS = [
 ]
 
 
+def _parse_related_wallets(raw: str | None = None) -> list[dict[str, str]]:
+    """Parse optional related wallets.
+
+    Env format examples:
+      ARKHAM_RELATED_WALLETS="Multicoin Capital|ethereum|0xabc|Multicoin related"
+      ARKHAM_RELATED_WALLETS='[{"entity":"Multicoin Capital","chain":"ethereum","address":"0xabc"}]'
+    """
+    raw = (raw if raw is not None else os.getenv("ARKHAM_RELATED_WALLETS", "")).strip()
+    if not raw:
+        return []
+
+    parsed: list[dict[str, str]] = []
+    try:
+        value = json.loads(raw)
+        if isinstance(value, dict):
+            value = [value]
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                entity = str(item.get("entity") or item.get("name") or "").strip()
+                address = str(item.get("address") or item.get("wallet") or "").strip()
+                chain = str(item.get("chain") or "").strip()
+                label = str(item.get("label") or "").strip()
+                if entity and address:
+                    parsed.append({"entity": entity, "address": address, "chain": chain, "label": label})
+            return parsed
+    except Exception:
+        pass
+
+    for chunk in raw.split(";"):
+        parts = [part.strip() for part in chunk.split("|")]
+        if len(parts) < 3:
+            continue
+        entity, chain, address = parts[:3]
+        label = parts[3] if len(parts) > 3 else ""
+        if entity and address:
+            parsed.append({"entity": entity, "address": address, "chain": chain, "label": label})
+    return parsed
+
+
+def _related_wallets_for(entity_name: str) -> list[dict[str, str]]:
+    wanted = str(entity_name or "").strip().lower()
+    return [
+        wallet for wallet in _parse_related_wallets()
+        if str(wallet.get("entity") or "").strip().lower() == wanted
+    ]
+
+
 def _limit_entities(items: list[dict[str, str]], env_name: str, slug_key: str = "slug") -> list[dict[str, str]]:
     raw = os.getenv(env_name, "").strip()
     if not raw:
@@ -455,6 +504,43 @@ def fetch_arkham_portfolio(slug: str, min_value_usd: float = VALUE_THRESHOLD_USD
     if not tokens:
         print(
             f"   Arkham debug {slug}: raw_rows={len(raw_rows)} normalized={normalized_seen} "
+            f"threshold=${min_value_usd:,.0f} {_payload_debug(payload)}",
+            flush=True,
+        )
+    return tokens
+
+
+def fetch_arkham_address_portfolio(
+    address: str,
+    chain_hint: str | None = None,
+    min_value_usd: float = SMART_MONEY_THRESHOLD_USD,
+) -> list[dict[str, Any]]:
+    errors: list[str] = []
+    payload = None
+    for endpoint in (f"/balances/address/{address}", f"/portfolio/address/{address}"):
+        try:
+            payload = _arkham_get_json(endpoint)
+            break
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if payload is None:
+        raise RuntimeError(" | ".join(errors))
+
+    raw_rows = _extract_token_rows(payload, chain_hint=chain_hint)
+    tokens: list[dict[str, Any]] = []
+    normalized_seen = 0
+    for row in raw_rows:
+        token = _normalize_token(row)
+        if token:
+            normalized_seen += 1
+            if chain_hint and (not token.get("chain") or token.get("chain") == "unknown"):
+                token["chain"] = _normalize_chain(chain_hint)
+            if token["value_usd"] > min_value_usd:
+                tokens.append(token)
+    if not tokens:
+        print(
+            f"   Arkham address debug {address[:10]}...: raw_rows={len(raw_rows)} normalized={normalized_seen} "
             f"threshold=${min_value_usd:,.0f} {_payload_debug(payload)}",
             flush=True,
         )
@@ -984,36 +1070,83 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             seen_keys.add(key)
             candidates.append((candidate, previous))
 
-        if is_initial_snapshot:
-            if index < len(funds) - 1:
-                time.sleep(1.1)
-            continue
+        if not is_initial_snapshot:
+            for key, previous in existing.items():
+                if key in seen_keys:
+                    continue
+                symbol = str(previous.get("token") or "").strip().upper()
+                previous_value = _float_or_zero(previous.get("value_usd"))
+                if (
+                    not symbol
+                    or is_excluded_smart_money_token(symbol)
+                ):
+                    continue
+                if previous_value < SMART_MONEY_THRESHOLD_USD:
+                    continue
 
-        for key, previous in existing.items():
-            if key in seen_keys:
-                continue
-            symbol = str(previous.get("token") or "").strip().upper()
-            previous_value = _float_or_zero(previous.get("value_usd"))
-            if (
-                not symbol
-                or is_excluded_smart_money_token(symbol)
-            ):
-                continue
-            if previous_value < SMART_MONEY_THRESHOLD_USD:
+                overlap_count = int(previous.get("exchange_count") or 0)
+                candidate = {
+                    "exchange": fund_name,
+                    "token": symbol,
+                    "chain": previous.get("chain") or "unknown",
+                    "amount": 0,
+                    "value_usd": 0,
+                    "token_address": previous.get("token_address") or "",
+                    "exchange_count": max(overlap_count, 1),
+                    "score": smart_money_score(0, overlap_count, "removed_or_moved"),
+                }
+                candidates.append((candidate, previous))
+
+        for wallet in _related_wallets_for(fund_name):
+            address = wallet.get("address") or ""
+            source_name = wallet.get("label") or f"{fund_name} related"
+            source_chain = wallet.get("chain") or ""
+            if not address:
                 continue
 
-            overlap_count = int(previous.get("exchange_count") or 0)
-            candidate = {
-                "exchange": fund_name,
-                "token": symbol,
-                "chain": previous.get("chain") or "unknown",
-                "amount": 0,
-                "value_usd": 0,
-                "token_address": previous.get("token_address") or "",
-                "exchange_count": max(overlap_count, 1),
-                "score": smart_money_score(0, overlap_count, "removed_or_moved"),
-            }
-            candidates.append((candidate, previous))
+            related_existing = fetch_existing_signals(source_name, "smart_money")
+            related_initial_snapshot = len(related_existing) == 0
+
+            try:
+                print(f"Arkham related wallet: {source_name} ({address[:10]}...)", flush=True)
+                related_tokens = fetch_arkham_address_portfolio(address, source_chain, SMART_MONEY_THRESHOLD_USD)
+                print(f"   {len(related_tokens)} related-wallet tokens acima de ${SMART_MONEY_THRESHOLD_USD:,.0f}", flush=True)
+            except Exception as exc:
+                print(f"   Arkham related wallet falhou para {source_name}: {exc}", flush=True)
+                related_tokens = []
+
+            for token in related_tokens:
+                symbol = token["symbol"]
+                if is_excluded_smart_money_token(symbol):
+                    continue
+
+                exchange_count = len(token_exchanges.get(symbol, set()))
+                candidate = {
+                    "exchange": source_name,
+                    "token": symbol,
+                    "chain": token["chain"],
+                    "amount": token["amount"],
+                    "value_usd": token["value_usd"],
+                    "token_address": token["token_address"],
+                    "exchange_count": max(exchange_count, 1),
+                    "score": 0,
+                }
+                key = candidate_signal_key(candidate, "smart_money")
+                previous = related_existing.get(key)
+                if previous is None and related_initial_snapshot:
+                    previous = {
+                        "value_usd": candidate["value_usd"],
+                        "amount": candidate["amount"],
+                    }
+                previous_value = _float_or_zero((previous or {}).get("value_usd"))
+                direction = signal_direction(candidate["value_usd"], previous_value)
+                if direction == "flat":
+                    candidate["score"] = int(_float_or_zero((previous or {}).get("score")) or score_candidate(candidate["value_usd"], 1))
+                else:
+                    candidate["score"] = smart_money_score(candidate["value_usd"], exchange_count, direction)
+                if direction != "flat" and candidate["score"] < SMART_MONEY_MIN_SAVE_SCORE:
+                    continue
+                candidates.append((candidate, previous))
 
         if index < len(funds) - 1:
             time.sleep(1.1)

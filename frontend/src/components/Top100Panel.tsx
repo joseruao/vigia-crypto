@@ -51,7 +51,7 @@ export function Top100Panel() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const data = await fetchTop100Rankings({ mode: 'near_support', limit: 5 });
+      const data = await fetchTop100Rankings({ mode: 'near_support', limit: 3 });
       if (mounted) {
         setItems(Array.isArray(data) ? data : []);
         setLoading(false);
@@ -65,7 +65,7 @@ export function Top100Panel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[40rem] z-20 hidden w-[21rem] min-[2100px]:top-[30.5rem] min-[2100px]:w-[43rem] xl:block">
+    <div className="fixed right-4 top-[37rem] z-20 hidden w-[21rem] min-[2100px]:top-[30.5rem] min-[2100px]:w-[43rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
@@ -74,8 +74,8 @@ export function Top100Panel() {
                 <LineChart className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Top100 Today</div>
-                <div className="mt-0.5 text-[10px] text-zinc-500">Technical setups near support</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Top100 Setups</div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">Near support today</div>
               </div>
             </div>
             {items.length > 0 ? (
@@ -86,7 +86,7 @@ export function Top100Panel() {
           </div>
         </div>
 
-        <div className="grid max-h-[15rem] grid-cols-1 gap-2 overflow-auto p-3 min-[2100px]:grid-cols-2">
+        <div className="grid max-h-[11.5rem] grid-cols-1 gap-2 overflow-auto p-3 min-[2100px]:grid-cols-2">
           {loading ? (
             <div className="text-xs text-zinc-500">Loading ranking...</div>
           ) : items.length === 0 ? (

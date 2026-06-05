@@ -426,6 +426,69 @@ def test_arkham_scanner_smart_money_marks_missing_position_as_moved(monkeypatch)
     assert scanner.signal_direction(saved[0][0]["value_usd"], saved[0][2]["value_usd"]) == "removed_or_moved"
 
 
+def test_arkham_scanner_parses_related_wallet_env_formats():
+    scanner = _load_scanner()
+
+    json_wallets = scanner._parse_related_wallets(
+        '[{"entity":"Multicoin Capital","chain":"ethereum","address":"0xabc","label":"Multicoin side wallet"}]'
+    )
+    pipe_wallets = scanner._parse_related_wallets("Wintermute|base|0xdef|Wintermute LP;BadEntry")
+
+    assert json_wallets == [{
+        "entity": "Multicoin Capital",
+        "address": "0xabc",
+        "chain": "ethereum",
+        "label": "Multicoin side wallet",
+    }]
+    assert pipe_wallets == [{
+        "entity": "Wintermute",
+        "address": "0xdef",
+        "chain": "base",
+        "label": "Wintermute LP",
+    }]
+
+
+def test_arkham_scanner_related_wallets_save_initial_baseline(monkeypatch):
+    scanner = _load_scanner()
+    monkeypatch.setattr(scanner, "SMART_MONEY_FUNDS", [{"slug": "multicoin-capital", "name": "Multicoin Capital"}])
+    monkeypatch.setattr(scanner, "_parse_related_wallets", lambda raw=None: [{
+        "entity": "Multicoin Capital",
+        "chain": "ethereum",
+        "address": "0xbd02",
+        "label": "Multicoin related",
+    }])
+    monkeypatch.setattr(scanner, "fetch_existing_signals", lambda entity, entity_type: {})
+    monkeypatch.setattr(scanner, "fetch_arkham_portfolio", lambda slug, min_value_usd: [])
+    monkeypatch.setattr(
+        scanner,
+        "fetch_arkham_address_portfolio",
+        lambda address, chain_hint=None, min_value_usd=0: [{
+            "symbol": "SUP",
+            "chain": "ethereum",
+            "amount": 25_000,
+            "value_usd": 250_000,
+            "token_address": "0xsup",
+        }],
+    )
+    saved = []
+    monkeypatch.setattr(
+        scanner,
+        "save_candidate",
+        lambda candidate, signal_type="holding", previous=None: saved.append((candidate, signal_type, previous)) or True,
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+
+    count, saved_count = scanner.scan_smart_money_with_deltas({})
+
+    assert count == 1
+    assert saved_count == 1
+    assert saved[0][0]["exchange"] == "Multicoin related"
+    assert saved[0][0]["token"] == "SUP"
+    assert saved[0][1] == "smart_money"
+    assert saved[0][2]["value_usd"] == 250_000
+    assert scanner.signal_direction(saved[0][0]["value_usd"], saved[0][2]["value_usd"]) == "flat"
+
+
 def test_arkham_scanner_exchange_scan_uses_separate_signal_type(monkeypatch):
     scanner = _load_scanner()
     monkeypatch.setattr(
