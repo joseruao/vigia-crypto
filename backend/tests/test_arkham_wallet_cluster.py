@@ -93,6 +93,48 @@ def test_cluster_extracts_nested_transfer_address_objects():
     assert transfers[0]["transfer_value_usd"] == "250000.0"
 
 
+def test_cluster_extracts_incoming_transfer_counterpart():
+    cluster = _load_cluster()
+    target = "0x1111111111111111111111111111111111111111"
+    source = "0x3333333333333333333333333333333333333333"
+    payload = {
+        "transfers": [
+            {
+                "fromAddress": {"address": source, "arkhamEntity": {"name": "Unknown Funder"}},
+                "toAddress": {"address": target},
+                "chain": "ethereum",
+                "historicalUSD": 125000,
+            }
+        ]
+    }
+
+    transfers = cluster._extract_transfer_addresses(payload, target, "in")
+
+    assert transfers[0]["address"] == source
+    assert transfers[0]["to_entity"] == "Unknown Funder"
+    assert transfers[0]["transfer_value_usd"] == "125000.0"
+
+
+def test_cluster_rejects_anon_key_when_saving(monkeypatch):
+    cluster = _load_cluster()
+    anon = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJyb2xlIjoiYW5vbiJ9."
+        "signature"
+    )
+    monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
+    monkeypatch.setattr(cluster, "SAVE_TO_SUPABASE", True)
+    monkeypatch.setattr(cluster, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(cluster, "SUPABASE_KEY", anon)
+
+    try:
+        cluster._require_env()
+    except RuntimeError as exc:
+        assert "service_role" in str(exc)
+    else:
+        raise AssertionError("_require_env should reject anon keys when saving")
+
+
 def test_cluster_scores_repeated_entity_connections_and_balance():
     cluster = _load_cluster()
 
@@ -229,7 +271,7 @@ def test_cluster_skips_predicted_entity_candidates(monkeypatch):
     cluster = _load_cluster()
     monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
     monkeypatch.setattr(cluster, "fetch_entity_addresses", lambda entity: [])
-    monkeypatch.setattr(cluster, "fetch_entity_outgoing_transfers", lambda entity: [{
+    monkeypatch.setattr(cluster, "fetch_entity_transfers", lambda entity, flow="out": [{
         "address": "0xfb19085ac3951cb0af7b5a6126f4bff8e2d1f8ee",
         "chain": "ethereum",
         "found_via": entity,
@@ -254,7 +296,7 @@ def test_cluster_skips_labeled_candidate_wallets(monkeypatch):
         "chain": "ethereum",
         "label": "Wintermute 1",
     }])
-    monkeypatch.setattr(cluster, "fetch_outgoing_transfers", lambda address: [{
+    monkeypatch.setattr(cluster, "fetch_transfers", lambda address, flow="out": [{
         "address": "0x3333333333333333333333333333333333333333",
         "chain": "ethereum",
         "found_via": address,
@@ -271,7 +313,7 @@ def test_cluster_falls_back_to_entity_level_transfers(monkeypatch):
     cluster = _load_cluster()
     monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
     monkeypatch.setattr(cluster, "fetch_entity_addresses", lambda entity: [])
-    monkeypatch.setattr(cluster, "fetch_entity_outgoing_transfers", lambda entity: [{
+    monkeypatch.setattr(cluster, "fetch_entity_transfers", lambda entity, flow="out": [{
         "address": "0x3333333333333333333333333333333333333333",
         "chain": "ethereum",
         "found_via": entity,
@@ -318,8 +360,8 @@ def test_cluster_boosts_shared_intermediary_fanout(monkeypatch):
             "transfer_value_usd": "100000",
         } for wallet in wallets]
 
-    monkeypatch.setattr(cluster, "fetch_entity_outgoing_transfers", fake_entity_transfers)
-    monkeypatch.setattr(cluster, "fetch_outgoing_transfers", fake_outgoing)
+    monkeypatch.setattr(cluster, "fetch_entity_transfers", lambda entity, flow="out": fake_entity_transfers(entity))
+    monkeypatch.setattr(cluster, "fetch_transfers", lambda address, flow="out": fake_outgoing(address))
     monkeypatch.setattr(cluster, "fetch_address_label", lambda address: "")
     monkeypatch.setattr(cluster, "fetch_address_balance", lambda address: 500_000)
     monkeypatch.setattr(cluster.time, "sleep", lambda _: None)

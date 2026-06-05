@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import base64
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,6 +52,7 @@ DEFAULT_CLUSTER_ENTITIES = [
 MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
 MAX_SEED_ADDRESSES = int(os.getenv("ARKHAM_CLUSTER_MAX_SEED_ADDRESSES", "10"))
 TRANSFER_LIMIT = int(os.getenv("ARKHAM_CLUSTER_TRANSFER_LIMIT", "50"))
+TRANSFER_FLOW = os.getenv("ARKHAM_CLUSTER_FLOW", "out").strip().lower()
 MAX_DEPTH = int(os.getenv("ARKHAM_CLUSTER_DEPTH", "1"))
 MAX_SECOND_HOP_TARGETS = int(os.getenv("ARKHAM_CLUSTER_MAX_SECOND_HOP", "5"))
 CHECK_EXCHANGE_LINKS = os.getenv("ARKHAM_CLUSTER_CHECK_EXCHANGES", "0").strip().lower() in {"1", "true", "yes"}
@@ -93,6 +95,21 @@ def _require_env() -> None:
         raise RuntimeError("Missing ARKHAM_API_KEY")
     if SAVE_TO_SUPABASE and (not SUPABASE_URL or not SUPABASE_KEY):
         raise RuntimeError("ARKHAM_CLUSTER_SAVE=1 needs SUPABASE_URL and SUPABASE_SERVICE_ROLE")
+    if SAVE_TO_SUPABASE and _jwt_role(SUPABASE_KEY) != "service_role":
+        raise RuntimeError(
+            "ARKHAM_CLUSTER_SAVE=1 needs a Supabase service_role key. "
+            f"Detected jwt_role={_jwt_role(SUPABASE_KEY) or 'unknown'}."
+        )
+
+
+def _jwt_role(token: str) -> str:
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")).decode("utf-8"))
+        return str(data.get("role") or "").strip()
+    except Exception:
+        return ""
 
 
 def _arkham_get_json(endpoint: str, params: dict[str, Any] | None = None) -> Any:
@@ -248,8 +265,8 @@ def _extract_addresses(payload: Any) -> list[dict[str, str]]:
     return addresses
 
 
-def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[str, str]]:
-    """Extract destination addresses from flexible transfer payloads."""
+def _extract_transfer_addresses(payload: Any, source_address: str, flow: str = "out") -> list[dict[str, str]]:
+    """Extract counterparty addresses from flexible transfer payloads."""
     candidates: list[dict[str, str]] = []
     source = _normalize_address(source_address)
     rows = []
@@ -283,27 +300,38 @@ def _extract_transfer_addresses(payload: Any, source_address: str) -> list[dict[
             or row.get("toEntity")
             or row.get("toArkhamEntity")
         )
-        if source and from_addr and from_addr != source:
-            continue
-        if not to_addr or to_addr == source or not _looks_like_address(to_addr):
+        if flow == "in":
+            counterparty = from_addr
+            if source and to_addr and to_addr != source:
+                continue
+        else:
+            counterparty = to_addr
+            if source and from_addr and from_addr != source:
+                continue
+
+        if not counterparty or counterparty == source or not _looks_like_address(counterparty):
             continue
         chain = str(row.get("chain") or row.get("network") or "").strip().lower()
         value = _float(row.get("usdValue") or row.get("valueUsd") or row.get("value") or 0)
-        to_obj = row.get("toAddress") if isinstance(row.get("toAddress"), dict) else {}
-        to_entity = to_obj.get("arkhamEntity") if isinstance(to_obj.get("arkhamEntity"), dict) else {}
-        to_predicted = to_obj.get("predictedEntity") if isinstance(to_obj.get("predictedEntity"), dict) else {}
-        to_label = to_obj.get("arkhamLabel") if isinstance(to_obj.get("arkhamLabel"), dict) else {}
+        counterpart_obj = row.get("fromAddress") if flow == "in" else row.get("toAddress")
+        counterpart_obj = counterpart_obj if isinstance(counterpart_obj, dict) else {}
+        counterpart_entity = counterpart_obj.get("arkhamEntity") if isinstance(counterpart_obj.get("arkhamEntity"), dict) else {}
+        counterpart_predicted = counterpart_obj.get("predictedEntity") if isinstance(counterpart_obj.get("predictedEntity"), dict) else {}
+        counterpart_label = counterpart_obj.get("arkhamLabel") if isinstance(counterpart_obj.get("arkhamLabel"), dict) else {}
         candidates.append({
-            "address": to_addr,
-            "chain": chain or str(to_obj.get("chain") or "").strip().lower(),
+            "address": counterparty,
+            "chain": chain or str(counterpart_obj.get("chain") or "").strip().lower(),
             "found_via": source,
             "transfer_value_usd": str(value or _float(row.get("historicalUSD"))),
-            "to_entity": str(to_entity.get("name") or "").strip(),
-            "to_predicted_entity": str(to_predicted.get("name") or "").strip(),
-            "to_predicted_type": str(to_predicted.get("type") or "").strip(),
-            "to_entity_type": str(to_entity.get("type") or "").strip(),
-            "to_label": str(to_label.get("name") or "").strip(),
-            "to_is_contract": str(bool(row.get("toIsContract") or to_obj.get("contract"))),
+            "to_entity": str(counterpart_entity.get("name") or "").strip(),
+            "to_predicted_entity": str(counterpart_predicted.get("name") or "").strip(),
+            "to_predicted_type": str(counterpart_predicted.get("type") or "").strip(),
+            "to_entity_type": str(counterpart_entity.get("type") or "").strip(),
+            "to_label": str(counterpart_label.get("name") or "").strip(),
+            "to_is_contract": str(bool(
+                (row.get("fromIsContract") if flow == "in" else row.get("toIsContract"))
+                or counterpart_obj.get("contract")
+            )),
             "token_symbol": str(row.get("tokenSymbol") or "").strip(),
         })
     return candidates
@@ -411,22 +439,38 @@ def fetch_entity_addresses(entity_id: str) -> list[dict[str, str]]:
     return addresses
 
 
-def fetch_outgoing_transfers(address: str) -> list[dict[str, str]]:
-    payload = _arkham_get_json("/transfers", params={"base": address, "flow": "out", "limit": TRANSFER_LIMIT})
-    transfers = _extract_transfer_addresses(payload, address)
+def _selected_flows() -> list[str]:
+    if TRANSFER_FLOW in {"both", "all"}:
+        return ["out", "in"]
+    if TRANSFER_FLOW == "in":
+        return ["in"]
+    return ["out"]
+
+
+def fetch_transfers(address: str, flow: str = "out") -> list[dict[str, str]]:
+    payload = _arkham_get_json("/transfers", params={"base": address, "flow": flow, "limit": TRANSFER_LIMIT})
+    transfers = _extract_transfer_addresses(payload, address, flow)
     if DEBUG:
-        print(f"Transfer payload debug for {address[:18]}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
+        print(f"Transfer payload debug for {address[:18]} flow={flow}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
+        print(json.dumps(payload, ensure_ascii=False)[:1200], flush=True)
+    return transfers
+
+
+def fetch_outgoing_transfers(address: str) -> list[dict[str, str]]:
+    return fetch_transfers(address, "out")
+
+
+def fetch_entity_transfers(entity_id: str, flow: str = "out") -> list[dict[str, str]]:
+    payload = _arkham_get_json("/transfers", params={"base": entity_id, "flow": flow, "limit": TRANSFER_LIMIT})
+    transfers = _extract_transfer_addresses(payload, "", flow)
+    if DEBUG:
+        print(f"Transfer payload debug for entity {entity_id} flow={flow}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
         print(json.dumps(payload, ensure_ascii=False)[:1200], flush=True)
     return transfers
 
 
 def fetch_entity_outgoing_transfers(entity_id: str) -> list[dict[str, str]]:
-    payload = _arkham_get_json("/transfers", params={"base": entity_id, "flow": "out", "limit": TRANSFER_LIMIT})
-    transfers = _extract_transfer_addresses(payload, "")
-    if DEBUG:
-        print(f"Transfer payload debug for entity {entity_id}: {_payload_summary(payload)} parsed={len(transfers)}", flush=True)
-        print(json.dumps(payload, ensure_ascii=False)[:1200], flush=True)
-    return transfers
+    return fetch_entity_transfers(entity_id, "out")
 
 
 def fetch_address_label(address: str) -> str:
@@ -557,15 +601,18 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             print(f"[{depth}.{index}/{len(frontier)}] transfers out from {target[:18]}...", flush=True)
             is_known_seed = target in known_addresses
             is_entity_seed = target == entity_id and not _looks_like_address(target)
-            try:
-                transfers = (
-                    fetch_entity_outgoing_transfers(target)
-                    if is_entity_seed
-                    else fetch_outgoing_transfers(target)
-                )
-            except Exception as exc:
-                print(f"  transfer fetch failed: {exc}", flush=True)
-                transfers = []
+            transfers: list[dict[str, str]] = []
+            for flow in _selected_flows():
+                try:
+                    flow_transfers = (
+                        fetch_entity_transfers(target, flow)
+                        if is_entity_seed
+                        else fetch_transfers(target, flow)
+                    )
+                    transfers.extend(flow_transfers)
+                except Exception as exc:
+                    print(f"  transfer fetch failed ({flow}): {exc}", flush=True)
+                time.sleep(1.05)
 
             for transfer in transfers:
                 candidate = transfer["address"]
@@ -583,8 +630,6 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
                     and not _is_pool_or_service_transfer(transfer)
                 ):
                     next_frontier.append((candidate, f"{source_label} -> {_transfer_target_label(transfer)}"))
-
-            time.sleep(1.05)
 
         if next_frontier:
             deduped: list[tuple[str, str]] = []
