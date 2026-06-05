@@ -4,8 +4,9 @@ Refresh last activity for Arkham candidate wallets.
 Standalone local run:
     python backend/worker/arkham_candidate_wallet_activity.py
 
-Reads Supabase candidate_wallets, checks latest Arkham in/out transfer for each
-address, prints the result, and stores it inside raw.last_activity.
+Reads Supabase candidate_wallets, checks latest relevant Arkham in/out transfer
+for each address, prints the result, and stores it in dedicated activity
+columns plus raw.last_activity.
 """
 from __future__ import annotations
 
@@ -36,6 +37,8 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 CANDIDATE_WALLETS_TABLE = os.getenv("CANDIDATE_WALLETS_TABLE", "candidate_wallets")
 LIMIT = int(os.getenv("ARKHAM_ACTIVITY_LIMIT", "50"))
+MIN_ACTIVITY_VALUE_USD = float(os.getenv("ARKHAM_ACTIVITY_MIN_VALUE_USD", "50000"))
+TRANSFER_LOOKBACK_LIMIT = int(os.getenv("ARKHAM_ACTIVITY_TRANSFER_LIMIT", "25"))
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_ACTIVITY_TIMEOUT", "45"))
 
 
@@ -142,7 +145,7 @@ def fetch_latest_transfer(address: str, flow: str) -> dict[str, Any] | None:
     response = requests.get(
         f"{ARKHAM_BASE_URL}/transfers",
         headers=_arkham_headers(),
-        params={"base": address, "flow": flow, "limit": 1},
+        params={"base": address, "flow": flow, "limit": TRANSFER_LOOKBACK_LIMIT},
         timeout=REQUEST_TIMEOUT,
     )
     if response.status_code >= 400:
@@ -151,7 +154,15 @@ def fetch_latest_transfer(address: str, flow: str) -> dict[str, Any] | None:
     rows = _extract_rows(response.json() if response.content else {})
     if not rows:
         return None
-    row = rows[0]
+    relevant_rows = []
+    for row in rows:
+        value_usd = _float(row.get("historicalUSD") or row.get("usdValue") or row.get("valueUsd") or 0)
+        if value_usd >= MIN_ACTIVITY_VALUE_USD:
+            relevant_rows.append(row)
+    if not relevant_rows:
+        return None
+
+    row = relevant_rows[0]
     ts = _parse_ts(row.get("blockTimestamp"))
     from_obj = row.get("fromAddress")
     to_obj = row.get("toAddress")
@@ -188,11 +199,25 @@ def latest_activity(address: str) -> dict[str, Any] | None:
 def save_activity(row: dict[str, Any], activity: dict[str, Any]) -> bool:
     raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
     raw = {**raw, "last_activity": activity, "last_activity_checked_at": datetime.now(timezone.utc).isoformat()}
+    counterparty = activity.get("to") if activity.get("flow") == "out" else activity.get("from")
+    counterparty_label = activity.get("to_label") if activity.get("flow") == "out" else activity.get("from_label")
+    payload = {
+        "last_activity_ts": activity.get("timestamp") or None,
+        "last_activity_value_usd": activity.get("value_usd") or 0,
+        "last_activity_flow": activity.get("flow") or None,
+        "last_activity_token": activity.get("token") or None,
+        "last_activity_chain": activity.get("chain") or None,
+        "last_activity_counterparty": counterparty or None,
+        "last_activity_counterparty_label": counterparty_label or None,
+        "last_activity_tx": activity.get("tx") or None,
+        "activity_checked_at": datetime.now(timezone.utc).isoformat(),
+        "raw": raw,
+    }
     response = requests.patch(
         f"{SUPABASE_URL}/rest/v1/{CANDIDATE_WALLETS_TABLE}",
         headers=_supabase_headers("return=minimal"),
         params={"id": f"eq.{row['id']}"},
-        data=json.dumps({"raw": raw}),
+        data=json.dumps(payload),
         timeout=30,
     )
     if response.status_code not in (200, 204):
@@ -204,7 +229,11 @@ def save_activity(row: dict[str, Any], activity: dict[str, Any]) -> bool:
 def main() -> None:
     _require_env()
     rows = fetch_candidate_wallets()
-    print(f"ARKHAM CANDIDATE WALLET ACTIVITY - {len(rows)} wallet(s)", flush=True)
+    print(
+        f"ARKHAM CANDIDATE WALLET ACTIVITY - {len(rows)} wallet(s), "
+        f"min=${MIN_ACTIVITY_VALUE_USD:,.0f}, transfer_limit={TRANSFER_LOOKBACK_LIMIT}",
+        flush=True,
+    )
     saved = 0
     for index, row in enumerate(rows, 1):
         address = str(row.get("address") or "").strip()
@@ -212,7 +241,11 @@ def main() -> None:
             continue
         activity = latest_activity(address)
         if not activity:
-            print(f"[{index}/{len(rows)}] {address[:12]}... no recent transfer returned", flush=True)
+            print(
+                f"[{index}/{len(rows)}] {address[:12]}... no transfer >= ${MIN_ACTIVITY_VALUE_USD:,.0f} "
+                f"in latest {TRANSFER_LOOKBACK_LIMIT} in/out rows",
+                flush=True,
+            )
             continue
         label = activity.get("to_label") if activity.get("flow") == "out" else activity.get("from_label")
         print(
