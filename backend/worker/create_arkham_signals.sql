@@ -77,6 +77,16 @@ create policy "public_read_exchange_arkham_signals"
   to anon, authenticated
   using (entity_type = 'exchange');
 
+drop policy if exists "public_read_smart_money_arkham_signals" on public.arkham_signals;
+create policy "public_read_smart_money_arkham_signals"
+  on public.arkham_signals
+  for select
+  to anon, authenticated
+  using (
+    entity_type = 'smart_money'
+    and signal_direction in ('new', 'increased', 'decreased')
+  );
+
 grant all on table public.arkham_signals to service_role;
 grant usage, select on sequence public.arkham_signals_id_seq to service_role;
 grant select on table public.arkham_signals to anon, authenticated;
