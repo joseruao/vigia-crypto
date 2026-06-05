@@ -39,7 +39,7 @@ function reason(coin: Top100Coin) {
   if (coin.current_position !== undefined && coin.current_position !== null) {
     parts.push(`${Number(coin.current_position).toFixed(0)}% of range`);
   }
-  return parts.join(' · ') || 'Favorable technical score';
+  return parts.join(' / ') || 'Favorable technical score';
 }
 
 export function Top100Panel() {
@@ -65,7 +65,7 @@ export function Top100Panel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[47rem] z-20 hidden w-[21rem] xl:block">
+    <div className="fixed right-4 top-[40rem] z-20 hidden w-[21rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
@@ -86,7 +86,7 @@ export function Top100Panel() {
           </div>
         </div>
 
-        <div className="max-h-[18rem] space-y-2 overflow-auto p-3">
+        <div className="max-h-[15.5rem] space-y-2 overflow-auto p-3">
           {loading ? (
             <div className="text-xs text-zinc-500">Loading ranking...</div>
           ) : items.length === 0 ? (

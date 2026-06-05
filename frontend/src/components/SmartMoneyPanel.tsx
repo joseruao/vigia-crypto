@@ -44,7 +44,7 @@ export function SmartMoneyPanel() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const data = await fetchSmartMoneySignals({ limit: 6 });
+      const data = await fetchSmartMoneySignals({ limit: 4 });
       if (mounted) {
         setItems(Array.isArray(data) ? data : []);
         setLoading(false);
@@ -58,17 +58,17 @@ export function SmartMoneyPanel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[31rem] z-20 hidden w-[21rem] xl:block">
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
-        <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
+    <div className="fixed right-4 top-[26.75rem] z-20 hidden w-[21rem] xl:block">
+      <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
+        <div className="border-b border-indigo-100 bg-indigo-50/55 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-indigo-700 ring-1 ring-indigo-100">
                 <Waves className="h-4 w-4" />
               </div>
               <div>
                 <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">Smart Money</div>
-                <div className="mt-0.5 text-[10px] text-zinc-500">Arkham entity position changes</div>
+                <div className="mt-0.5 text-[10px] text-zinc-500">Position changes, not necessarily sales</div>
               </div>
             </div>
             {items.length > 0 ? (
@@ -79,7 +79,7 @@ export function SmartMoneyPanel() {
           </div>
         </div>
 
-        <div className="max-h-[13rem] space-y-2 overflow-auto p-3">
+        <div className="max-h-[11.75rem] space-y-2 overflow-auto p-3">
           {loading ? (
             <div className="text-xs text-zinc-500">Loading moves...</div>
           ) : items.length === 0 ? (
@@ -89,7 +89,7 @@ export function SmartMoneyPanel() {
               const direction = directionLabel(signal.signal_direction);
               const chain = chainLabel(signal.chain);
               return (
-                <div key={signal.id || `${signal.entity}-${signal.token}`} className="rounded-xl border border-zinc-200 bg-white p-3 text-xs shadow-sm">
+                <div key={signal.id || `${signal.entity}-${signal.token}`} className="rounded-xl border border-indigo-100 bg-white p-2.5 text-xs shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-bold text-zinc-950">{signal.token}</div>
@@ -101,18 +101,18 @@ export function SmartMoneyPanel() {
                       {direction.label}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <div>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <div className="rounded-lg bg-zinc-50 px-2 py-1.5">
                       <div className="text-[10px] uppercase tracking-wide text-zinc-400">Delta</div>
                       <div className="text-sm font-bold text-zinc-950">{deltaText(signal)}</div>
                     </div>
-                    <div className="text-right">
+                    <div className="rounded-lg bg-zinc-50 px-2 py-1.5 text-right">
                       <div className="text-[10px] uppercase tracking-wide text-zinc-400">Position</div>
                       <div className="text-sm font-bold text-zinc-950">{compactUsd(signal.value_usd)}</div>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-100 pt-2">
-                    <span className="text-[10px] text-zinc-500">Position changed; not necessarily a sale.</span>
+                    <span className="truncate text-[10px] text-zinc-500">Arkham entity move</span>
                     {signal.pair_url ? (
                       <a
                         href={signal.pair_url}
