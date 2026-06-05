@@ -355,6 +355,59 @@ def test_predictions_endpoint_reads_arkham_exchange_signals(monkeypatch):
     assert data[0]["liquidity"] == 5_000_000
     assert data[0]["source"] == "arkham"
 
+def test_smart_money_endpoint_filters_and_sorts_deltas(monkeypatch):
+    monkeypatch.setattr(alerts.supa, "ok", lambda: True)
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+        def json(self):
+            return [
+                {
+                    "id": 1,
+                    "entity": "Wintermute",
+                    "token": "SMALL",
+                    "chain": "ethereum",
+                    "value_usd": 200_000,
+                    "value_delta_usd": 50_000,
+                    "signal_direction": "increased",
+                    "score": 25,
+                    "ts": "2026-06-05T01:00:00+00:00",
+                },
+                {
+                    "id": 2,
+                    "entity": "Wintermute",
+                    "token": "BIG",
+                    "chain": "ethereum",
+                    "value_usd": 900_000,
+                    "value_delta_usd": 500_000,
+                    "signal_direction": "new",
+                    "score": 40,
+                    "ts": "2026-06-05T01:00:00+00:00",
+                },
+                {
+                    "id": 3,
+                    "entity": "Wintermute",
+                    "token": "MOVED",
+                    "chain": "ethereum",
+                    "value_usd": 0,
+                    "value_delta_usd": -300_000,
+                    "signal_direction": "removed_or_moved",
+                    "score": 20,
+                    "ts": "2026-06-05T01:00:00+00:00",
+                },
+            ]
+
+    monkeypatch.setattr(alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+    client = TestClient(app)
+
+    r = client.get("/alerts/smart-money?limit=10")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert [row["token"] for row in data["items"]] == ["BIG", "SMALL"]
+
 def test_arkham_listing_score_keeps_raw_score_without_liquidity():
     row = {
         "source": "arkham",

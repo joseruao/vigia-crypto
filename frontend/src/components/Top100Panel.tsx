@@ -65,7 +65,7 @@ export function Top100Panel() {
   if (hasMessages) return null;
 
   return (
-    <div className="fixed right-4 top-[31rem] z-20 hidden w-[21rem] xl:block">
+    <div className="fixed right-4 top-[47rem] z-20 hidden w-[21rem] xl:block">
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
         <div className="border-b border-zinc-100 bg-zinc-50/80 px-3.5 py-3">
           <div className="flex items-center justify-between gap-2">

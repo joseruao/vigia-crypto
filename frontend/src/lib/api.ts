@@ -48,6 +48,21 @@ export type Top100Coin = {
   change_7d?: number | null;
 };
 
+export type SmartMoneySignal = {
+  id?: number | string | null;
+  entity?: string | null;
+  token?: string | null;
+  chain?: string | null;
+  value_usd?: number | null;
+  previous_value_usd?: number | null;
+  value_delta_usd?: number | null;
+  value_delta_pct?: number | null;
+  signal_direction?: 'new' | 'increased' | 'decreased' | string | null;
+  score?: number | null;
+  pair_url?: string | null;
+  ts?: string | null;
+};
+
 export async function fetchHoldings(params?: {
   exchange?: string;
   min_score?: number;
@@ -81,6 +96,15 @@ export async function fetchTop100Rankings(params?: {
   q.set("mode", params?.mode || "near_support");
   q.set("limit", String(params?.limit ?? 5));
   const res = await fetch(`${API_BASE}/alerts/top100?${q.toString()}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
+export async function fetchSmartMoneySignals(params?: { limit?: number }): Promise<SmartMoneySignal[]> {
+  const q = new URLSearchParams();
+  q.set("limit", String(params?.limit ?? 8));
+  const res = await fetch(`${API_BASE}/alerts/smart-money?${q.toString()}`, { cache: "no-store" });
   if (!res.ok) return [];
   const data = await res.json().catch(() => null);
   return Array.isArray(data?.items) ? data.items : [];

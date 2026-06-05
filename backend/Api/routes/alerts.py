@@ -1156,6 +1156,59 @@ def get_holdings():
         log.error(f"Erro ao processar holdings: {e}", exc_info=True)
         return {"ok": False, "error": str(e), "items": []}
 
+@router.get("/alerts/smart-money")
+def get_smart_money(limit: int = 10):
+    """
+    Devolve movimentos relevantes de insiders/market makers via Arkham.
+    Nao chama reducoes de venda: pode ser venda, pool, bridge ou transferencia.
+    """
+    import logging
+    log = logging.getLogger("vigia")
+
+    if not supa.ok():
+        log.warning("Supabase nao configurado")
+        return {"ok": False, "error": "Supabase nao configurado", "items": []}
+
+    try:
+        safe_limit = max(1, min(int(limit or 10), 25))
+        params = {
+            "entity_type": "eq.smart_money",
+            "signal_direction": "in.(new,increased,decreased)",
+            "select": (
+                "id,signal_key,entity,token,token_address,chain,amount,value_usd,"
+                "previous_value_usd,value_delta_usd,value_delta_pct,previous_amount,"
+                "amount_delta,signal_direction,score,exchange_count,pair_url,analysis_text,ts"
+            ),
+            "limit": "500",
+            "order": "ts.desc",
+        }
+        r = supa.rest_get("arkham_signals", params=params, timeout=8)
+        if r.status_code != 200:
+            log.warning("Erro ao buscar smart money: HTTP %s - %s", r.status_code, r.text[:200])
+            return {"ok": False, "error": r.text[:200], "items": []}
+
+        rows = r.json() or []
+        rows = [
+            row for row in rows
+            if str(row.get("token") or "").strip()
+            and str(row.get("signal_direction") or "") in {"new", "increased", "decreased"}
+            and str(row.get("token") or "").strip().upper() not in TEST_TOKENS
+            and str(row.get("token") or "").strip().upper() not in TOP100_EXCLUDED_SYMBOLS
+            and _num(row, "value_usd") <= LISTING_EXCLUDED_MAX_VALUE_USD
+        ]
+        rows.sort(
+            key=lambda row: (
+                abs(_num(row, "value_delta_usd")),
+                _num(row, "value_usd"),
+                str(row.get("ts") or ""),
+            ),
+            reverse=True,
+        )
+        return {"ok": True, "count": len(rows), "items": rows[:safe_limit]}
+    except Exception as e:
+        log.error("Erro ao processar smart money: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e), "items": []}
+
 @router.get("/alerts/predictions")
 def get_predictions():
     """
