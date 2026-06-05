@@ -152,6 +152,19 @@ def test_cluster_identifies_pool_or_service_transfers():
     assert not cluster._is_pool_or_service_transfer({"to_entity": "", "to_label": ""})
 
 
+def test_cluster_candidate_notes_explain_routes():
+    cluster = _load_cluster()
+
+    notes = cluster._candidate_notes(
+        "0xabc",
+        {"multicoin-capital -> Anchorage Digital Custody -> 0xabc"},
+        {"to_predicted_entity": "GSR Markets", "token_symbol": "USDC"},
+    )
+
+    assert "custody counterparty seen" in notes
+    assert "market-maker route seen" in notes
+
+
 def test_cluster_skips_predicted_entity_candidates(monkeypatch):
     cluster = _load_cluster()
     monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")

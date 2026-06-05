@@ -52,6 +52,11 @@ EXCHANGE_NAMES = {
     "bitget", "mexc", "kucoin", "upbit", "crypto.com", "robinhood",
 }
 
+CUSTODY_NAMES = {
+    "anchorage", "anchorage digital", "fireblocks", "bitgo", "copper", "cobo",
+    "coinbase custody", "hex trust", "komainu",
+}
+
 
 def _headers() -> dict[str, str]:
     return {
@@ -300,6 +305,28 @@ def _is_pool_or_service_transfer(transfer: dict[str, str]) -> bool:
     return False
 
 
+def _candidate_notes(address: str, sources: set[str], meta: dict[str, str]) -> list[str]:
+    notes: list[str] = []
+    source_text = " ".join(sources).lower()
+    meta_text = " ".join(
+        str(meta.get(key) or "")
+        for key in ("to_entity", "to_predicted_entity", "to_label", "token_symbol")
+    ).lower()
+    combined = f"{source_text} {meta_text}"
+
+    if len(sources) >= 2:
+        notes.append("multiple paths from entity")
+    if any(name in combined for name in CUSTODY_NAMES):
+        notes.append("custody counterparty seen")
+    if any(name in combined for name in ("gsr", "flowdesk", "wintermute", "jump", "cumberland")):
+        notes.append("market-maker route seen")
+    if "null address" in combined or "0x0000000000000000000000000000000000000000" in combined:
+        notes.append("mint/burn flow nearby")
+    if "binance" in combined or "coinbase" in combined:
+        notes.append("exchange route seen")
+    return notes
+
+
 def _balance_usd(payload: Any) -> float:
     best = 0.0
     for node in _walk_values(payload):
@@ -506,6 +533,7 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             "entity_source_count": len(sources),
             "label": label,
             "inferred_label": inferred_label,
+            "notes": _candidate_notes(address, sources, meta),
             "exchange_connected": address_has_exchange_link(address) if CHECK_EXCHANGE_LINKS else False,
         }
         candidate["score"] = score_candidate(candidate)
@@ -535,6 +563,11 @@ def main() -> None:
             f"sources={row['entity_source_count']} | chains={chains} | label={row.get('label') or 'unlabeled'}",
             flush=True,
         )
+        if row.get("notes"):
+            print(f"  notes: {', '.join(row['notes'])}", flush=True)
+        path = " | ".join(row.get("found_via") or [])
+        if path:
+            print(f"  path: {path[:240]}", flush=True)
 
 
 if __name__ == "__main__":
