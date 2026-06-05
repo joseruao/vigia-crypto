@@ -40,6 +40,8 @@ ENTITY_ID = os.getenv("ARKHAM_CLUSTER_ENTITY", "wintermute").strip() or "winterm
 MIN_BALANCE_USD = float(os.getenv("ARKHAM_CLUSTER_MIN_BALANCE_USD", "100000"))
 MAX_SEED_ADDRESSES = int(os.getenv("ARKHAM_CLUSTER_MAX_SEED_ADDRESSES", "10"))
 TRANSFER_LIMIT = int(os.getenv("ARKHAM_CLUSTER_TRANSFER_LIMIT", "50"))
+MAX_DEPTH = int(os.getenv("ARKHAM_CLUSTER_DEPTH", "1"))
+MAX_SECOND_HOP_TARGETS = int(os.getenv("ARKHAM_CLUSTER_MAX_SECOND_HOP", "5"))
 CHECK_EXCHANGE_LINKS = os.getenv("ARKHAM_CLUSTER_CHECK_EXCHANGES", "0").strip().lower() in {"1", "true", "yes"}
 DEBUG = os.getenv("ARKHAM_CLUSTER_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
 
@@ -136,6 +138,23 @@ def _payload_summary(payload: Any) -> str:
                 parts.append(f"{key}.len={len(payload[key])} first_keys={sorted(first.keys())[:20]}")
         return " ".join(parts)
     return type(payload).__name__
+
+
+def _parse_seed_addresses(raw: str | None = None) -> list[dict[str, str]]:
+    raw = (raw if raw is not None else os.getenv("ARKHAM_CLUSTER_SEED_ADDRESSES", "")).strip()
+    if not raw:
+        return []
+    seeds: list[dict[str, str]] = []
+    for chunk in raw.replace("\n", ";").split(";"):
+        parts = [part.strip() for part in chunk.split("|")]
+        if not parts or not _looks_like_address(parts[0]):
+            continue
+        seeds.append({
+            "address": _normalize_address(parts[0]),
+            "chain": parts[1].lower() if len(parts) > 1 else "",
+            "label": parts[2] if len(parts) > 2 else "manual seed",
+        })
+    return seeds
 
 
 def _extract_addresses(payload: Any) -> list[dict[str, str]]:
@@ -248,6 +267,19 @@ def _is_exchange_label(label: str) -> bool:
     return any(name in normalized for name in EXCHANGE_NAMES)
 
 
+def _is_pool_or_service_transfer(transfer: dict[str, str]) -> bool:
+    entity_type = str(transfer.get("to_entity_type") or "").strip().lower()
+    label = str(transfer.get("to_label") or "").strip().lower()
+    entity = str(transfer.get("to_entity") or "").strip().lower()
+    if entity_type in {"dex", "cex", "exchange", "bridge"}:
+        return True
+    if any(term in label for term in ("pool", "router", "vault", "contract")):
+        return True
+    if any(term in entity for term in ("pancakeswap", "aerodrome", "hyperswap", "uniswap")):
+        return True
+    return False
+
+
 def _balance_usd(payload: Any) -> float:
     best = 0.0
     for node in _walk_values(payload):
@@ -334,7 +366,11 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     _require_env()
     print(f"ARKHAM WALLET CLUSTER - entity={entity_id}", flush=True)
 
+    manual_seeds = _parse_seed_addresses()
     labeled = fetch_entity_addresses(entity_id)
+    if manual_seeds:
+        print(f"Using {len(manual_seeds)} manual seed address(es).", flush=True)
+        labeled = manual_seeds + labeled
     seed_addresses = labeled[:MAX_SEED_ADDRESSES]
     known_addresses = {row["address"] for row in labeled}
     print(f"Found {len(labeled)} labeled addresses; scanning {len(seed_addresses)} seeds", flush=True)
@@ -348,6 +384,8 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
     else:
         scan_targets = [(entity_id, entity_id)]
         print("No labeled addresses in entity payload; falling back to entity-level transfers.", flush=True)
+
+    first_hop_for_depth: list[dict[str, str]] = []
 
     for index, (target, source_label) in enumerate(scan_targets, 1):
         print(f"[{index}/{len(scan_targets)}] transfers out from {target[:18]}...", flush=True)
@@ -369,8 +407,32 @@ def cluster_entity(entity_id: str = ENTITY_ID) -> list[dict[str, Any]]:
             candidate_sources[candidate].add(source_label)
             if transfer.get("chain"):
                 candidate_chains[candidate].add(transfer["chain"])
+            if MAX_DEPTH >= 2 and not _is_pool_or_service_transfer(transfer):
+                first_hop_for_depth.append(transfer)
 
         time.sleep(1.05)
+
+    if MAX_DEPTH >= 2 and first_hop_for_depth:
+        second_hop_targets = first_hop_for_depth[:MAX_SECOND_HOP_TARGETS]
+        print(f"Depth 2 enabled; scanning {len(second_hop_targets)} first-hop wallet(s).", flush=True)
+        for index, transfer in enumerate(second_hop_targets, 1):
+            target = transfer["address"]
+            source_label = f"{transfer.get('found_via') or entity_id} -> {target}"
+            print(f"[2.{index}/{len(second_hop_targets)}] transfers out from {target[:18]}...", flush=True)
+            try:
+                second_hop = fetch_outgoing_transfers(target)
+            except Exception as exc:
+                print(f"  second-hop transfer fetch failed: {exc}", flush=True)
+                second_hop = []
+            for hop in second_hop:
+                candidate = hop["address"]
+                if candidate in known_addresses:
+                    continue
+                filtered_destinations.append(hop)
+                candidate_sources[candidate].add(source_label)
+                if hop.get("chain"):
+                    candidate_chains[candidate].add(hop["chain"])
+            time.sleep(1.05)
 
     results: list[dict[str, Any]] = []
     for address, sources in sorted(candidate_sources.items(), key=lambda item: len(item[1]), reverse=True):

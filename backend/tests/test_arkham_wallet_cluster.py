@@ -119,6 +119,37 @@ def test_cluster_balance_uses_largest_usd_field():
     assert cluster._balance_usd(payload) == 300_000
 
 
+def test_cluster_parses_manual_seed_addresses():
+    cluster = _load_cluster()
+
+    seeds = cluster._parse_seed_addresses(
+        "0x1111111111111111111111111111111111111111|ethereum|known side wallet;"
+        "bad;0x2222222222222222222222222222222222222222|base"
+    )
+
+    assert seeds == [
+        {
+            "address": "0x1111111111111111111111111111111111111111",
+            "chain": "ethereum",
+            "label": "known side wallet",
+        },
+        {
+            "address": "0x2222222222222222222222222222222222222222",
+            "chain": "base",
+            "label": "manual seed",
+        },
+    ]
+
+
+def test_cluster_identifies_pool_or_service_transfers():
+    cluster = _load_cluster()
+
+    assert cluster._is_pool_or_service_transfer({"to_entity_type": "dex"})
+    assert cluster._is_pool_or_service_transfer({"to_label": "V3 Pool"})
+    assert cluster._is_pool_or_service_transfer({"to_entity": "PancakeSwap"})
+    assert not cluster._is_pool_or_service_transfer({"to_entity": "", "to_label": ""})
+
+
 def test_cluster_skips_labeled_candidate_wallets(monkeypatch):
     cluster = _load_cluster()
     monkeypatch.setattr(cluster, "ARKHAM_API_KEY", "arkham")
