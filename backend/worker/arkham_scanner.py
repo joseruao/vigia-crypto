@@ -529,6 +529,10 @@ def is_excluded_smart_money_token(symbol: str) -> bool:
     normalized = _normalize_symbol(symbol)
     if not normalized:
         return True
+    if not normalized.isascii() or not normalized.replace("-", "").replace(".", "").isalnum():
+        return True
+    if len(normalized) <= 1:
+        return True
     if normalized in LOW_SIGNAL_SMART_MONEY_SYMBOLS:
         return True
     if any(part in normalized for part in ("-USD", "USD.", ".USD")):
@@ -934,6 +938,7 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
         seen_slugs.add(slug)
 
         existing = fetch_existing_signals(fund_name, "smart_money")
+        is_initial_snapshot = len(existing) == 0
         seen_keys: set[str] = set()
 
         try:
@@ -962,16 +967,27 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             }
             key = candidate_signal_key(candidate, "smart_money")
             previous = existing.get(key)
+            if previous is None and is_initial_snapshot:
+                previous = {
+                    "value_usd": candidate["value_usd"],
+                    "amount": candidate["amount"],
+                }
             previous_value = _float_or_zero((previous or {}).get("value_usd"))
             direction = signal_direction(candidate["value_usd"], previous_value)
             if direction == "flat":
-                continue
-            candidate["score"] = smart_money_score(candidate["value_usd"], exchange_count, direction)
-            if candidate["score"] < SMART_MONEY_MIN_SAVE_SCORE:
+                candidate["score"] = int(_float_or_zero((previous or {}).get("score")) or score_candidate(candidate["value_usd"], 1))
+            else:
+                candidate["score"] = smart_money_score(candidate["value_usd"], exchange_count, direction)
+            if direction != "flat" and candidate["score"] < SMART_MONEY_MIN_SAVE_SCORE:
                 continue
 
             seen_keys.add(key)
             candidates.append((candidate, previous))
+
+        if is_initial_snapshot:
+            if index < len(funds) - 1:
+                time.sleep(1.1)
+            continue
 
         for key, previous in existing.items():
             if key in seen_keys:
