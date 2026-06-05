@@ -6,6 +6,7 @@ import {
   Radar,
   Search,
   TrendingUp,
+  Waves,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -22,37 +23,44 @@ type Props = { visible: boolean; onSelect: (text: string) => void };
 const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
   pt: [
     {
-      label: 'Start here',
-      description: 'What this radar detects.',
-      prompt: 'What do you do and how can you help me?',
+      label: 'Começar aqui',
+      description: 'O que este radar detecta.',
+      prompt: 'O que fazes e como me podes ajudar?',
       icon: CircleHelp,
       tone: 'text-zinc-700 bg-zinc-100',
     },
     {
-      label: 'Top100 setups',
-      description: 'Coins near support today.',
-      prompt: 'Which top100 coins are near support?',
+      label: 'Top100 hoje',
+      description: 'Moedas perto de suporte.',
+      prompt: 'Quais do top100 estão perto do suporte?',
       icon: TrendingUp,
       tone: 'text-emerald-700 bg-emerald-50',
     },
     {
-      label: 'Unlisted token radar',
-      description: 'Tokens not listed on that exchange yet.',
-      prompt: 'Which tokens are in exchange wallets but not listed yet?',
+      label: 'Possíveis listings',
+      description: 'Tokens ainda não listados naquela exchange.',
+      prompt: 'Que tokens estão em wallets de exchanges mas ainda não foram listados?',
       icon: Radar,
       tone: 'text-blue-700 bg-blue-50',
     },
     {
-      label: 'Analyze a coin',
-      description: 'Entry, target, stop and RSI.',
-      prompt: 'Analyze BTC',
+      label: 'Analisar moeda',
+      description: 'Entrada, alvo, stop e RSI.',
+      prompt: 'Analisa BTC',
       icon: CandlestickChart,
       tone: 'text-violet-700 bg-violet-50',
     },
     {
-      label: 'Daily changes',
-      description: 'What improved in the top100.',
-      prompt: 'What changed in the top100 since yesterday?',
+      label: 'Whales / insiders',
+      description: 'O que fundos e market makers mexeram.',
+      prompt: 'O que as whales compraram hoje?',
+      icon: Waves,
+      tone: 'text-indigo-700 bg-indigo-50',
+    },
+    {
+      label: 'Mudanças de hoje',
+      description: 'O que melhorou no top100.',
+      prompt: 'O que mudou no top100 desde ontem?',
       icon: Search,
       tone: 'text-sky-700 bg-sky-50',
     },
@@ -92,6 +100,13 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
       prompt: 'What changed in the top100 since yesterday?',
       icon: Search,
       tone: 'text-sky-700 bg-sky-50',
+    },
+    {
+      label: 'Whales / insiders',
+      description: 'What funds and market makers moved today.',
+      prompt: 'What did whales buy today?',
+      icon: Waves,
+      tone: 'text-indigo-700 bg-indigo-50',
     },
   ],
 };
