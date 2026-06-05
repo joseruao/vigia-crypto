@@ -155,6 +155,29 @@ def test_get_smart_money_orders_by_delta(monkeypatch):
     assert result["answer"].find("HIGH") < result["answer"].find("LOW")
 
 
+def test_get_smart_money_formats_portuguese_response(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return [{
+                "token": "HYPE",
+                "entity": "Wintermute",
+                "chain": "hyperevm",
+                "score": 60,
+                "value_usd": 1_000_000,
+                "value_delta_usd": 120_000,
+                "signal_direction": "increased",
+            }]
+
+    monkeypatch.setattr(tools.alerts.supa, "rest_get", lambda *args, **kwargs: FakeResponse())
+
+    result = tools.get_smart_money("pt")
+
+    assert "Movimentos de whales" in result["answer"]
+    assert "aumentou" in result["answer"]
+    assert "Variacao $120,000" in result["answer"]
+
+
 def test_execute_tool_dispatches_known_sync_tool(monkeypatch):
     monkeypatch.setattr(tools, "get_listing_predictions", lambda: {"ok": True, "answer": "LISTINGS"})
 

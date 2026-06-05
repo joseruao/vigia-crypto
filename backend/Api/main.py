@@ -332,7 +332,7 @@ async def chat_stream(req: ChatRequest):
             return StreamingResponse(_listings(), media_type="text/plain")
 
         if _is_smart_money_q:
-            result = await execute_tool("get_smart_money")
+            result = await execute_tool("get_smart_money", {"lang": lang})
             def _smart_money():
                 yield result.get("answer") or ("Could not fetch smart money signals now." if lang == "en" else "Nao consegui obter smart money agora.")
             return StreamingResponse(_smart_money(), media_type="text/plain")

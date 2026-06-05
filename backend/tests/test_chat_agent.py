@@ -116,6 +116,7 @@ def test_chat_stream_routes_whale_suggestion_to_smart_money_before_top100(monkey
 
     async def fake_execute_tool(name, arguments=None):
         assert name == "get_smart_money"
+        assert arguments == {"lang": "pt"}
         return {"ok": True, "answer": "FAST SMART MONEY"}
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")

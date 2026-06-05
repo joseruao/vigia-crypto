@@ -108,7 +108,7 @@ def get_top100_delta() -> Dict[str, Any]:
     return alerts._answer_top100_buy_watchlist(prompt="o que mudou no top100 desde ontem?")
 
 
-def get_smart_money() -> Dict[str, Any]:
+def get_smart_money(lang: str = "en") -> Dict[str, Any]:
     params = {
         "entity_type": "eq.smart_money",
         "signal_direction": "in.(new,increased,decreased)",
@@ -136,8 +136,14 @@ def get_smart_money() -> Dict[str, Any]:
     except Exception as exc:
         return _answer_payload(f"Could not fetch smart money signals now: {exc}", count=0, items=[])
 
+    english = str(lang or "en").lower().startswith("en")
     if not rows:
-        return _answer_payload("No smart money moves stored yet. Let the Arkham scanner run twice so it can compare deltas.", count=0, items=[])
+        msg = (
+            "No smart money moves stored yet. Let the Arkham scanner run twice so it can compare deltas."
+            if english else
+            "Ainda nao ha movimentos de smart money guardados. Deixa o scanner Arkham correr duas vezes para conseguir comparar deltas."
+        )
+        return _answer_payload(msg, count=0, items=[])
 
     rows = sorted(
         rows,
@@ -148,7 +154,18 @@ def get_smart_money() -> Dict[str, Any]:
         reverse=True,
     )[:10]
 
-    lines = ["**Smart money / whale moves**\n"]
+    def _direction_label(value: str) -> str:
+        if english:
+            return {"new": "new position", "increased": "increased", "decreased": "reduced"}.get(value, "changed")
+        return {"new": "nova posicao", "increased": "aumentou", "decreased": "reduziu"}.get(value, "mudou")
+
+    title = "**Smart money / whale moves**\n" if english else "**Movimentos de whales / insiders**\n"
+    subtitle = (
+        "Largest Arkham-tracked position changes. This is not automatically a buy or sell.\n"
+        if english else
+        "Maiores alteracoes de posicao detectadas via Arkham. Isto nao e automaticamente compra ou venda.\n"
+    )
+    lines = [title, subtitle]
     for row in rows:
         token = str(row.get("token") or "?").upper()
         fund = row.get("entity") or row.get("exchange") or "Unknown fund"
@@ -156,17 +173,26 @@ def get_smart_money() -> Dict[str, Any]:
         score = row.get("score")
         value = row.get("value_usd")
         delta = row.get("value_delta_usd")
-        direction = str(row.get("signal_direction") or "changed").replace("_", " ")
+        direction = _direction_label(str(row.get("signal_direction") or "changed"))
         score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "N/A"
         value_txt = f"${value:,.0f}" if isinstance(value, (int, float)) else "N/A"
-        delta_txt = f"Delta ${delta:,.0f}" if isinstance(delta, (int, float)) else "Delta N/A"
-        line = f"- **{token}** - {fund} - {chain} - {direction} - {delta_txt} - Position {value_txt} - Score {score_txt}"
+        if isinstance(delta, (int, float)):
+            delta_label = "Delta" if english else "Variacao"
+            delta_txt = f"{delta_label} ${delta:,.0f}"
+        else:
+            delta_txt = "Delta N/A" if english else "Variacao N/A"
+        position_label = "Position" if english else "Posicao"
+        line = f"- **{token}** - {fund} - {chain} - {direction} - {delta_txt} - {position_label} {value_txt} - Score {score_txt}"
         pair_url = row.get("pair_url")
         if pair_url:
             line += f" - [DexScreener]({pair_url})"
         lines.append(line)
 
-    lines.append("\n_Note: a position change is not automatically a buy/sell; it can also be a transfer, bridge, custody move or LP action._")
+    lines.append(
+        "\n_Note: a position change can be a transfer, bridge, custody move or LP action._"
+        if english else
+        "\n_Nota: uma alteracao de posicao pode ser transferencia, bridge, custodia ou movimento de LP._"
+    )
     return _answer_payload("\n".join(lines), count=len(rows), items=rows)
 
 
@@ -207,7 +233,11 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_listing_predictions",
             "description": "Lista potenciais listings com base em tokens acumulados por wallets de exchanges e ainda nao listados na propria exchange.",
-            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+            "parameters": {
+                "type": "object",
+                "properties": {"lang": {"type": "string", "enum": ["pt", "en"]}},
+                "additionalProperties": False,
+            },
         },
     },
     {
@@ -250,7 +280,7 @@ async def execute_tool(name: str, arguments: Dict[str, Any] | None = None) -> Di
     if name == "get_top100_delta":
         return get_top100_delta()
     if name == "get_smart_money":
-        return get_smart_money()
+        return get_smart_money(str(args.get("lang") or "en"))
     return {"ok": False, "error": f"Ferramenta desconhecida: {name}", "answer": "Ferramenta desconhecida."}
 
 
