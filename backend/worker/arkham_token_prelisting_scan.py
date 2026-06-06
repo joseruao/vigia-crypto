@@ -76,6 +76,7 @@ MARKET_MAKER_WORDS = {
 INFRA_SOURCE_WORDS = EXCHANGE_OR_POOL_WORDS | MARKET_MAKER_WORDS
 ZERO_ADDRESSES = {
     "0x0000000000000000000000000000000000000000",
+    "0x000000000000000000000000000000000000dead",
     "11111111111111111111111111111111",
 }
 
@@ -509,6 +510,8 @@ def classify_candidate(candidate: dict[str, Any]) -> str:
     lower = text.lower()
     if any(word in lower for word in MARKET_MAKER_WORDS):
         return "market_maker_route"
+    if any(word in lower for word in ("distributor", "airdrop", "claim", "gnosis safe", "proxy")):
+        return "distribution_route"
     if any(word in lower for word in ("treasury", "foundation", "deploy", "team")):
         return "project_source"
     if any(word in lower for word in ("custody", "anchorage", "bitgo", "fireblocks")):
@@ -547,7 +550,7 @@ def score_candidate(candidate: dict[str, Any]) -> int:
         score += 5
 
     classification = classify_candidate(candidate)
-    if classification in {"market_maker_route", "project_source", "custody_route"}:
+    if classification in {"market_maker_route", "project_source", "custody_route", "distribution_route"}:
         score += 10
     if pre_out >= total * 1.2 and total > 0:
         score -= 35

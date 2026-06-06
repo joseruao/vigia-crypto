@@ -128,6 +128,11 @@ def test_prelisting_skips_null_or_burn_routes(monkeypatch):
             "toAddress": {"address": "0x2222222222222222222222222222222222222222"},
             "historicalUSD": 1_000_000,
         },
+        {
+            "fromAddress": {"address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            "toAddress": {"address": "0x000000000000000000000000000000000000dead"},
+            "historicalUSD": 1_000_000,
+        },
     ])
 
     assert candidates == {}
@@ -181,6 +186,15 @@ def test_prelisting_score_penalizes_pre_listing_exit(monkeypatch):
 
     assert scan.score_candidate(held) > scan.score_candidate(exited)
     assert scan.score_candidate(exited) <= 35
+
+
+def test_prelisting_classifies_distribution_routes():
+    scan = _load_prelisting()
+
+    assert scan.classify_candidate({
+        "source_entities": {"EdgeDistributor (Proxy)", "Gnosis Safe Proxy"},
+        "labels": set(),
+    }) == "distribution_route"
 
 
 def test_prelisting_supabase_row_is_serializable(monkeypatch):
