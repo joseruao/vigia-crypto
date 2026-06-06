@@ -241,6 +241,36 @@ def test_prelisting_classifies_distribution_routes():
     }) == "distribution_route"
 
 
+def test_prelisting_filters_distribution_routes_from_final_candidates(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "FILTER_DISTRIBUTION_ROUTES", True)
+    monkeypatch.setattr(scan, "FILTER_EXITED_BEFORE_LISTING", True)
+
+    candidate = {
+        "source_entities": {"EdgeDistributor (Proxy)"},
+        "labels": set(),
+        "total_in_usd": 1_000_000,
+        "pre_listing_out_usd": 0,
+    }
+
+    assert not scan.is_investigable_candidate(candidate)
+
+
+def test_prelisting_can_keep_distribution_routes_for_audit(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "FILTER_DISTRIBUTION_ROUTES", False)
+    monkeypatch.setattr(scan, "FILTER_EXITED_BEFORE_LISTING", True)
+
+    candidate = {
+        "source_entities": {"EdgeDistributor (Proxy)"},
+        "labels": set(),
+        "total_in_usd": 1_000_000,
+        "pre_listing_out_usd": 0,
+    }
+
+    assert scan.is_investigable_candidate(candidate)
+
+
 def test_prelisting_supabase_row_is_serializable(monkeypatch):
     scan = _load_prelisting()
     monkeypatch.setattr(scan, "TOKEN_SYMBOL", "AIGENSYN")

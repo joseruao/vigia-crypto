@@ -58,6 +58,7 @@ SELL_CHECK_LIMIT = int(os.getenv("ARKHAM_PRELISTING_SELL_CHECK_LIMIT", "10"))
 SELL_CHECK_MIN_USD = float(os.getenv("ARKHAM_PRELISTING_SELL_MIN_USD", "25000"))
 MAX_PRELISTING_OUT_RATIO = float(os.getenv("ARKHAM_PRELISTING_MAX_PRE_OUT_RATIO", "0.5"))
 FILTER_EXITED_BEFORE_LISTING = os.getenv("ARKHAM_PRELISTING_FILTER_EXITED", "1").strip().lower() in {"1", "true", "yes"}
+FILTER_DISTRIBUTION_ROUTES = os.getenv("ARKHAM_PRELISTING_FILTER_DISTRIBUTION_ROUTES", "1").strip().lower() in {"1", "true", "yes"}
 SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {"1", "true", "yes"}
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
@@ -585,6 +586,12 @@ def held_through_listing(candidate: dict[str, Any]) -> bool:
     return pre_out <= max(SELL_CHECK_MIN_USD, total * MAX_PRELISTING_OUT_RATIO)
 
 
+def is_investigable_candidate(candidate: dict[str, Any]) -> bool:
+    if FILTER_DISTRIBUTION_ROUTES and classify_candidate(candidate) == "distribution_route":
+        return False
+    return held_through_listing(candidate)
+
+
 def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = sorted(candidates.values(), key=lambda row: float(row.get("total_in_usd") or 0), reverse=True)
     enriched: list[dict[str, Any]] = []
@@ -609,8 +616,10 @@ def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, A
         candidate["balance_usd"] = balance_usd
         candidate["classification"] = classify_candidate(candidate)
         candidate["score"] = score_candidate(candidate)
-        if held_through_listing(candidate):
+        if is_investigable_candidate(candidate):
             enriched.append(candidate)
+        elif candidate["classification"] == "distribution_route":
+            print("    skipped: distribution/presale/claim route", flush=True)
         else:
             print(
                 f"    skipped: exited before listing "
