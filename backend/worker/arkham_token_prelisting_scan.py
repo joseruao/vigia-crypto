@@ -67,6 +67,10 @@ EXCHANGE_OR_POOL_WORDS = {
     "mexc", "kucoin", "upbit", "htx", "crypto.com", "uniswap", "pancakeswap",
     "raydium", "aerodrome", "curve", "balancer", "pool", "bridge",
 }
+ZERO_ADDRESSES = {
+    "0x0000000000000000000000000000000000000000",
+    "11111111111111111111111111111111",
+}
 
 
 def _headers() -> dict[str, str]:
@@ -193,6 +197,14 @@ def _is_service_destination(value: dict[str, Any]) -> bool:
     if entity_type in EXCHANGE_OR_POOL_TYPES:
         return True
     return any(word in name for word in EXCHANGE_OR_POOL_WORDS)
+
+
+def _is_null_or_burn_address(address: str, obj: dict[str, Any] | None = None) -> bool:
+    normalized = _normalize_address(address)
+    if normalized in ZERO_ADDRESSES:
+        return True
+    name = _entity_name(obj or {}).lower()
+    return "null address" in name or "burn" in name
 
 
 def _extract_transfer_list(payload: Any) -> list[dict[str, Any]]:
@@ -341,12 +353,13 @@ def fetch_wallet_balance_usd(address: str) -> float:
 
 def _balance_usd(payload: Any) -> float:
     values: list[float] = []
+    usd_markers = ("usd", "totalbalanceusd", "valueusd", "historicalusd")
 
     def walk(value: Any) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
                 lowered = str(key).lower()
-                if any(marker in lowered for marker in ("usd", "balance", "value")):
+                if any(marker in lowered for marker in usd_markers):
                     parsed = _to_float(child, -1)
                     if parsed >= 0:
                         values.append(parsed)
@@ -365,7 +378,13 @@ def aggregate_accumulation(transfers: list[dict[str, Any]]) -> dict[str, dict[st
         to_obj = _address_obj(row.get("toAddress") or row.get("to") or row.get("recipient"))
         from_obj = _address_obj(row.get("fromAddress") or row.get("from") or row.get("sender"))
         address = _normalize_address(to_obj.get("address") or to_obj.get("id"))
-        if not address or _is_service_destination(to_obj):
+        from_address = _normalize_address(from_obj.get("address") or from_obj.get("id"))
+        if (
+            not address
+            or _is_null_or_burn_address(address, to_obj)
+            or _is_null_or_burn_address(from_address, from_obj)
+            or _is_service_destination(to_obj)
+        ):
             continue
         usd = transfer_usd(row)
         if usd < MIN_TRANSFER_USD:

@@ -74,6 +74,42 @@ def test_prelisting_skips_exchange_or_pool_destinations(monkeypatch):
     assert candidates == {}
 
 
+def test_prelisting_skips_null_or_burn_routes(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "MIN_TRANSFER_USD", 50_000)
+
+    candidates = scan.aggregate_accumulation([
+        {
+            "fromAddress": {"address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            "toAddress": {"address": "0x0000000000000000000000000000000000000000"},
+            "historicalUSD": 1_000_000,
+        },
+        {
+            "fromAddress": {
+                "address": "0x0000000000000000000000000000000000000000",
+                "arkhamEntity": {"name": "Null Address"},
+            },
+            "toAddress": {"address": "0x2222222222222222222222222222222222222222"},
+            "historicalUSD": 1_000_000,
+        },
+    ])
+
+    assert candidates == {}
+
+
+def test_prelisting_balance_ignores_raw_token_amount_fields():
+    scan = _load_prelisting()
+
+    payload = {
+        "balance": 10**27,
+        "tokenBalance": 10**24,
+        "totalBalanceUsd": 250_000,
+        "chains": {"ethereum": {"balance": 10**18, "usd": 125_000}},
+    }
+
+    assert scan._balance_usd(payload) == 250_000
+
+
 def test_prelisting_scores_accumulation_that_did_not_exit(monkeypatch):
     scan = _load_prelisting()
     monkeypatch.setattr(scan, "LISTING_TS", "2026-05-22T07:00:00Z")
