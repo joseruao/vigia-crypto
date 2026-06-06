@@ -62,6 +62,7 @@ REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
 TOKEN_ADDRESS_LOOKUP = os.getenv("ARKHAM_PRELISTING_LOOKUP_ADDRESSES", "1").strip().lower() in {"1", "true", "yes"}
 TOKEN_SEARCH_LOOKUP = os.getenv("ARKHAM_PRELISTING_SEARCH_TOKEN", "1").strip().lower() in {"1", "true", "yes"}
 SKIP_INFRA_SOURCES = os.getenv("ARKHAM_PRELISTING_SKIP_INFRA_SOURCES", "1").strip().lower() in {"1", "true", "yes"}
+SKIP_DISTRIBUTION_SOURCES = os.getenv("ARKHAM_PRELISTING_SKIP_DISTRIBUTION_SOURCES", "1").strip().lower() in {"1", "true", "yes"}
 
 EXCHANGE_OR_POOL_TYPES = {"cex", "dex", "bridge", "service", "pool"}
 EXCHANGE_OR_POOL_WORDS = {
@@ -74,6 +75,10 @@ MARKET_MAKER_WORDS = {
     "flow traders", "market maker", "amber", "keyrock", "b2c2", "falconx",
 }
 INFRA_SOURCE_WORDS = EXCHANGE_OR_POOL_WORDS | MARKET_MAKER_WORDS
+DISTRIBUTION_SOURCE_WORDS = {
+    "distributor", "airdrop", "claim", "gnosis safe", "proxy", "presale",
+    "pre-sale", "sale", "vesting", "token distributor",
+}
 ZERO_ADDRESSES = {
     "0x0000000000000000000000000000000000000000",
     "0x000000000000000000000000000000000000dead",
@@ -213,6 +218,11 @@ def _is_infra_source(value: dict[str, Any]) -> bool:
     if entity_type in EXCHANGE_OR_POOL_TYPES:
         return True
     return any(word in name for word in INFRA_SOURCE_WORDS)
+
+
+def _is_distribution_source(value: dict[str, Any]) -> bool:
+    name = _entity_name(value).lower()
+    return any(word in name for word in DISTRIBUTION_SOURCE_WORDS)
 
 
 def _is_null_or_burn_address(address: str, obj: dict[str, Any] | None = None) -> bool:
@@ -453,6 +463,7 @@ def aggregate_accumulation(transfers: list[dict[str, Any]]) -> dict[str, dict[st
             or _is_null_or_burn_address(from_address, from_obj)
             or _is_service_destination(to_obj)
             or (SKIP_INFRA_SOURCES and _is_infra_source(from_obj))
+            or (SKIP_DISTRIBUTION_SOURCES and _is_distribution_source(from_obj))
         ):
             continue
         usd = transfer_usd(row)
@@ -510,7 +521,7 @@ def classify_candidate(candidate: dict[str, Any]) -> str:
     lower = text.lower()
     if any(word in lower for word in MARKET_MAKER_WORDS):
         return "market_maker_route"
-    if any(word in lower for word in ("distributor", "airdrop", "claim", "gnosis safe", "proxy")):
+    if any(word in lower for word in DISTRIBUTION_SOURCE_WORDS):
         return "distribution_route"
     if any(word in lower for word in ("treasury", "foundation", "deploy", "team")):
         return "project_source"
@@ -550,7 +561,7 @@ def score_candidate(candidate: dict[str, Any]) -> int:
         score += 5
 
     classification = classify_candidate(candidate)
-    if classification in {"market_maker_route", "project_source", "custody_route", "distribution_route"}:
+    if classification in {"market_maker_route", "project_source", "custody_route"}:
         score += 10
     if pre_out >= total * 1.2 and total > 0:
         score -= 35

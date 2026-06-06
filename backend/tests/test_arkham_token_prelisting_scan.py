@@ -79,6 +79,7 @@ def test_prelisting_skips_infra_sources_by_default(monkeypatch):
     scan = _load_prelisting()
     monkeypatch.setattr(scan, "MIN_TRANSFER_USD", 50_000)
     monkeypatch.setattr(scan, "SKIP_INFRA_SOURCES", True)
+    monkeypatch.setattr(scan, "SKIP_DISTRIBUTION_SOURCES", True)
 
     candidates = scan.aggregate_accumulation([
         {
@@ -105,9 +106,35 @@ def test_prelisting_skips_infra_sources_by_default(monkeypatch):
             "toAddress": {"address": "0x3333333333333333333333333333333333333333"},
             "historicalUSD": 1_000_000,
         },
+        {
+            "fromAddress": {
+                "address": "0xdddddddddddddddddddddddddddddddddddddddd",
+                "arkhamEntity": {"name": "EdgeDistributor (Proxy)"},
+            },
+            "toAddress": {"address": "0x4444444444444444444444444444444444444444"},
+            "historicalUSD": 1_000_000,
+        },
     ])
 
     assert candidates == {}
+
+
+def test_prelisting_can_keep_distribution_sources_when_requested(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "MIN_TRANSFER_USD", 50_000)
+    monkeypatch.setattr(scan, "SKIP_INFRA_SOURCES", True)
+    monkeypatch.setattr(scan, "SKIP_DISTRIBUTION_SOURCES", False)
+
+    candidates = scan.aggregate_accumulation([{
+        "fromAddress": {
+            "address": "0xdddddddddddddddddddddddddddddddddddddddd",
+            "arkhamEntity": {"name": "EdgeDistributor (Proxy)"},
+        },
+        "toAddress": {"address": "0x4444444444444444444444444444444444444444"},
+        "historicalUSD": 1_000_000,
+    }])
+
+    assert "0x4444444444444444444444444444444444444444" in candidates
 
 
 def test_prelisting_skips_null_or_burn_routes(monkeypatch):
