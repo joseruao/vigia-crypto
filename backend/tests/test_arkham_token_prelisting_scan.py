@@ -113,6 +113,7 @@ def test_prelisting_score_penalizes_pre_listing_exit(monkeypatch):
 def test_prelisting_supabase_row_is_serializable(monkeypatch):
     scan = _load_prelisting()
     monkeypatch.setattr(scan, "TOKEN_SYMBOL", "AIGENSYN")
+    monkeypatch.setattr(scan, "TOKEN_DISPLAY", "AIGENSYN")
     monkeypatch.setattr(scan, "TOKEN_ID", "aigensyn")
 
     row = scan.row_for_supabase({
@@ -138,3 +139,20 @@ def test_prelisting_supabase_row_is_serializable(monkeypatch):
     assert row["first_seen"] == "2026-04-20T00:00:00Z"
     assert row["source_entities"] == ["Project Treasury"]
     assert row["raw"]["sample_txs"] == [{"hash": "0xabc"}]
+
+
+def test_prelisting_resolves_token_filters_with_addresses(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "TOKEN_FILTER", [])
+    monkeypatch.setattr(scan, "TOKEN_ID", "gensyn")
+    monkeypatch.setattr(scan, "TOKEN_SYMBOL", "AI")
+    monkeypatch.setattr(scan, "TOKEN_DISPLAY", "AIGENSYN")
+    monkeypatch.setattr(scan, "_RESOLVED_TOKEN_FILTERS", None)
+    monkeypatch.setattr(scan, "fetch_token_addresses", lambda: ["0x1111111111111111111111111111111111111111"])
+
+    assert scan.resolve_token_filters() == [
+        "gensyn",
+        "AI",
+        "AIGENSYN",
+        "0x1111111111111111111111111111111111111111",
+    ]

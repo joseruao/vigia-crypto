@@ -37,11 +37,12 @@ ARKHAM_API_KEY = os.getenv("ARKHAM_API_KEY", "").strip()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
-TOKEN_SYMBOL = os.getenv("ARKHAM_PRELISTING_TOKEN_SYMBOL", "AIGENSYN").strip().upper()
-TOKEN_ID = os.getenv("ARKHAM_PRELISTING_TOKEN_ID", "aigensyn").strip()
+TOKEN_SYMBOL = os.getenv("ARKHAM_PRELISTING_TOKEN_SYMBOL", "AI").strip().upper()
+TOKEN_DISPLAY = os.getenv("ARKHAM_PRELISTING_TOKEN_DISPLAY", "AIGENSYN").strip().upper()
+TOKEN_ID = os.getenv("ARKHAM_PRELISTING_TOKEN_ID", "gensyn").strip()
 TOKEN_FILTER = [
     part.strip()
-    for part in os.getenv("ARKHAM_PRELISTING_TOKEN_FILTER", TOKEN_ID).replace(";", ",").split(",")
+    for part in os.getenv("ARKHAM_PRELISTING_TOKEN_FILTER", "").replace(";", ",").split(",")
     if part.strip()
 ]
 LISTING_EXCHANGE = os.getenv("ARKHAM_PRELISTING_EXCHANGE", "OKX").strip()
@@ -58,6 +59,7 @@ SELL_CHECK_MIN_USD = float(os.getenv("ARKHAM_PRELISTING_SELL_MIN_USD", "25000"))
 SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {"1", "true", "yes"}
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
+TOKEN_ADDRESS_LOOKUP = os.getenv("ARKHAM_PRELISTING_LOOKUP_ADDRESSES", "1").strip().lower() in {"1", "true", "yes"}
 
 EXCHANGE_OR_POOL_TYPES = {"cex", "dex", "bridge", "service", "pool"}
 EXCHANGE_OR_POOL_WORDS = {
@@ -233,8 +235,9 @@ def transfer_token_symbol(row: dict[str, Any]) -> str:
 
 
 def fetch_prelisting_transfers(offset: int = 0) -> list[dict[str, Any]]:
+    token_filters = resolve_token_filters()
     params = {
-        "tokens": TOKEN_FILTER,
+        "tokens": token_filters,
         "timeGte": WINDOW_START,
         "timeLte": WINDOW_END,
         "usdGte": str(MIN_TRANSFER_USD),
@@ -251,7 +254,7 @@ def fetch_wallet_outflows(address: str, start: str, end: str | None = None) -> l
     params: dict[str, Any] = {
         "base": address,
         "flow": "out",
-        "tokens": TOKEN_FILTER,
+        "tokens": resolve_token_filters(),
         "timeGte": start,
         "usdGte": str(SELL_CHECK_MIN_USD),
         "sortKey": "usd",
@@ -262,6 +265,73 @@ def fetch_wallet_outflows(address: str, start: str, end: str | None = None) -> l
         params["timeLte"] = end
     payload = _arkham_get_json("/transfers", params=params)
     return _extract_transfer_list(payload)
+
+
+_RESOLVED_TOKEN_FILTERS: list[str] | None = None
+
+
+def _extract_token_addresses(payload: Any) -> list[str]:
+    addresses: list[str] = []
+
+    def add(value: Any, chain_hint: str = "") -> None:
+        text = str(value or "").strip()
+        if not text:
+            return
+        if text.startswith("0x") and len(text) == 42:
+            addresses.append(text.lower())
+        elif chain_hint and text:
+            addresses.append(text)
+
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if isinstance(value, str):
+                if key.startswith("0x") and len(key) == 42:
+                    add(key)
+                add(value, str(key))
+            elif isinstance(value, dict):
+                chain = str(value.get("chain") or key)
+                add(value.get("address") or value.get("tokenAddress") or value.get("contractAddress"), chain)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        chain = str(item.get("chain") or key)
+                        add(item.get("address") or item.get("tokenAddress") or item.get("contractAddress"), chain)
+                    else:
+                        add(item, str(key))
+    elif isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                add(item.get("address") or item.get("tokenAddress") or item.get("contractAddress"), str(item.get("chain") or ""))
+            else:
+                add(item)
+
+    return sorted(set(addresses))
+
+
+def fetch_token_addresses() -> list[str]:
+    if not TOKEN_ADDRESS_LOOKUP:
+        return []
+    try:
+        payload = _arkham_get_json(f"/token/addresses/{TOKEN_ID}")
+    except Exception as exc:
+        print(f"  Token address lookup failed for {TOKEN_ID}: {exc}", flush=True)
+        return []
+    return _extract_token_addresses(payload)
+
+
+def resolve_token_filters() -> list[str]:
+    global _RESOLVED_TOKEN_FILTERS
+    if _RESOLVED_TOKEN_FILTERS is not None:
+        return _RESOLVED_TOKEN_FILTERS
+    filters: list[str] = []
+    for value in [*TOKEN_FILTER, TOKEN_ID, TOKEN_SYMBOL, TOKEN_DISPLAY]:
+        if value and value not in filters:
+            filters.append(value)
+    for address in fetch_token_addresses():
+        if address not in filters:
+            filters.append(address)
+    _RESOLVED_TOKEN_FILTERS = filters
+    return filters
 
 
 def fetch_wallet_balance_usd(address: str) -> float:
@@ -305,7 +375,7 @@ def aggregate_accumulation(transfers: list[dict[str, Any]]) -> dict[str, dict[st
         chain = str(row.get("chain") or to_obj.get("chain") or from_obj.get("chain") or "").strip().lower()
         source = _entity_name(from_obj) or _normalize_address(from_obj.get("address") or from_obj.get("id"))
         candidate = candidates.setdefault(address, {
-            "token": TOKEN_SYMBOL,
+            "token": TOKEN_DISPLAY or TOKEN_SYMBOL,
             "token_id": TOKEN_ID,
             "listing_exchange": LISTING_EXCHANGE,
             "address": address,
@@ -426,7 +496,7 @@ def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, A
 
 def row_for_supabase(candidate: dict[str, Any]) -> dict[str, Any]:
     return {
-        "token": TOKEN_SYMBOL,
+        "token": TOKEN_DISPLAY or TOKEN_SYMBOL,
         "token_id": TOKEN_ID,
         "listing_exchange": LISTING_EXCHANGE,
         "listing_ts": LISTING_TS,
@@ -474,10 +544,11 @@ def save_candidate(candidate: dict[str, Any]) -> bool:
 def run_scan() -> list[dict[str, Any]]:
     _require_env()
     print(
-        f"ARKHAM PRE-LISTING TOKEN SCAN - {TOKEN_SYMBOL} ({TOKEN_ID}) "
+        f"ARKHAM PRE-LISTING TOKEN SCAN - {TOKEN_DISPLAY or TOKEN_SYMBOL} ({TOKEN_ID}) "
         f"{WINDOW_START} -> {WINDOW_END}, min ${MIN_TRANSFER_USD:,.0f}",
         flush=True,
     )
+    print(f"Token filters: {', '.join(resolve_token_filters())}", flush=True)
     all_transfers: list[dict[str, Any]] = []
     for page in range(MAX_OFFSETS):
         offset = page * TRANSFER_LIMIT
@@ -493,7 +564,7 @@ def run_scan() -> list[dict[str, Any]]:
     enriched = enrich_candidates(candidates)
 
     saved = 0
-    print(f"\nTop pre-listing wallets for {TOKEN_SYMBOL}:", flush=True)
+    print(f"\nTop pre-listing wallets for {TOKEN_DISPLAY or TOKEN_SYMBOL}:", flush=True)
     for row in enriched[:20]:
         if SAVE_TO_SUPABASE and save_candidate(row):
             saved += 1
