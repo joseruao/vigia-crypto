@@ -59,6 +59,8 @@ SELL_CHECK_MIN_USD = float(os.getenv("ARKHAM_PRELISTING_SELL_MIN_USD", "25000"))
 MAX_PRELISTING_OUT_RATIO = float(os.getenv("ARKHAM_PRELISTING_MAX_PRE_OUT_RATIO", "0.5"))
 FILTER_EXITED_BEFORE_LISTING = os.getenv("ARKHAM_PRELISTING_FILTER_EXITED", "1").strip().lower() in {"1", "true", "yes"}
 FILTER_DISTRIBUTION_ROUTES = os.getenv("ARKHAM_PRELISTING_FILTER_DISTRIBUTION_ROUTES", "1").strip().lower() in {"1", "true", "yes"}
+TRACE_POST_DESTINATIONS = os.getenv("ARKHAM_PRELISTING_TRACE_POST", "1").strip().lower() in {"1", "true", "yes"}
+TRACE_DESTINATION_LIMIT = int(os.getenv("ARKHAM_PRELISTING_TRACE_DEST_LIMIT", "3"))
 SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {"1", "true", "yes"}
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
@@ -587,9 +589,24 @@ def held_through_listing(candidate: dict[str, Any]) -> bool:
 
 
 def is_investigable_candidate(candidate: dict[str, Any]) -> bool:
-    if FILTER_DISTRIBUTION_ROUTES and classify_candidate(candidate) == "distribution_route":
+    classification = candidate.get("classification") or classify_candidate(candidate)
+    if FILTER_DISTRIBUTION_ROUTES and classification == "distribution_route":
         return False
     return held_through_listing(candidate)
+
+
+def summarize_outflows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summary: list[dict[str, Any]] = []
+    for row in sorted(rows, key=transfer_usd, reverse=True)[:TRACE_DESTINATION_LIMIT]:
+        to_obj = _address_obj(row.get("toAddress") or row.get("to") or row.get("recipient"))
+        destination = _entity_name(to_obj) or _normalize_address(to_obj.get("address") or to_obj.get("id"))
+        summary.append({
+            "destination": destination,
+            "usd": round(transfer_usd(row), 2),
+            "ts": _dt_text(transfer_time(row)),
+            "tx": row.get("transactionHash") or row.get("hash"),
+        })
+    return summary
 
 
 def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -613,6 +630,7 @@ def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, A
 
         candidate["pre_listing_out_usd"] = sum(transfer_usd(row) for row in pre_outflows)
         candidate["post_listing_out_usd"] = sum(transfer_usd(row) for row in post_outflows)
+        candidate["post_listing_destinations"] = summarize_outflows(post_outflows)
         candidate["balance_usd"] = balance_usd
         candidate["classification"] = classify_candidate(candidate)
         candidate["score"] = score_candidate(candidate)
@@ -653,6 +671,7 @@ def row_for_supabase(candidate: dict[str, Any]) -> dict[str, Any]:
         "labels": sorted(candidate.get("labels") or []),
         "raw": {
             "sample_txs": candidate.get("sample_txs") or [],
+            "post_listing_destinations": candidate.get("post_listing_destinations") or [],
             "token_symbols": sorted(candidate.get("token_symbols") or []),
             "enrich_error": candidate.get("enrich_error"),
         },
@@ -683,6 +702,15 @@ def run_scan() -> list[dict[str, Any]]:
         f"{WINDOW_START} -> {WINDOW_END}, min ${MIN_TRANSFER_USD:,.0f}",
         flush=True,
     )
+    print(
+        "Filters: "
+        f"skip_infra={SKIP_INFRA_SOURCES}, "
+        f"skip_distribution_sources={SKIP_DISTRIBUTION_SOURCES}, "
+        f"filter_distribution_routes={FILTER_DISTRIBUTION_ROUTES}, "
+        f"filter_exited={FILTER_EXITED_BEFORE_LISTING}, "
+        f"max_pre_out_ratio={MAX_PRELISTING_OUT_RATIO}",
+        flush=True,
+    )
     print(f"Token filters: {', '.join(resolve_token_filters())}", flush=True)
     all_transfers: list[dict[str, Any]] = []
     for page in range(MAX_OFFSETS):
@@ -707,6 +735,7 @@ def run_scan() -> list[dict[str, Any]]:
             f"- {row['address']} | score={row.get('score', 0)} | "
             f"in=${float(row.get('total_in_usd') or 0):,.0f} | "
             f"pre-out=${float(row.get('pre_listing_out_usd') or 0):,.0f} | "
+            f"post-out=${float(row.get('post_listing_out_usd') or 0):,.0f} | "
             f"balance=${float(row.get('balance_usd') or 0):,.0f} | "
             f"class={row.get('classification')}",
             flush=True,
@@ -714,6 +743,12 @@ def run_scan() -> list[dict[str, Any]]:
         sources = ", ".join(sorted(row.get("source_entities") or []))
         if sources:
             print(f"  sources: {sources[:220]}", flush=True)
+        if TRACE_POST_DESTINATIONS and row.get("post_listing_destinations"):
+            destinations = "; ".join(
+                f"{item.get('destination') or '?'} (${float(item.get('usd') or 0):,.0f})"
+                for item in row["post_listing_destinations"]
+            )
+            print(f"  post-listing out: {destinations[:260]}", flush=True)
     if SAVE_TO_SUPABASE:
         print(f"\nSaved pre-listing wallets: {saved}/{len(enriched[:20])}", flush=True)
     return enriched

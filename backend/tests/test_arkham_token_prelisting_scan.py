@@ -255,6 +255,10 @@ def test_prelisting_filters_distribution_routes_from_final_candidates(monkeypatc
 
     assert not scan.is_investigable_candidate(candidate)
 
+    candidate["classification"] = "distribution_route"
+    candidate["source_entities"] = {"plain unknown"}
+    assert not scan.is_investigable_candidate(candidate)
+
 
 def test_prelisting_can_keep_distribution_routes_for_audit(monkeypatch):
     scan = _load_prelisting()
@@ -293,6 +297,7 @@ def test_prelisting_supabase_row_is_serializable(monkeypatch):
         "source_entities": {"Project Treasury"},
         "labels": set(),
         "sample_txs": [{"hash": "0xabc"}],
+        "post_listing_destinations": [{"destination": "Binance", "usd": 50_000}],
     })
 
     assert row["token"] == "AIGENSYN"
@@ -300,6 +305,41 @@ def test_prelisting_supabase_row_is_serializable(monkeypatch):
     assert row["first_seen"] == "2026-04-20T00:00:00Z"
     assert row["source_entities"] == ["Project Treasury"]
     assert row["raw"]["sample_txs"] == [{"hash": "0xabc"}]
+    assert row["raw"]["post_listing_destinations"] == [{"destination": "Binance", "usd": 50_000}]
+
+
+def test_prelisting_summarizes_post_listing_outflows():
+    scan = _load_prelisting()
+
+    rows = [
+        {
+            "toAddress": {"address": "0x1111111111111111111111111111111111111111", "arkhamEntity": {"name": "Binance"}},
+            "historicalUSD": 100_000,
+            "blockTimestamp": "2025-01-02T00:00:00Z",
+            "transactionHash": "0xabc",
+        },
+        {
+            "toAddress": {"address": "0x2222222222222222222222222222222222222222"},
+            "historicalUSD": 50_000,
+            "blockTimestamp": "2025-01-03T00:00:00Z",
+            "transactionHash": "0xdef",
+        },
+    ]
+
+    assert scan.summarize_outflows(rows) == [
+        {
+            "destination": "Binance",
+            "usd": 100_000,
+            "ts": "2025-01-02T00:00:00Z",
+            "tx": "0xabc",
+        },
+        {
+            "destination": "0x2222222222222222222222222222222222222222",
+            "usd": 50_000,
+            "ts": "2025-01-03T00:00:00Z",
+            "tx": "0xdef",
+        },
+    ]
 
 
 def test_prelisting_resolves_token_filters_with_addresses(monkeypatch):
