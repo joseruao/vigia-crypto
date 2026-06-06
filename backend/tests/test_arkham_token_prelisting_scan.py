@@ -229,3 +229,24 @@ def test_prelisting_resolves_token_filters_with_addresses(monkeypatch):
         "AIGENSYN",
         "0x1111111111111111111111111111111111111111",
     ]
+
+
+def test_prelisting_extracts_matching_search_token_filters(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "TOKEN_SYMBOL", "MEGA")
+    monkeypatch.setattr(scan, "TOKEN_DISPLAY", "MEGA")
+    monkeypatch.setattr(scan, "TOKEN_ID", "megaeth")
+
+    payload = {
+        "tokens": [
+            {"symbol": "MEGA", "id": "megaeth", "address": "0x1111111111111111111111111111111111111111"},
+            {"symbol": "MEGA2", "id": "wrong", "address": "0x2222222222222222222222222222222222222222"},
+            {"symbol": "ABC", "name": "MegaETH", "contractAddress": "0x3333333333333333333333333333333333333333"},
+        ]
+    }
+
+    assert scan._extract_search_token_filters(payload) == [
+        "megaeth",
+        "0x1111111111111111111111111111111111111111",
+        "0x3333333333333333333333333333333333333333",
+    ]

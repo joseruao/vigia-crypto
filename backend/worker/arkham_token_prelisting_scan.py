@@ -60,6 +60,7 @@ SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
 TOKEN_ADDRESS_LOOKUP = os.getenv("ARKHAM_PRELISTING_LOOKUP_ADDRESSES", "1").strip().lower() in {"1", "true", "yes"}
+TOKEN_SEARCH_LOOKUP = os.getenv("ARKHAM_PRELISTING_SEARCH_TOKEN", "1").strip().lower() in {"1", "true", "yes"}
 SKIP_INFRA_SOURCES = os.getenv("ARKHAM_PRELISTING_SKIP_INFRA_SOURCES", "1").strip().lower() in {"1", "true", "yes"}
 
 EXCHANGE_OR_POOL_TYPES = {"cex", "dex", "bridge", "service", "pool"}
@@ -345,6 +346,55 @@ def fetch_token_addresses() -> list[str]:
     return _extract_token_addresses(payload)
 
 
+def _extract_search_token_filters(payload: Any) -> list[str]:
+    filters: list[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and text not in filters:
+            filters.append(text)
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            symbol = str(value.get("symbol") or value.get("ticker") or "").strip().upper()
+            name = str(value.get("name") or value.get("label") or "").strip().lower()
+            pricing_id = value.get("id") or value.get("pricingId") or value.get("coinGeckoId")
+            address = value.get("address") or value.get("tokenAddress") or value.get("contractAddress")
+            if (
+                symbol in {TOKEN_SYMBOL, TOKEN_DISPLAY}
+                or TOKEN_ID.lower() in {str(pricing_id or "").lower(), name}
+                or TOKEN_DISPLAY.lower() in name
+            ):
+                add(pricing_id)
+                add(address)
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(payload)
+    return filters
+
+
+def fetch_token_search_filters() -> list[str]:
+    if not TOKEN_SEARCH_LOOKUP:
+        return []
+    queries = [TOKEN_DISPLAY, TOKEN_SYMBOL, TOKEN_ID]
+    found: list[str] = []
+    for query in dict.fromkeys(q for q in queries if q):
+        try:
+            payload = _arkham_get_json("/intelligence/search", params={"query": query, "tokens": 10})
+        except Exception as exc:
+            print(f"  Token search failed for {query}: {exc}", flush=True)
+            continue
+        for value in _extract_search_token_filters(payload):
+            if value and value not in found:
+                found.append(value)
+        time.sleep(0.25)
+    return found
+
+
 def resolve_token_filters() -> list[str]:
     global _RESOLVED_TOKEN_FILTERS
     if _RESOLVED_TOKEN_FILTERS is not None:
@@ -356,6 +406,9 @@ def resolve_token_filters() -> list[str]:
     for address in fetch_token_addresses():
         if address not in filters:
             filters.append(address)
+    for value in fetch_token_search_filters():
+        if value not in filters:
+            filters.append(value)
     _RESOLVED_TOKEN_FILTERS = filters
     return filters
 
