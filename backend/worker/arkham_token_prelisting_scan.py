@@ -1,12 +1,47 @@
 """
 Arkham pre-listing token study.
 
-Standalone dry-run:
+Objectivo:
+    Encontrar wallets que receberam/compraram forte ANTES de um listing ou
+    evento relevante, nao sairam antes do listing, e depois podem ter vendido,
+    movido para outra wallet, ou depositado numa exchange.
+
+Metodo mental:
+    1. Escolher token + janela antes do listing.
+    2. Buscar grandes transferencias do token nessa janela.
+    3. Remover ruido: exchanges, DEX/pools, market makers, distributors,
+       airdrops, presales, claims e burn/null addresses.
+    4. Para as melhores wallets, verificar:
+       - in: valor recebido antes do listing;
+       - pre-out: valor que saiu antes do listing;
+       - post-out: valor que saiu depois do listing;
+       - post-listing destinations: para onde saiu depois.
+    5. So investigar a fundo unknown_accumulation com in alto e pre-out baixo.
+
+Dry-run recomendado antes de gravar:
+    $env:ARKHAM_PRELISTING_SAVE="0"
+    $env:ARKHAM_PRELISTING_FILTER_DISTRIBUTION_ROUTES="1"
+    $env:ARKHAM_PRELISTING_FILTER_EXITED="1"
+    $env:ARKHAM_PRELISTING_TRACE_POST="1"
     python backend/worker/arkham_token_prelisting_scan.py
 
-Default case is AIGENSYN before the OKX spot listing. This scanner is designed
-to be cheap first: fetch large token transfers in a narrow pre-listing window,
-rank recipient wallets, and only enrich the best candidates.
+Guardar no Supabase so depois do output parecer limpo:
+    $env:SUPABASE_URL="https://qynnajpvxnqcmkzrhpde.supabase.co"
+    $env:SUPABASE_SERVICE_ROLE="SERVICE_ROLE_KEY"
+    $env:ARKHAM_PRELISTING_SAVE="1"
+    python backend/worker/arkham_token_prelisting_scan.py
+
+Exemplo SPX:
+    $env:ARKHAM_PRELISTING_TOKEN_SYMBOL="SPX"
+    $env:ARKHAM_PRELISTING_TOKEN_DISPLAY="SPX"
+    $env:ARKHAM_PRELISTING_TOKEN_ID="spx6900"
+    $env:ARKHAM_PRELISTING_START="2024-06-01T00:00:00Z"
+    $env:ARKHAM_PRELISTING_END="2025-01-01T00:00:00Z"
+    $env:ARKHAM_PRELISTING_LISTING_TS="2025-01-01T00:00:00Z"
+
+Nota:
+    Este script e standalone e com SAVE=0 nao grava nada. Mantem o custo
+    controlado porque so enriquece os top candidatos depois do primeiro filtro.
 """
 from __future__ import annotations
 
@@ -648,6 +683,9 @@ def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, A
 
 
 def row_for_supabase(candidate: dict[str, Any]) -> dict[str, Any]:
+    total_in = float(candidate.get("total_in_usd") or 0)
+    pre_out = float(candidate.get("pre_listing_out_usd") or 0)
+    retention_pct = max(0.0, min(100.0, ((total_in - pre_out) / total_in) * 100)) if total_in > 0 else 0.0
     return {
         "token": TOKEN_DISPLAY or TOKEN_SYMBOL,
         "token_id": TOKEN_ID,
@@ -663,6 +701,8 @@ def row_for_supabase(candidate: dict[str, Any]) -> dict[str, Any]:
         "max_transfer_usd": round(float(candidate.get("max_transfer_usd") or 0), 2),
         "pre_listing_out_usd": round(float(candidate.get("pre_listing_out_usd") or 0), 2),
         "post_listing_out_usd": round(float(candidate.get("post_listing_out_usd") or 0), 2),
+        "pre_listing_retention_pct": round(retention_pct, 2),
+        "post_listing_destinations": candidate.get("post_listing_destinations") or [],
         "balance_usd": round(float(candidate.get("balance_usd") or 0), 2),
         "tx_count": int(candidate.get("tx_count") or 0),
         "score": int(candidate.get("score") or 0),

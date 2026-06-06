@@ -306,6 +306,8 @@ def test_prelisting_supabase_row_is_serializable(monkeypatch):
     assert row["source_entities"] == ["Project Treasury"]
     assert row["raw"]["sample_txs"] == [{"hash": "0xabc"}]
     assert row["raw"]["post_listing_destinations"] == [{"destination": "Binance", "usd": 50_000}]
+    assert row["pre_listing_retention_pct"] == 100.0
+    assert row["post_listing_destinations"] == [{"destination": "Binance", "usd": 50_000}]
 
 
 def test_prelisting_summarizes_post_listing_outflows():
