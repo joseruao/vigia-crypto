@@ -15,6 +15,7 @@ def _load_prelisting():
 def test_prelisting_aggregates_large_recipient_transfers(monkeypatch):
     scan = _load_prelisting()
     monkeypatch.setattr(scan, "MIN_TRANSFER_USD", 50_000)
+    monkeypatch.setattr(scan, "SKIP_INFRA_SOURCES", False)
 
     transfers = [
         {
@@ -67,6 +68,41 @@ def test_prelisting_skips_exchange_or_pool_destinations(monkeypatch):
                 "address": "0x2222222222222222222222222222222222222222",
                 "arkhamLabel": {"name": "V3 Pool"},
             },
+            "historicalUSD": 1_000_000,
+        },
+    ])
+
+    assert candidates == {}
+
+
+def test_prelisting_skips_infra_sources_by_default(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "MIN_TRANSFER_USD", 50_000)
+    monkeypatch.setattr(scan, "SKIP_INFRA_SOURCES", True)
+
+    candidates = scan.aggregate_accumulation([
+        {
+            "fromAddress": {
+                "address": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "arkhamEntity": {"name": "Wintermute", "type": "fund"},
+            },
+            "toAddress": {"address": "0x1111111111111111111111111111111111111111"},
+            "historicalUSD": 1_000_000,
+        },
+        {
+            "fromAddress": {
+                "address": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "arkhamEntity": {"name": "KuCoin", "type": "cex"},
+            },
+            "toAddress": {"address": "0x2222222222222222222222222222222222222222"},
+            "historicalUSD": 1_000_000,
+        },
+        {
+            "fromAddress": {
+                "address": "0xcccccccccccccccccccccccccccccccccccccccc",
+                "arkhamEntity": {"name": "Uniswap", "type": "dex"},
+            },
+            "toAddress": {"address": "0x3333333333333333333333333333333333333333"},
             "historicalUSD": 1_000_000,
         },
     ])
@@ -144,6 +180,7 @@ def test_prelisting_score_penalizes_pre_listing_exit(monkeypatch):
     exited = dict(base, pre_listing_out_usd=500_000)
 
     assert scan.score_candidate(held) > scan.score_candidate(exited)
+    assert scan.score_candidate(exited) <= 35
 
 
 def test_prelisting_supabase_row_is_serializable(monkeypatch):

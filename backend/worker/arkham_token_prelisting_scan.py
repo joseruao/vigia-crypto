@@ -60,6 +60,7 @@ SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
 TOKEN_ADDRESS_LOOKUP = os.getenv("ARKHAM_PRELISTING_LOOKUP_ADDRESSES", "1").strip().lower() in {"1", "true", "yes"}
+SKIP_INFRA_SOURCES = os.getenv("ARKHAM_PRELISTING_SKIP_INFRA_SOURCES", "1").strip().lower() in {"1", "true", "yes"}
 
 EXCHANGE_OR_POOL_TYPES = {"cex", "dex", "bridge", "service", "pool"}
 EXCHANGE_OR_POOL_WORDS = {
@@ -67,6 +68,11 @@ EXCHANGE_OR_POOL_WORDS = {
     "mexc", "kucoin", "upbit", "htx", "crypto.com", "uniswap", "pancakeswap",
     "raydium", "aerodrome", "curve", "balancer", "pool", "bridge",
 }
+MARKET_MAKER_WORDS = {
+    "wintermute", "gsr", "jump", "cumberland", "flowdesk", "flow desk",
+    "flow traders", "market maker", "amber", "keyrock", "b2c2", "falconx",
+}
+INFRA_SOURCE_WORDS = EXCHANGE_OR_POOL_WORDS | MARKET_MAKER_WORDS
 ZERO_ADDRESSES = {
     "0x0000000000000000000000000000000000000000",
     "11111111111111111111111111111111",
@@ -197,6 +203,14 @@ def _is_service_destination(value: dict[str, Any]) -> bool:
     if entity_type in EXCHANGE_OR_POOL_TYPES:
         return True
     return any(word in name for word in EXCHANGE_OR_POOL_WORDS)
+
+
+def _is_infra_source(value: dict[str, Any]) -> bool:
+    name = _entity_name(value).lower()
+    entity_type = _entity_type(value)
+    if entity_type in EXCHANGE_OR_POOL_TYPES:
+        return True
+    return any(word in name for word in INFRA_SOURCE_WORDS)
 
 
 def _is_null_or_burn_address(address: str, obj: dict[str, Any] | None = None) -> bool:
@@ -384,6 +398,7 @@ def aggregate_accumulation(transfers: list[dict[str, Any]]) -> dict[str, dict[st
             or _is_null_or_burn_address(address, to_obj)
             or _is_null_or_burn_address(from_address, from_obj)
             or _is_service_destination(to_obj)
+            or (SKIP_INFRA_SOURCES and _is_infra_source(from_obj))
         ):
             continue
         usd = transfer_usd(row)
@@ -439,7 +454,7 @@ def aggregate_accumulation(transfers: list[dict[str, Any]]) -> dict[str, dict[st
 def classify_candidate(candidate: dict[str, Any]) -> str:
     text = " ".join(sorted(candidate.get("source_entities") or [])) + " " + " ".join(sorted(candidate.get("labels") or []))
     lower = text.lower()
-    if any(word in lower for word in ("market maker", "wintermute", "gsr", "jump", "cumberland")):
+    if any(word in lower for word in MARKET_MAKER_WORDS):
         return "market_maker_route"
     if any(word in lower for word in ("treasury", "foundation", "deploy", "team")):
         return "project_source"
@@ -481,8 +496,14 @@ def score_candidate(candidate: dict[str, Any]) -> int:
     classification = classify_candidate(candidate)
     if classification in {"market_maker_route", "project_source", "custody_route"}:
         score += 10
+    if pre_out >= total * 1.2 and total > 0:
+        score -= 35
+    elif pre_out >= total * 0.8 and total > 0:
+        score -= 25
+    elif pre_out >= total * 0.5 and total > 0:
+        score -= 15
 
-    return min(100, int(score))
+    return max(0, min(100, int(score)))
 
 
 def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
