@@ -1042,10 +1042,54 @@ def test_daily_holdings_telegram_alert_has_richer_listing_format(monkeypatch):
 
     text = posted["json"]["text"]
     assert "EXCHANGE WALLET ALERT" in text
-    assert "Exchange:* Bybit" in text
-    assert "Token:* DOOD" in text
+    assert "*Token:* DOOD - *Exchange:* Bybit" in text
     assert "BNB Chain" in text
-    assert "Preço atual" in text
+    assert "Current price" in text
     assert "+7.38%" in text
     assert "Score:* 86/100" in text
     assert "bscscan.com/token/0xabc" in text
+    assert posted["json"]["disable_web_page_preview"] is False
+
+
+def test_top100_telegram_alert_formats_english_watchlist(monkeypatch):
+    from dailyworker import top100_rankings_worker as worker
+
+    posted = {}
+    monkeypatch.setattr(worker, "TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setattr(worker, "TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setattr(worker, "TOP100_TELEGRAM_ENABLED", True)
+
+    def fake_post(url, json, timeout):
+        posted["url"] = url
+        posted["json"] = json
+        posted["timeout"] = timeout
+
+        class Response:
+            status_code = 200
+            text = "ok"
+
+        return Response()
+
+    monkeypatch.setattr(worker.requests, "post", fake_post)
+
+    ok = worker.send_top100_telegram_alert([
+        {
+            "symbol": "BTC",
+            "name": "Bitcoin",
+            "coin_id": "bitcoin",
+            "price": 100000,
+            "score": 85,
+            "rsi": 32,
+            "support": 95000,
+            "resistance": 110000,
+            "entry_zone": "ZONA_DE_COMPRA",
+            "technical_action": "ACCUMULATION",
+            "rank": 1,
+        }
+    ])
+
+    assert ok is True
+    assert "Daily Top100 Technical Watchlist" in posted["json"]["text"]
+    assert "BTC" in posted["json"]["text"]
+    assert "Informational only" in posted["json"]["text"]
+    assert "coingecko.com/en/coins/bitcoin" in posted["json"]["text"]

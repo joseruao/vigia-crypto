@@ -894,12 +894,12 @@ def _explorer_url(chain: str, token_address: str) -> str:
 
 def _listing_confidence(score: float):
     if score >= 90:
-        return "Muito alta", "Alta", "URGENTE"
+        return "very high", "high", "urgent"
     if score >= 80:
-        return "Alta", "Media-alta", "ALTA"
+        return "high", "medium-high", "high"
     if score >= 70:
-        return "Boa", "Media", "POTENCIAL"
-    return "Moderada", "Baixa-media", "OBSERVAR"
+        return "good", "medium", "watch"
+    return "moderate", "low-medium", "observe"
 
 
 def send_telegram_alert(holding: dict, exchange_name: str) -> None:
@@ -922,11 +922,11 @@ def send_telegram_alert(holding: dict, exchange_name: str) -> None:
         explorer_url = _explorer_url(chain_raw, token_address)
 
         if score >= 90:
-            title = "POTENCIAL NOVO LISTING DETETADO"
+            title = "HIGH-CONFIDENCE LISTING SIGNAL"
         elif score >= 80:
             title = "EXCHANGE WALLET ALERT"
         else:
-            title = "TOKEN EM OBSERVACAO"
+            title = "TOKEN WATCHLIST SIGNAL"
 
         change_text = "N/A"
         try:
@@ -936,33 +936,32 @@ def send_telegram_alert(holding: dict, exchange_name: str) -> None:
             pass
 
         lines = [
-            f"🔥✨ *{title}* 🔥✨",
+            f"*{title}*",
             "",
-            f"🏦 *Exchange:* {exchange}",
-            f"💎 *Token:* {symbol}",
-            f"🔗 *Chain:* {chain}",
-            f"👛 *Wallet:* {exchange_name}",
-            f"💰 *Valor na wallet:* ${value:,.0f}",
-            f"💵 *Preço atual:* ${price:,.8f}" if price else "💵 *Preço atual:* N/A",
-            f"📈 *24h Change:* {change_text}",
-            f"💧 *Liquidez:* ${liquidity:,.0f}",
+            f"*Token:* {symbol} - *Exchange:* {exchange} - *Chain:* {chain}",
+            f"*Wallet label:* {exchange_name}",
+            f"*Wallet value:* ${value:,.0f}",
+            f"*Current price:* ${price:,.8f}" if price else "*Current price:* N/A",
+            f"*24h change:* {change_text}",
+            f"*Liquidity:* ${liquidity:,.0f}",
         ]
         if volume:
-            lines.append(f"📊 *Volume 24h:* ${volume:,.0f}")
+            lines.append(f"*24h volume:* ${volume:,.0f}")
         lines += [
             "",
-            "🤖 *ANALISE DE LISTING*",
-            f"⭐ *Score:* {score:.0f}/100",
-            f"🎯 *Probabilidade:* {probability}",
-            f"📈 *Confiança:* {confidence}",
-            f"🚨 *Urgência:* {urgency}",
+            "*Listing analysis*",
+            f"*Score:* {score:.0f}/100",
+            f"*Probability:* {probability}",
+            f"*Confidence:* {confidence}",
+            f"*Urgency:* {urgency}",
             "",
-            "_Sistema de detecao de potenciais listings on-chain_",
+            "_Detected in a monitored exchange wallet and not listed on that exchange yet._",
         ]
         if pair_url:
-            lines.append(f"[🔗 DexScreener]({pair_url})")
+            lines.append("")
+            lines.append(pair_url)
         if explorer_url:
-            lines.append(f"[🔎 Explorer]({explorer_url})")
+            lines.append(f"[Explorer]({explorer_url})")
 
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -970,7 +969,7 @@ def send_telegram_alert(holding: dict, exchange_name: str) -> None:
                 "chat_id": TELEGRAM_CHAT_ID,
                 "text": "\n".join(lines),
                 "parse_mode": "Markdown",
-                "disable_web_page_preview": True,
+                "disable_web_page_preview": False,
             },
             timeout=10,
         )

@@ -13,6 +13,17 @@ TOP100_EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
 }
+TELEGRAM_BOT_TOKEN = (
+    os.getenv("TELEGRAM_BOT_TOKEN_SOL")
+    or os.getenv("TELEGRAM_BOT_TOKEN")
+    or ""
+).strip()
+TELEGRAM_CHAT_ID = (
+    os.getenv("TELEGRAM_CHAT_ID_SOL")
+    or os.getenv("TELEGRAM_CHAT_ID")
+    or ""
+).strip()
+TOP100_TELEGRAM_ENABLED = os.getenv("TOP100_TELEGRAM_ENABLED", "1").strip().lower() in {"1", "true", "yes"}
 
 
 def _num(value, default=0.0):
@@ -728,6 +739,98 @@ def build_top100_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
+def _usd(value: Any) -> str:
+    amount = _num(value, None)
+    if amount is None or amount <= 0:
+        return "N/A"
+    if amount < 0.01:
+        return f"${amount:.6f}"
+    if amount < 1:
+        return f"${amount:.4f}"
+    if amount < 1000:
+        return f"${amount:,.2f}"
+    if amount < 1_000_000:
+        return f"${amount / 1_000:.1f}K"
+    if amount < 1_000_000_000:
+        return f"${amount / 1_000_000:.1f}M"
+    return f"${amount / 1_000_000_000:.1f}B"
+
+
+def _top100_telegram_rows(rows: List[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+    candidates = [
+        row for row in rows
+        if str(row.get("symbol") or "").upper() not in TOP100_EXCLUDED_SYMBOLS
+        and _num(row.get("price")) > 0
+    ]
+    buy_zone = [row for row in candidates if row.get("entry_zone") == "ZONA_DE_COMPRA"]
+    selected = buy_zone or candidates
+    selected.sort(
+        key=lambda row: (
+            _num(row.get("score")),
+            -abs((_num(row.get("current_position"), 50) or 50) - 20),
+            -int(row.get("rank") or 999),
+        ),
+        reverse=True,
+    )
+    return selected[:limit]
+
+
+def send_top100_telegram_alert(rows: List[Dict[str, Any]]) -> bool:
+    if not TOP100_TELEGRAM_ENABLED or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    picks = _top100_telegram_rows(rows, limit=5)
+    if not picks:
+        return False
+
+    lines = [
+        "*Daily Top100 Technical Watchlist*",
+        "",
+        "Top setups near support based on RSI, trend, support/resistance and technical score.",
+        "_Informational only; not financial advice._",
+        "",
+    ]
+    for i, row in enumerate(picks, 1):
+        symbol = str(row.get("symbol") or "?").upper()
+        name = row.get("name") or symbol
+        score = _num(row.get("score"))
+        price = _usd(row.get("price"))
+        rsi = _num(row.get("rsi"), None)
+        support = _usd(row.get("support"))
+        resistance = _usd(row.get("resistance"))
+        action = str(row.get("technical_action") or row.get("signal") or "watch").replace("_", " ").title()
+        coin_id = row.get("coin_id")
+        url = f"https://www.coingecko.com/en/coins/{coin_id}" if coin_id else f"https://www.coingecko.com/en/search?query={symbol}"
+
+        lines.extend([
+            f"*{i}. {symbol}* - {name}",
+            f"Price: {price} | Score: {score:.0f}/100 | Action: {action}",
+            f"RSI: {rsi:.0f}" if rsi is not None else "RSI: N/A",
+            f"Support: {support} | Resistance: {resistance}",
+            url,
+            "",
+        ])
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": "\n".join(lines),
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True,
+            },
+            timeout=12,
+        )
+        if response.status_code >= 400:
+            print(f"Top100 Telegram alert failed: HTTP {response.status_code} - {response.text[:200]}", flush=True)
+            return False
+        print(f"Top100 Telegram alert sent: {len(picks)} setups", flush=True)
+        return True
+    except Exception as exc:
+        print(f"Top100 Telegram alert failed: {exc}", flush=True)
+        return False
+
+
 async def update_top100_rankings(
     upsert_func: Callable[[str, Dict[str, Any], List[str]], bool],
     bulk_upsert_func: Callable[[str, List[Dict[str, Any]], List[str]], int] | None = None,
@@ -757,6 +860,8 @@ async def update_top100_rankings(
             print("Top100 tecnico: retry sem colunas tecnicas para manter compatibilidade Supabase", flush=True)
             saved = bulk_upsert_func(TOP100_TABLE, legacy_rows, ["date", "symbol"])
         print(f"Top100 atualizado em lote: {saved}/{len(rows)} moedas guardadas", flush=True)
+        if saved > 0:
+            send_top100_telegram_alert(rows)
         return saved
 
     saved = 0
@@ -765,7 +870,9 @@ async def update_top100_rankings(
             saved += 1
         time.sleep(0.05)
 
-    print(f"✅ Top100 atualizado: {saved}/{len(rows)} moedas guardadas")
+    print(f"Top100 atualizado: {saved}/{len(rows)} moedas guardadas")
+    if saved > 0:
+        send_top100_telegram_alert(rows)
     return saved
 
 
