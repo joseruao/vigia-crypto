@@ -215,6 +215,23 @@ def test_prelisting_score_penalizes_pre_listing_exit(monkeypatch):
     assert scan.score_candidate(exited) <= 35
 
 
+def test_prelisting_held_through_listing_filter(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "FILTER_EXITED_BEFORE_LISTING", True)
+    monkeypatch.setattr(scan, "SELL_CHECK_MIN_USD", 25_000)
+    monkeypatch.setattr(scan, "MAX_PRELISTING_OUT_RATIO", 0.5)
+
+    assert scan.held_through_listing({"total_in_usd": 100_000, "pre_listing_out_usd": 40_000})
+    assert not scan.held_through_listing({"total_in_usd": 100_000, "pre_listing_out_usd": 80_000})
+
+
+def test_prelisting_can_disable_held_filter(monkeypatch):
+    scan = _load_prelisting()
+    monkeypatch.setattr(scan, "FILTER_EXITED_BEFORE_LISTING", False)
+
+    assert scan.held_through_listing({"total_in_usd": 100_000, "pre_listing_out_usd": 200_000})
+
+
 def test_prelisting_classifies_distribution_routes():
     scan = _load_prelisting()
 

@@ -56,6 +56,8 @@ MAX_OFFSETS = int(os.getenv("ARKHAM_PRELISTING_MAX_OFFSETS", "1"))
 ENRICH_LIMIT = int(os.getenv("ARKHAM_PRELISTING_ENRICH_LIMIT", "20"))
 SELL_CHECK_LIMIT = int(os.getenv("ARKHAM_PRELISTING_SELL_CHECK_LIMIT", "10"))
 SELL_CHECK_MIN_USD = float(os.getenv("ARKHAM_PRELISTING_SELL_MIN_USD", "25000"))
+MAX_PRELISTING_OUT_RATIO = float(os.getenv("ARKHAM_PRELISTING_MAX_PRE_OUT_RATIO", "0.5"))
+FILTER_EXITED_BEFORE_LISTING = os.getenv("ARKHAM_PRELISTING_FILTER_EXITED", "1").strip().lower() in {"1", "true", "yes"}
 SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {"1", "true", "yes"}
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
@@ -573,6 +575,16 @@ def score_candidate(candidate: dict[str, Any]) -> int:
     return max(0, min(100, int(score)))
 
 
+def held_through_listing(candidate: dict[str, Any]) -> bool:
+    if not FILTER_EXITED_BEFORE_LISTING:
+        return True
+    total = float(candidate.get("total_in_usd") or 0)
+    if total <= 0:
+        return False
+    pre_out = float(candidate.get("pre_listing_out_usd") or 0)
+    return pre_out <= max(SELL_CHECK_MIN_USD, total * MAX_PRELISTING_OUT_RATIO)
+
+
 def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = sorted(candidates.values(), key=lambda row: float(row.get("total_in_usd") or 0), reverse=True)
     enriched: list[dict[str, Any]] = []
@@ -597,7 +609,14 @@ def enrich_candidates(candidates: dict[str, dict[str, Any]]) -> list[dict[str, A
         candidate["balance_usd"] = balance_usd
         candidate["classification"] = classify_candidate(candidate)
         candidate["score"] = score_candidate(candidate)
-        enriched.append(candidate)
+        if held_through_listing(candidate):
+            enriched.append(candidate)
+        else:
+            print(
+                f"    skipped: exited before listing "
+                f"(pre-out ${candidate['pre_listing_out_usd']:,.0f} vs in ${candidate['total_in_usd']:,.0f})",
+                flush=True,
+            )
     return sorted(enriched, key=lambda row: (int(row.get("score") or 0), float(row.get("total_in_usd") or 0)), reverse=True)
 
 
