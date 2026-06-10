@@ -77,6 +77,31 @@ def test_get_listing_predictions_preserves_empty_ask_response(monkeypatch):
     assert "No fresh unlisted-token signals" in result["answer"]
 
 
+def test_get_listing_predictions_portuguese(monkeypatch):
+    monkeypatch.setattr(
+        tools.alerts,
+        "get_predictions",
+        lambda: [{
+            "token": "MEW",
+            "exchange": "Gate.io",
+            "chain": "solana",
+            "score": 80,
+            "value_usd": 250000,
+            "liquidity": 1000000,
+            "pair_url": "https://dexscreener.com/search?q=MEW",
+        }],
+    )
+
+    result = tools.get_listing_predictions("pt")
+
+    assert result["count"] == 1
+    assert "MEW" in result["answer"]
+    # PT output must use Portuguese labels, not English ones
+    assert "Confiança" in result["answer"]
+    assert "Radar de listings" in result["answer"]
+    assert "Confidence" not in result["answer"]
+
+
 def test_get_recent_holdings_uses_existing_ask_formatter(monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -179,7 +204,7 @@ def test_get_smart_money_formats_portuguese_response(monkeypatch):
 
 
 def test_execute_tool_dispatches_known_sync_tool(monkeypatch):
-    monkeypatch.setattr(tools, "get_listing_predictions", lambda: {"ok": True, "answer": "LISTINGS"})
+    monkeypatch.setattr(tools, "get_listing_predictions", lambda *a, **k: {"ok": True, "answer": "LISTINGS"})
 
     result = asyncio.run(tools.execute_tool("get_listing_predictions"))
 

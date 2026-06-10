@@ -42,10 +42,38 @@ def get_top100_rankings(mode: str = "score") -> Dict[str, Any]:
     return alerts._answer_top100_buy_watchlist(prompt=prompt)
 
 
-def get_listing_predictions() -> Dict[str, Any]:
+def _listing_confidence_label(score, english: bool) -> str:
+    """Human confidence label for a listing score, matching the Telegram alert style."""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "N/A"
+    if english:
+        if s >= 90:
+            return "very high"
+        if s >= 80:
+            return "high"
+        if s >= 70:
+            return "good"
+        return "moderate"
+    if s >= 90:
+        return "muito alta"
+    if s >= 80:
+        return "alta"
+    if s >= 70:
+        return "boa"
+    return "moderada"
+
+
+def get_listing_predictions(lang: str = "en") -> Dict[str, Any]:
+    english = not str(lang or "en").lower().startswith("pt")
     rows = alerts.get_predictions()
     if not rows:
-        return _answer_payload("No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.")
+        return _answer_payload(
+            "No fresh unlisted-token signals in the last 2 weeks. Monitoring continues."
+            if english else
+            "Sem sinais novos de tokens não listados nas últimas 2 semanas. A monitorização continua."
+        )
 
     grouped: dict = {}
     for r in rows:
@@ -66,38 +94,62 @@ def get_listing_predictions() -> Dict[str, Any]:
 
     total = len(entries)
     limit = 3
-    lines = [f"**Top signals on-chain detected**\n\n{total} signals filtered. Showing the {min(limit, total)} most relevant.\n"]
+    if english:
+        header = (
+            f"**On-chain listing radar**\n\n"
+            f"{total} signals filtered · showing the {min(limit, total)} most relevant.\n"
+        )
+        L = {
+            "score": "Score", "confidence": "Confidence", "wallets": "Wallets",
+            "total": "Total value", "wallet": "Wallet value", "liquidity": "Liquidity",
+            "more": f"+ {total - limit} more signals. Ask *show more listings* to expand.",
+            "foot": "_Detected in monitored exchange wallets and not yet listed on that exchange._",
+        }
+    else:
+        header = (
+            f"**Radar de listings on-chain**\n\n"
+            f"{total} sinais filtrados · a mostrar os {min(limit, total)} mais relevantes.\n"
+        )
+        L = {
+            "score": "Score", "confidence": "Confiança", "wallets": "Wallets",
+            "total": "Valor total", "wallet": "Valor na wallet", "liquidity": "Liquidez",
+            "more": f"+ {total - limit} sinais. Pede *mostra mais listings* para expandir.",
+            "foot": "_Detetados em wallets de exchanges monitorizadas e ainda não listados nessa exchange._",
+        }
+
+    blocks = [header]
     for i, entry in enumerate(entries[:limit], 1):
         token = entry["token"]
         exchange = entry["exchange"]
         chain = str(entry["chain"] or "-").capitalize()
         score = entry["score"]
         score_txt = f"{score:.0f}/100" if isinstance(score, (int, float)) else "N/A"
+        confidence = _listing_confidence_label(score, english)
         wallets = entry["rows"]
         total_val = sum(float(r.get("value_usd") or 0) for r in wallets)
         liq = wallets[0].get("liquidity")
-        liq_txt = f"${liq:,.0f}" if isinstance(liq, (int, float)) else None
 
-        line = f"{i}. **{token}** - {exchange} - {chain}\n   Score: {score_txt}"
+        lines = [
+            f"**{i}. {token}** · {exchange} · {chain}",
+            f"  {L['score']}: **{score_txt}** · {L['confidence']}: {confidence}",
+        ]
         if len(wallets) > 1:
-            line += f" - {len(wallets)} wallets - Total: ${total_val:,.0f}"
-            for w in wallets:
-                val = w.get("value_usd")
-                if isinstance(val, (int, float)):
-                    line += f"\n   - wallet: ${val:,.0f}"
+            lines.append(f"  {L['wallets']}: {len(wallets)} · {L['total']}: ${total_val:,.0f}")
         else:
             val = wallets[0].get("value_usd")
-            line += f" - Wallet: ${val:,.0f}" if isinstance(val, (int, float)) else ""
-        if liq_txt:
-            line += f" - Liquidity: {liq_txt}"
+            if isinstance(val, (int, float)):
+                lines.append(f"  {L['wallet']}: ${val:,.0f}")
+        if isinstance(liq, (int, float)):
+            lines.append(f"  {L['liquidity']}: ${liq:,.0f}")
         pair_url = entry.get("pair_url")
         if pair_url:
-            line += f" - [DexScreener]({pair_url})"
-        lines.append(line)
+            lines.append(f"  [DexScreener]({pair_url})")
+        blocks.append("\n".join(lines))
 
     if total > limit:
-        lines.append(f"\n+ {total - limit} more signals. Ask *show more listings* to expand.")
-    return _answer_payload("\n".join(lines), count=total, items=rows)
+        blocks.append(L["more"])
+    blocks.append(L["foot"])
+    return _answer_payload("\n\n".join(blocks), count=total, items=rows)
 
 
 def get_recent_holdings() -> Dict[str, Any]:
@@ -274,7 +326,7 @@ async def execute_tool(name: str, arguments: Dict[str, Any] | None = None) -> Di
     if name == "get_top100_rankings":
         return get_top100_rankings(str(args.get("mode") or "score"))
     if name == "get_listing_predictions":
-        return get_listing_predictions()
+        return get_listing_predictions(str(args.get("lang") or "en"))
     if name == "get_recent_holdings":
         return get_recent_holdings()
     if name == "get_top100_delta":

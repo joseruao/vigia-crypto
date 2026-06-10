@@ -260,7 +260,9 @@ def _format_comparison_followup(coins: list[str], history: list[ChatHistoryMessa
             verdict = d.get("verdict") or ""
             icon = "🔥" if "FORTE" in verdict else ("🟢" if "COMPRA" in verdict else ("🔴" if "VENDA" in verdict else "🟡"))
             yield f"{icon} **{coin}** — {d['price']}\n"
-            yield f"RSI {d['rsi']} · {tc('Tendência:', 'Trend:')} {d.get('trend') or 'N/A'} · {'Acima' if d.get('sma200') == 'Acima' else 'Abaixo'} SMA200\n"
+            _sma_side = d.get('sma200') == 'Acima'
+            _sma_txt = tc('Acima', 'Above') if _sma_side else tc('Abaixo', 'Below')
+            yield f"RSI {d['rsi']} · {tc('Tendência:', 'Trend:')} {d.get('trend') or 'N/A'} · {_sma_txt} SMA200\n"
             if d["entry"] != "N/A":
                 yield f"{tc('Entrada', 'Entry')} {d['entry']} · {tc('Alvo', 'Target')} {d['target']} · Stop {d['stop']}\n"
             yield "\n"
@@ -348,22 +350,22 @@ def _format_onboarding(prompt: str = "", lang: str = "pt") -> callable:
             return
 
         yield (
-            "## O que faco e como te posso ajudar\n\n"
+            "## O que faço e como te posso ajudar\n\n"
             "Monitorizo wallets de exchanges e transformo atividade on-chain em sinais estruturados de mercado crypto. "
-            "Isto e informativo, nao aconselhamento financeiro.\n\n"
-            "### Monitorizacao de wallets de exchanges\n"
+            "Isto é informativo, não aconselhamento financeiro.\n\n"
+            "### Monitorização de wallets de exchanges\n"
             "Acompanho wallets on-chain de exchanges como **Binance, Coinbase, Gate.io, Kraken, OKX e Bybit**. "
             "Quando um token aparece numa wallet de exchange antes de estar listado nessa mesma exchange, pode ser um sinal antecipado. "
-            "Mostro valor na wallet, liquidez, volume, data de detecao e score de listing.\n\n"
-            f"Pergunta: {_onboarding_link('Que tokens as exchanges estao a acumular que ainda nao foram listados?', 'Potenciais listings nas exchanges')}\n\n"
-            "### Ranking tecnico diario do Top100\n"
-            "Um worker diario analisa as maiores cryptos com RSI, medias moveis, suporte/resistencia, tendencia e risco. "
+            "Mostro valor na wallet, liquidez, volume, data de deteção e score de listing.\n\n"
+            f"Pergunta: {_onboarding_link('Que tokens as exchanges estão a acumular que ainda não foram listados?', 'Potenciais listings nas exchanges')}\n\n"
+            "### Ranking técnico diário do Top100\n"
+            "Um worker diário analisa as maiores cryptos com RSI, médias móveis, suporte/resistência, tendência e risco. "
             "Isto ajuda a encontrar setups perto de suporte, em vez de mostrar apenas as moedas maiores.\n\n"
-            f"Pergunta: {_onboarding_link('Quais do top100 estao perto de suporte?', 'Melhores oportunidades hoje')}\n\n"
-            "### Analise individual de moedas\n"
-            "Podes pedir uma moeda especifica e receber preco, RSI, tendencia, suporte, alvo, stop e grafico TradingView.\n\n"
+            f"Pergunta: {_onboarding_link('Quais do top100 estão perto de suporte?', 'Melhores oportunidades hoje')}\n\n"
+            "### Análise individual de moedas\n"
+            "Podes pedir uma moeda específica e receber preço, RSI, tendência, suporte, alvo, stop e gráfico TradingView.\n\n"
             f"Pergunta: {_onboarding_link('Analisa BTC', 'Analisa BTC')} - {_onboarding_link('Analisa SOL', 'Analisa SOL')} - {_onboarding_link('Analisa NEAR', 'Analisa NEAR')}\n\n"
-            "A parte mais diferenciadora do projeto e o radar de listings: sinais de wallets de exchanges filtrados contra listings conhecidos."
+            "A parte mais diferenciadora do projeto é o radar de listings: sinais de wallets de exchanges filtrados contra listings conhecidos."
         )
     return generate
 
@@ -1077,22 +1079,28 @@ def _format_coin_analysis(coin: str, result: dict, lang: str = "pt"):
     t = lambda pt, en: en if lang == 'en' else pt  # noqa: E731
     if result.get("snapshot_only"):
         changes = result.get("price_change") or {}
-        yield f"## 📊 {coin} — Snapshot de mercado\n\n"
-        yield "_Sem candles históricos suficientes — leitura rápida via DexScreener._\n\n"
-        yield f"**Preço:** {_fmt_price(result.get('current_price'))} · "
+        yield f"## 📊 {coin} — {t('Snapshot de mercado', 'Market snapshot')}\n\n"
+        yield t(
+            "_Sem candles históricos suficientes — leitura rápida via DexScreener._\n\n",
+            "_Not enough historical candles — quick read via DexScreener._\n\n",
+        )
+        yield f"{t('**Preço:**', '**Price:**')} {_fmt_price(result.get('current_price'))} · "
         yield f"24h {_fmt_percent(changes.get('h24'))}\n\n"
         chain = result.get('chain') or 'N/A'
         dex = result.get('dex') or 'N/A'
         yield f"**Chain/DEX:** {chain} / {dex}\n"
-        yield f"**Liquidez:** {_fmt_money(result.get('liquidity_usd'))}\n"
-        yield f"**Volume 24h:** {_fmt_money(result.get('volume_24h'))}\n"
+        yield f"{t('**Liquidez:**', '**Liquidity:**')} {_fmt_money(result.get('liquidity_usd'))}\n"
+        yield f"{t('**Volume 24h:**', '**24h volume:**')} {_fmt_money(result.get('volume_24h'))}\n"
         if result.get("market_cap"):
             yield f"**Market cap:** {_fmt_money(result.get('market_cap'))}\n"
         elif result.get("fdv"):
             yield f"**FDV:** {_fmt_money(result.get('fdv'))}\n"
         if result.get("pair_url"):
-            yield f"\n[Ver par no DexScreener]({result.get('pair_url')})\n"
-        yield "\n⚠️ Sem candles fiáveis não há RSI, suportes ou targets calculáveis. Confirma liquidez, holders e contrato antes de qualquer decisão."
+            yield f"\n[{t('Ver par no DexScreener', 'View pair on DexScreener')}]({result.get('pair_url')})\n"
+        yield t(
+            "\n⚠️ Sem candles fiáveis não há RSI, suportes ou targets calculáveis. Confirma liquidez, holders e contrato antes de qualquer decisão.",
+            "\n⚠️ Without reliable candles there is no RSI, support or calculable targets. Confirm liquidity, holders and contract before any decision.",
+        )
         return
 
     analysis = result.get("analysis", {}) or {}

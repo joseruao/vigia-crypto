@@ -205,24 +205,48 @@ def _is_recent_holdings_tool_question(prompt: str) -> bool:
     )
 
 
-def _agent_system_message(req: ChatRequest) -> str:
+def _agent_system_message(req: ChatRequest, lang: str = "pt") -> str:
     portfolio_context = _portfolio_context_line(req.history)
-    return (
-        "Es o agente do Vigia Crypto. Responde em portugues europeu quando o utilizador escreve em portugues. "
-        "Usa ferramentas sempre que a pergunta precise de dados internos, rankings, predictions, holdings ou analise tecnica. "
-        "Nao inventes precos, scores, targets, noticias ou rankings.\n\n"
+    tools_block = (
+        "\nAvailable tools:\n"
+        "- analyze_coin: for technical analysis requests on a coin.\n"
+        "- get_top100_rankings: for questions about top100, lower risk, support, RSI, risk/reward, reversal or best setups.\n"
+        "- get_listing_predictions: for potential listings.\n"
+        "- get_recent_holdings: for recent holdings detected in exchange wallets.\n"
+        "- get_top100_delta: for changes in the top100 since yesterday.\n\n"
+    )
+    if lang == "en":
+        lang_rule = (
+            "You are the Vigia Crypto agent. ALWAYS reply in English — the user is writing in English. "
+            "Never mix Portuguese into your answer.\n\n"
+        )
+        guidance = (
+            "Use tools whenever the question needs internal data, rankings, predictions, holdings or technical analysis. "
+            "Do not invent prices, scores, targets, news or rankings.\n\n"
+            f"Today's date: {_date.today().isoformat()}.\n"
+            + (f"{portfolio_context}\n" if portfolio_context else "")
+            + tools_block
+            + "If a tool returns a ready answer in the answer field, use it as the basis of your reply. "
+            "If you don't need a tool, answer short, technical and clear. "
+            "Avoid direct financial advice: present scenarios, risk and next steps."
+        )
+        return lang_rule + guidance
+
+    lang_rule = (
+        "És o agente do Vigia Crypto. Responde SEMPRE em português europeu — o utilizador está a escrever em português. "
+        "Nunca mistures inglês na tua resposta.\n\n"
+    )
+    guidance = (
+        "Usa ferramentas sempre que a pergunta precise de dados internos, rankings, predictions, holdings ou análise técnica. "
+        "Não inventes preços, scores, targets, notícias ou rankings.\n\n"
         f"Data de hoje: {_date.today().isoformat()}.\n"
         + (f"{portfolio_context}\n" if portfolio_context else "")
-        + "\nFerramentas disponiveis:\n"
-        "- analyze_coin: para pedidos de analise tecnica de uma moeda.\n"
-        "- get_top100_rankings: para perguntas sobre top100, menor risco, suporte, RSI, risco/retorno, reversao ou melhores setups.\n"
-        "- get_listing_predictions: para potenciais listings.\n"
-        "- get_recent_holdings: para holdings recentes detectados em wallets de exchanges.\n"
-        "- get_top100_delta: para mudancas no top100 desde ontem.\n\n"
-        "Se uma ferramenta devolver uma resposta pronta no campo answer, usa essa resposta como base. "
-        "Se nao precisares de ferramenta, responde curto, tecnico e claro. "
-        "Evita aconselhamento financeiro direto: apresenta cenarios, risco e proximos passos."
+        + tools_block
+        + "Se uma ferramenta devolver uma resposta pronta no campo answer, usa essa resposta como base. "
+        "Se não precisares de ferramenta, responde curto, técnico e claro. "
+        "Evita aconselhamento financeiro direto: apresenta cenários, risco e próximos passos."
     )
+    return lang_rule + guidance
 
 
 def _history_messages(req: ChatRequest) -> list[dict]:
@@ -244,9 +268,9 @@ def _tool_call_to_dict(call) -> dict:
     }
 
 
-async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
+async def _run_agent_tool_calling(client, req: ChatRequest, lang: str = "pt") -> str:
     messages: list[dict] = [
-        {"role": "system", "content": _agent_system_message(req)},
+        {"role": "system", "content": _agent_system_message(req, lang)},
         *_history_messages(req),
         {"role": "user", "content": req.prompt},
     ]
@@ -263,7 +287,8 @@ async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
         tool_calls = getattr(message, "tool_calls", None) or []
 
         if not tool_calls:
-            return (message.content or last_tool_answer or "Nao consegui responder agora.").strip()
+            _no_answer = "Could not answer right now." if lang == "en" else "Não consegui responder agora."
+            return (message.content or last_tool_answer or _no_answer).strip()
 
         messages.append(
             {
@@ -286,26 +311,58 @@ async def _run_agent_tool_calling(client, req: ChatRequest) -> str:
                 }
             )
 
-    _fallback = "Could not complete analysis with tools now." if getattr(req, "lang", "pt") == "en" else "Nao consegui fechar a analise com as ferramentas agora."
+    _fallback = "Could not complete analysis with tools now." if lang == "en" else "Não consegui fechar a análise com as ferramentas agora."
     return (last_tool_answer or _fallback).strip()
 
 
-_EN_PROMPT_TOKENS = {
-    "analyze", "analyse", "analysis", "what", "which", "how", "show", "tell",
-    "give", "find", "list", "top", "best", "near", "support", "resistance",
-    "buy", "sell", "price", "token", "coin", "market", "wallet", "exchange",
-    "listing", "unlisted", "radar", "signal", "chart", "trend",
+# Distinctive stopwords/markers for each language. These are words that appear
+# very frequently in one language and almost never in the other, so counting
+# them gives a robust per-message signal even for short prompts.
+_PT_MARKERS = {
+    "que", "qual", "quais", "como", "porque", "porquê", "está", "estao", "estão",
+    "não", "nao", "sim", "uma", "uns", "umas", "isto", "isso", "agora", "também",
+    "tambem", "moeda", "moedas", "comprar", "compro", "vender", "vendo", "achas",
+    "devo", "posso", "tenho", "preço", "preco", "subir", "descer", "melhor",
+    "está", "são", "sao", "para", "com", "dos", "das", "pelo", "pela", "mais",
+    "muito", "ainda", "então", "entao", "fazes", "podes", "queres", "obrigado",
+}
+_EN_MARKERS = {
+    "the", "what", "which", "how", "why", "is", "are", "should", "can", "could",
+    "would", "do", "does", "buy", "sell", "price", "coin", "now", "good", "best",
+    "about", "tell", "show", "give", "find", "analyze", "analyse", "this", "that",
+    "near", "support", "for", "with", "and", "your", "you", "have", "want",
+    "thanks", "please", "going", "still", "more",
 }
 
-def _detect_lang(prompt: str) -> str:
-    words = set(re.sub(r"[^a-zA-Z\s]", " ", prompt).lower().split())
-    return "en" if words & _EN_PROMPT_TOKENS else "pt"
+
+def _detect_lang(prompt: str, fallback: str = "pt") -> str:
+    """Detect PT vs EN by scoring distinctive markers. Falls back to the
+    client-provided language when the signal is ambiguous (e.g. just a coin
+    symbol like "BTC" with no real words)."""
+    text = re.sub(r"[^a-zA-ZáàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ\s]", " ", prompt).lower()
+    words = text.split()
+    if not words:
+        return fallback if fallback in ("pt", "en") else "pt"
+
+    # Accented characters are a strong PT signal (EN has none of these).
+    has_accents = bool(re.search(r"[áàâãéêíóôõúç]", text))
+
+    word_set = set(words)
+    pt_score = len(word_set & _PT_MARKERS) + (2 if has_accents else 0)
+    en_score = len(word_set & _EN_MARKERS)
+
+    if pt_score > en_score:
+        return "pt"
+    if en_score > pt_score:
+        return "en"
+    # Tie / no markers matched → trust the client's language preference.
+    return fallback if fallback in ("pt", "en") else "pt"
 
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     try:
-        lang = _detect_lang(req.prompt)
+        lang = _detect_lang(req.prompt, fallback=getattr(req, "lang", "pt"))
         if _is_onboarding_question(req.prompt):
             return StreamingResponse(_format_onboarding(req.prompt, lang=lang)(), media_type="text/plain")
 
@@ -322,25 +379,25 @@ async def chat_stream(req: ChatRequest):
         if not _is_smart_money_q and (is_top100_buy_question(req.prompt) or _is_opportunity_question(req.prompt) or _is_delta_q):
             result = answer_top100_buy_watchlist(log, req.prompt)
             def _top100():
-                yield result.get("answer") or ("Could not fetch top100 ranking now." if lang == "en" else "Nao consegui obter o ranking tecnico top100 agora.")
+                yield result.get("answer") or ("Could not fetch top100 ranking now." if lang == "en" else "Não consegui obter o ranking técnico top100 agora.")
             return StreamingResponse(_top100(), media_type="text/plain")
 
         if _is_listing_tool_question(req.prompt):
-            result = await execute_tool("get_listing_predictions")
+            result = await execute_tool("get_listing_predictions", {"lang": lang})
             def _listings():
-                yield result.get("answer") or ("Could not fetch listing signals now." if lang == "en" else "Nao consegui obter potenciais listings agora.")
+                yield result.get("answer") or ("Could not fetch listing signals now." if lang == "en" else "Não consegui obter potenciais listings agora.")
             return StreamingResponse(_listings(), media_type="text/plain")
 
         if _is_smart_money_q:
             result = await execute_tool("get_smart_money", {"lang": lang})
             def _smart_money():
-                yield result.get("answer") or ("Could not fetch smart money signals now." if lang == "en" else "Nao consegui obter smart money agora.")
+                yield result.get("answer") or ("Could not fetch smart money signals now." if lang == "en" else "Não consegui obter smart money agora.")
             return StreamingResponse(_smart_money(), media_type="text/plain")
 
         if _is_recent_holdings_tool_question(req.prompt):
             result = await execute_tool("get_recent_holdings")
             def _holdings():
-                yield result.get("answer") or ("Could not fetch recent holdings now." if lang == "en" else "Nao consegui obter holdings recentes agora.")
+                yield result.get("answer") or ("Could not fetch recent holdings now." if lang == "en" else "Não consegui obter holdings recentes agora.")
             return StreamingResponse(_holdings(), media_type="text/plain")
 
         if _is_top100_recommendation_followup(req.prompt):
@@ -408,7 +465,11 @@ async def chat_stream(req: ChatRequest):
                         return StreamingResponse(_analysis(), media_type="text/plain")
                     else:
                         def _err():
-                            yield f"Erro ao analisar {coin}: {result.get('error', 'Erro desconhecido')}\n"
+                            err = result.get('error', 'Unknown error' if lang == 'en' else 'Erro desconhecido')
+                            if lang == "en":
+                                yield f"Error analysing {coin}: {err}\n"
+                            else:
+                                yield f"Erro ao analisar {coin}: {err}\n"
                         return StreamingResponse(_err(), media_type="text/plain")
                 else:
                     def _ask_coin():
@@ -420,7 +481,10 @@ async def chat_stream(req: ChatRequest):
             except Exception as e:
                 log.warning("Erro ao analisar moeda: %s", e, exc_info=True)
                 def _analysis_err():
-                    yield f"Erro ao analisar a moeda: {e}\n"
+                    if lang == "en":
+                        yield f"Error analysing the coin: {e}\n"
+                    else:
+                        yield f"Erro ao analisar a moeda: {e}\n"
                 return StreamingResponse(_analysis_err(), media_type="text/plain")
 
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -429,10 +493,10 @@ async def chat_stream(req: ChatRequest):
             client = OpenAI(api_key=openai_key)
             async def _agent_openai():
                 try:
-                    yield await _run_agent_tool_calling(client, req)
+                    yield await _run_agent_tool_calling(client, req, lang)
                 except Exception as exc:
                     log.error("Erro no agente OpenAI: %s", exc)
-                    yield f"Erro ao processar: {exc}"
+                    yield ("Error processing your request." if lang == "en" else "Erro ao processar o pedido.")
             return StreamingResponse(_agent_openai(), media_type="text/plain")
 
             def _openai():
@@ -496,11 +560,18 @@ async def chat_stream(req: ChatRequest):
             return StreamingResponse(_openai(), media_type="text/plain")
 
         def _fallback():
-            yield "A funcionalidade de chat com IA esta temporariamente indisponivel.\nPodes usar as sugestoes para consultar holdings e previsoes de tokens."
+            if lang == "en":
+                yield "The AI chat feature is temporarily unavailable.\nYou can use the suggestions to check token holdings and predictions."
+            else:
+                yield "A funcionalidade de chat com IA está temporariamente indisponível.\nPodes usar as sugestões para consultar holdings e previsões de tokens."
         return StreamingResponse(_fallback(), media_type="text/plain")
 
     except Exception as e:
         log.error("Erro em /chat/stream: %s", e)
+        _lang = locals().get("lang", "pt")
         def _exc():
-            yield f"Erro ao processar a mensagem: {e}"
+            if _lang == "en":
+                yield f"Error processing the message: {e}"
+            else:
+                yield f"Erro ao processar a mensagem: {e}"
         return StreamingResponse(_exc(), media_type="text/plain")
