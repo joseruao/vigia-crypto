@@ -135,6 +135,8 @@ from Api.services.chat_helpers import (
     _format_comparison_followup,
     _format_top100_recommendation,
     _portfolio_context_line,
+    _extract_entry_price,
+    _fmt_price,
 )
 from Api.services.tools import TOOL_SCHEMAS, execute_tool, parse_tool_arguments
 
@@ -460,8 +462,43 @@ async def chat_stream(req: ChatRequest):
                     if "error" not in result:
                         LAST_COIN_ANALYSIS.clear()
                         LAST_COIN_ANALYSIS.update({"coin": coin, "result": result})
-                        def _analysis():
-                            yield from _format_coin_analysis(coin, result, lang=lang)
+                        entry_price = _extract_entry_price(req.prompt)
+                        has_sell_q = _is_sell_followup(req.prompt)
+                        def _analysis(
+                            _coin=coin, _result=result, _lang=lang,
+                            _entry=entry_price, _sell=has_sell_q,
+                        ):
+                            yield from _format_coin_analysis(_coin, _result, lang=_lang)
+                            if _entry is not None and _sell:
+                                current_price = _result.get("current_price")
+                                if current_price:
+                                    pnl_pct = ((_entry - 0) and (current_price - _entry) / _entry * 100)
+                                    ts = lambda pt, en: pt if _lang == "pt" else en
+                                    yield f"\n---\n\n**{ts('A tua posição', 'Your position')}**\n\n"
+                                    yield f"- {ts('Preço médio de entrada:', 'Average entry price:')} **{_fmt_price(_entry)}**\n"
+                                    yield f"- {ts('Preço atual:', 'Current price:')} **{_fmt_price(current_price)}**\n"
+                                    pnl_pct = (current_price - _entry) / _entry * 100
+                                    yield f"- {ts('Resultado atual:', 'Current result:')} **{pnl_pct:+.1f}%**\n\n"
+                                    if pnl_pct < -50:
+                                        yield ts(
+                                            f"Estás com uma perda de **{abs(pnl_pct):.0f}%**. A este nível, a prioridade não é realizar lucro — é gerir risco. Avalia se a tese mudou. Se sim, considera sair antes de perdas maiores. Se ainda acreditas no projeto, define um stop e reduz a exposição.\n",
+                                            f"You're at a **{abs(pnl_pct):.0f}%** loss. At this level, the priority isn't about taking profit — it's risk management. Assess if the thesis has changed. If so, consider cutting losses. If you still believe in the project, set a stop and reduce exposure.\n",
+                                        )
+                                    elif pnl_pct < -10:
+                                        yield ts(
+                                            "Como estás em perda, não trates isto como realização de lucro. A decisão é gerir risco: vender parcial se a tese mudou, ou aguardar recuperação técnica se ainda acreditas no setup.\n",
+                                            "As you're at a loss, don't treat this as profit-taking. The decision is about risk management: sell partial if the thesis changed, or wait for technical recovery if you still believe in the setup.\n",
+                                        )
+                                    elif pnl_pct >= 50:
+                                        yield ts(
+                                            "Estás em lucro significativo. Com base nos targets técnicos acima, considera realizar parcial nos níveis de resistência identificados.\n",
+                                            "You're at a significant profit. Based on the technical targets above, consider taking partial at the identified resistance levels.\n",
+                                        )
+                                    else:
+                                        yield ts(
+                                            "Estás próximo do teu preço médio. Acompanha os níveis técnicos acima para decidir continuidade ou saída.\n",
+                                            "You're near your average entry. Watch the technical levels above to decide whether to hold or exit.\n",
+                                        )
                         return StreamingResponse(_analysis(), media_type="text/plain")
                     else:
                         def _err():

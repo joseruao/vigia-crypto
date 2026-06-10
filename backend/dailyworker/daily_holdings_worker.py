@@ -119,7 +119,6 @@ HOLDING_THRESHOLDS = {
     "Bitget Hot Wallet 1": 50000,  # $50k+
     "Bitfinex 2": 75000,      # $75k+
     "Bitfinex 19": 75000,     # $75k+
-    "Gemini 3": 50000,        # $50k+
     "Robinhood": 75000,       # $75k+
     "Upbit": 50000,           # $50k+
 
@@ -140,6 +139,12 @@ HOLDING_THRESHOLDS = {
 }
 
 MIN_LIQUIDITY = 2000000  # $2M+ liquidez mínima
+
+# Only send Telegram alerts for exchanges that actively list new tokens.
+# Custodians (Robinhood, Upbit, Bitfinex) and brokers don't run listing events.
+TELEGRAM_LISTING_EXCHANGES = {
+    "Binance", "Coinbase", "OKX", "Bybit", "Gate.io", "KuCoin", "Kraken", "Bitget", "MEXC",
+}
 MIN_VOLUME_24H = 500000  # $500k+ volume mínimo
 MIN_SCORE_SAVE = 50      # Guardar mais candidatos para o painel de predictions
 MIN_SCORE_ALERT = 70     # Telegram para candidatos bons e ainda nao listados
@@ -177,9 +182,6 @@ ETHEREUM_WALLETS = {
     "Binance 7": "0x28c6c06298d514db089934071355e5743bf21d60",
     "Binance 16": "0x21a31ee1afc51d94c2efccaa2092ad1028285549",
     "Kraken": "0xe9f7ecae3a53d2a67105292894676b00d1fab785",
-    "Bitfinex 2": "0x6b76f8d2aeb91d1e14f6b195f83eae0c0e7f7525",
-    "Bitfinex 19": "0xdaa5dfc4490b9d22b58ed7a6cf6c648995cbf43d",
-    "Gemini 3": "0x8d12a197cb00d4747a1fe03395095ce2a5cc6819",
     "OKX 73": "0x2c4b9d9a57d7b6f91e3d6b1a3b4c1d81b37c0c2c",
     "OKX 93": "0x5a52e96bacdabb82fd05763e25335261b270efcb",
     "Robinhood": "0x7e4a8391c728fEd9069B2962699AB416628B19Fa",
@@ -1060,10 +1062,14 @@ async def analyze_wallet_holdings(wallet_name, wallet_address, chain="solana"):
                 metrics.holdings_saved += 1
                 print(f"   💾 Guardado: {holding['symbol']} (Score: {holding['score']})")
                 listed_on_own_exchange = is_token_listed_on_exchange(holding['symbol'], wallet_name)
-                if holding['score'] >= MIN_SCORE_ALERT and not listed_on_own_exchange:
+                exchange_normalized = _normalize_exchange_name(wallet_name)
+                is_listing_exchange = exchange_normalized in TELEGRAM_LISTING_EXCHANGES
+                if holding['score'] >= MIN_SCORE_ALERT and not listed_on_own_exchange and is_listing_exchange:
                     send_telegram_alert(holding, wallet_name)
                 elif listed_on_own_exchange:
-                    print(f"   🔕 Sem Telegram: {holding['symbol']} ja esta listado na {_normalize_exchange_name(wallet_name)}")
+                    print(f"   🔕 Sem Telegram: {holding['symbol']} ja esta listado na {exchange_normalized}")
+                elif not is_listing_exchange:
+                    print(f"   🔕 Sem Telegram: {exchange_normalized} nao faz listings rastreados")
                 else:
                     print(f"   🔕 Sem Telegram: {holding['symbol']} score {holding['score']} < {MIN_SCORE_ALERT}")
         

@@ -11,7 +11,11 @@ import requests
 TOP100_TABLE = "top100_technical_rankings"
 TOP100_EXCLUDED_SYMBOLS = {
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "USDS", "PYUSD",
+    "USD1", "USDB", "USDX", "BUSD", "GUSD", "LUSD", "FRAX", "SUSD",
+    "EURC", "EUROC", "EURI", "EURT", "EURQ", "BSC-USD", "USYC", "USDTE", "IDRT",
     "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "RETH", "BETH",
+    "CBBTC", "SPENDLE", "SENA", "BBTC", "BTCB", "HBTC",
+    "PAXG", "XAUT", "XAUT0",
 }
 TELEGRAM_BOT_TOKEN = (
     os.getenv("TELEGRAM_BOT_TOKEN_SOL")
