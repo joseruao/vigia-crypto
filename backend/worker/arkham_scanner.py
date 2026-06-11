@@ -47,6 +47,19 @@ for _key_name in ("SUPABASE_SERVICE_ROLE", "SUPABASE_SERVICE_ROLE_KEY", "SUPABAS
 VALUE_THRESHOLD_USD = float(os.getenv("ARKHAM_MIN_VALUE_USD", "50000"))
 SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", "100000"))
 ARKHAM_SIGNALS_TABLE = os.getenv("ARKHAM_SIGNALS_TABLE", "arkham_signals")
+
+TELEGRAM_BOT_TOKEN = (
+    os.getenv("TELEGRAM_BOT_TOKEN_SOL")
+    or os.getenv("TELEGRAM_BOT_TOKEN_1")
+    or os.getenv("TELEGRAM_BOT_TOKEN")
+    or ""
+)
+TELEGRAM_CHAT_ID = (
+    os.getenv("TELEGRAM_CHAT_ID_SOL")
+    or os.getenv("TELEGRAM_CHAT_ID_1")
+    or os.getenv("TELEGRAM_CHAT_ID")
+    or ""
+)
 EXCHANGE_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_EXCHANGE_MIN_SAVE_SCORE", "50"))
 SMART_MONEY_MIN_SAVE_SCORE = int(os.getenv("ARKHAM_SMART_MONEY_MIN_SAVE_SCORE", "25"))
 
@@ -1185,7 +1198,71 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
             )
 
     print(f"Smart money: {len(candidates)} sinais/deltas; {saved} guardados.", flush=True)
-    return len(candidates), saved
+    return len(candidates), saved, candidates
+
+
+def send_smart_money_telegram_report(candidates: list) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    if not candidates:
+        return
+
+    def _fmt_val(v):
+        v = float(v or 0)
+        if v >= 1_000_000:
+            return f"${v/1_000_000:.1f}M"
+        if v >= 1_000:
+            return f"${v/1_000:.0f}K"
+        return f"${v:.0f}"
+
+    # Sort by direction priority then score
+    direction_order = {"new": 0, "increased": 1, "decreased": 2, "removed_or_moved": 3, "flat": 4}
+    enriched = []
+    for candidate, previous in candidates:
+        prev_val = _float_or_zero((previous or {}).get("value_usd"))
+        prev_amt = _float_or_zero((previous or {}).get("amount"))
+        direction = signal_direction(
+            _float_or_zero(candidate.get("value_usd")),
+            prev_val,
+            _float_or_zero(candidate.get("amount")),
+            prev_amt,
+        )
+        enriched.append((candidate, direction))
+
+    enriched = [e for e in enriched if e[1] in ("new", "increased", "decreased")]
+    enriched.sort(key=lambda e: (direction_order.get(e[1], 9), -float(e[0].get("score") or 0)))
+
+    top = enriched[:8]
+    if not top:
+        return
+
+    lines = ["*🐋 Smart Money — Resumo do scan*", ""]
+
+    direction_emoji = {"new": "🆕", "increased": "📈", "decreased": "📉"}
+    for candidate, direction in top:
+        emoji = direction_emoji.get(direction, "•")
+        token = candidate.get("token", "?")
+        fund = candidate.get("exchange", "?")
+        val = _fmt_val(candidate.get("value_usd", 0))
+        score = int(candidate.get("score") or 0)
+        lines.append(f"{emoji} *{token}* — {fund} · {val} · score {score}")
+
+    lines += ["", f"_{len(enriched)} movimentos detectados_"]
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": "\n".join(lines),
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True,
+            },
+            timeout=10,
+        )
+        print("Telegram smart money report enviado.", flush=True)
+    except Exception as exc:
+        print(f"Telegram smart money report falhou: {exc}", flush=True)
 
 
 def main() -> None:
@@ -1194,7 +1271,8 @@ def main() -> None:
     start = time.time()
 
     token_exchanges, exchange_candidates, exchange_saved = scan_exchange_candidates()
-    smart_candidates, smart_saved = scan_smart_money_with_deltas(token_exchanges)
+    smart_candidates, smart_saved, raw_candidates = scan_smart_money_with_deltas(token_exchanges)
+    send_smart_money_telegram_report(raw_candidates)
 
     print(
         f"🏁 Arkham concluido: exchange={exchange_candidates}/{exchange_saved}, "
