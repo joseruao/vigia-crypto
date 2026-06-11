@@ -742,13 +742,32 @@ def candidate_signal_key(candidate: dict[str, Any], signal_type: str) -> str:
     return f"{signal_type}:{exchange.lower()}:{chain}:{token_address or token}".lower()
 
 
-def signal_direction(current_value: float, previous_value: float) -> str:
+def signal_direction(
+    current_value: float,
+    previous_value: float,
+    current_amount: float = 0.0,
+    previous_amount: float = 0.0,
+) -> str:
+    # Entry/exit based on value (amount may be zero on first scan)
     if previous_value <= 0 and current_value > 0:
         return "new"
-    delta = current_value - previous_value
-    threshold = max(10_000, previous_value * 0.05)
     if current_value <= 0 and previous_value > 0:
         return "removed_or_moved"
+
+    # Prefer amount-based direction: price swings don't trigger false signals.
+    # Fall back to value-based only when amounts are unavailable.
+    if current_amount > 0 and previous_amount > 0:
+        amount_threshold = max(previous_amount * 0.03, previous_amount * 0.001)
+        amount_delta = current_amount - previous_amount
+        if amount_delta >= amount_threshold:
+            return "increased"
+        if amount_delta <= -amount_threshold:
+            return "decreased"
+        return "flat"
+
+    # Fallback: value-based (less reliable — price moves pollute the signal)
+    delta = current_value - previous_value
+    threshold = max(10_000, previous_value * 0.05)
     if delta >= threshold:
         return "increased"
     if delta <= -threshold:
@@ -807,7 +826,7 @@ def save_candidate(candidate: dict[str, Any], signal_type: str = "holding", prev
     value_delta = current_value - previous_value
     amount_delta = current_amount - previous_amount
     value_delta_pct = (value_delta / previous_value * 100) if previous_value > 0 else None
-    direction = signal_direction(current_value, previous_value)
+    direction = signal_direction(current_value, previous_value, current_amount, previous_amount)
 
     now = datetime.now(timezone.utc).isoformat()
     row = {
@@ -1059,7 +1078,8 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
                     "amount": candidate["amount"],
                 }
             previous_value = _float_or_zero((previous or {}).get("value_usd"))
-            direction = signal_direction(candidate["value_usd"], previous_value)
+            previous_amount = _float_or_zero((previous or {}).get("amount"))
+            direction = signal_direction(candidate["value_usd"], previous_value, candidate["amount"], previous_amount)
             if direction == "flat":
                 candidate["score"] = int(_float_or_zero((previous or {}).get("score")) or score_candidate(candidate["value_usd"], 1))
             else:
@@ -1139,7 +1159,8 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
                         "amount": candidate["amount"],
                     }
                 previous_value = _float_or_zero((previous or {}).get("value_usd"))
-                direction = signal_direction(candidate["value_usd"], previous_value)
+                previous_amount = _float_or_zero((previous or {}).get("amount"))
+                direction = signal_direction(candidate["value_usd"], previous_value, candidate["amount"], previous_amount)
                 if direction == "flat":
                     candidate["score"] = int(_float_or_zero((previous or {}).get("score")) or score_candidate(candidate["value_usd"], 1))
                 else:
