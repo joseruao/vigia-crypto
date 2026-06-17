@@ -101,6 +101,25 @@ export async function fetchTop100Rankings(params?: {
   return Array.isArray(data?.items) ? data.items : [];
 }
 
+export type PrelistingWatchlistItem = {
+  token: string;
+  token_id?: string | null;
+  listing_exchange: string;
+  max_score: number;
+  wallet_count: number;
+  classifications: string[];
+  labels: string[];
+  investigation_status: string;
+  source: string;
+};
+
+export async function fetchPrelistingWatchlist(): Promise<PrelistingWatchlistItem[]> {
+  const res = await fetch(`${API_BASE}/alerts/prelisting-watchlist`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
 export async function fetchSmartMoneySignals(params?: { limit?: number }): Promise<SmartMoneySignal[]> {
   const q = new URLSearchParams();
   q.set("limit", String(params?.limit ?? 8));

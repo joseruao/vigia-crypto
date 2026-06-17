@@ -1156,6 +1156,70 @@ def get_holdings():
         log.error(f"Erro ao processar holdings: {e}", exc_info=True)
         return {"ok": False, "error": str(e), "items": []}
 
+@router.get("/alerts/prelisting-watchlist")
+def get_prelisting_watchlist():
+    """
+    Tokens investigados manualmente com sinais pre-listing fortes (listing_ts IS NULL).
+    Dados de token_prelisting_wallets onde a investigacao identificou acumulacao antes do listing.
+    """
+    import logging
+    log = logging.getLogger("vigia")
+
+    if not supa.ok():
+        return {"ok": False, "error": "Supabase nao configurado", "items": []}
+
+    try:
+        params = {
+            "listing_ts": "is.null",
+            "select": "token,token_id,listing_exchange,score,classification,labels,raw,address,investigation_status",
+            "order": "score.desc",
+            "limit": "200",
+        }
+        r = supa.rest_get("token_prelisting_wallets", params=params, timeout=8)
+        if r.status_code != 200:
+            log.warning("Prelisting watchlist: HTTP %s", r.status_code)
+            return {"ok": False, "error": r.text[:200], "items": []}
+
+        rows = r.json() or []
+
+        # Group by token
+        by_token: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            tok = str(row.get("token") or "").upper()
+            if not tok:
+                continue
+            if tok not in by_token:
+                by_token[tok] = {
+                    "token": tok,
+                    "token_id": row.get("token_id"),
+                    "listing_exchange": str(row.get("listing_exchange") or "").replace(" (pending)", ""),
+                    "max_score": 0,
+                    "wallet_count": 0,
+                    "classifications": [],
+                    "labels": [],
+                    "investigation_status": row.get("investigation_status") or "candidate",
+                    "source": "prelisting_scanner",
+                }
+            entry = by_token[tok]
+            score = int(row.get("score") or 0)
+            if score > entry["max_score"]:
+                entry["max_score"] = score
+            entry["wallet_count"] += 1
+            cls = row.get("classification") or ""
+            if cls and cls not in entry["classifications"]:
+                entry["classifications"].append(cls)
+            for label in (row.get("labels") or []):
+                if label and label not in entry["labels"]:
+                    entry["labels"].append(label)
+
+        items = sorted(by_token.values(), key=lambda x: -x["max_score"])
+        return {"ok": True, "count": len(items), "items": items}
+
+    except Exception as e:
+        log.error("Prelisting watchlist error: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e), "items": []}
+
+
 @router.get("/alerts/smart-money")
 def get_smart_money(limit: int = 10):
     """

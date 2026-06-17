@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, LineChart, Radar, Waves } from 'lucide-react';
 import {
   fetchPredictions,
+  fetchPrelistingWatchlist,
   fetchSmartMoneySignals,
   fetchTop100Rankings,
   type Holding,
+  type PrelistingWatchlistItem,
   type SmartMoneySignal,
   type Top100Coin,
 } from '@/lib/api';
@@ -77,6 +79,55 @@ function top100Reason(coin: Top100Coin) {
     parts.push(`${Number(coin.current_position).toFixed(0)}% range`);
   }
   return parts.join(' / ') || 'technical setup';
+}
+
+function classificationLabel(cls: string): string {
+  if (cls === 'exchange_otc_seller') return 'OTC Seller';
+  if (cls === 'strategic_holder') return 'Strategic Holder';
+  if (cls === 'active_accumulator') return 'Accumulator';
+  if (cls === 'accumulator') return 'Accumulator';
+  if (cls === 'unknown_accumulation') return 'Accumulator';
+  return cls.replace(/_/g, ' ');
+}
+
+function PrelistingCard({ item }: { item: PrelistingWatchlistItem }) {
+  const score = item.max_score;
+  const topLabel = item.labels[0] || null;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-bold text-zinc-950">{item.token}</span>
+            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              PENDING
+            </span>
+          </div>
+          <div className="truncate text-[10px] text-zinc-500">
+            {item.listing_exchange} · {item.wallet_count} wallet{item.wallet_count !== 1 ? 's' : ''}
+          </div>
+        </div>
+        {score ? (
+          <div className={`rounded-lg px-2 py-1 text-right text-[10px] font-semibold ${scoreTone(score)}`}>
+            <div>{score}/100</div>
+            <div className="opacity-75">{scoreLabel(score)}</div>
+          </div>
+        ) : null}
+      </div>
+      {topLabel ? (
+        <div className="mt-2 rounded-lg bg-white/80 px-2 py-1.5 text-[10px] text-zinc-600 ring-1 ring-amber-100">
+          {topLabel}
+        </div>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {item.classifications.slice(0, 2).map((c) => (
+          <span key={c} className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] text-zinc-500">
+            {classificationLabel(c)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ListingCard({ item }: { item: Holding }) {
@@ -178,6 +229,7 @@ function Top100Card({ item }: { item: Top100Coin }) {
 export function IntelPanel() {
   const [tab, setTab] = useState<Tab>('listings');
   const [listings, setListings] = useState<Holding[]>([]);
+  const [pending, setPending] = useState<PrelistingWatchlistItem[]>([]);
   const [whales, setWhales] = useState<SmartMoneySignal[]>([]);
   const [top100, setTop100] = useState<Top100Coin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,11 +240,13 @@ export function IntelPanel() {
     let mounted = true;
     Promise.all([
       fetchPredictions().catch(() => []),
+      fetchPrelistingWatchlist().catch(() => []),
       fetchSmartMoneySignals({ limit: 5 }).catch(() => []),
       fetchTop100Rankings({ mode: 'near_support', limit: 5 }).catch(() => []),
-    ]).then(([p, w, t]) => {
+    ]).then(([p, pend, w, t]) => {
       if (!mounted) return;
       setListings(p);
+      setPending(pend);
       setWhales(w);
       setTop100(t);
       setLoading(false);
@@ -203,10 +257,10 @@ export function IntelPanel() {
   }, []);
 
   const tabs = useMemo(() => [
-    { id: 'listings' as const, label: 'Listings', count: listings.length, icon: Radar },
+    { id: 'listings' as const, label: 'Listings', count: listings.length + pending.length, icon: Radar },
     { id: 'whales' as const, label: 'Whales', count: whales.length, icon: Waves },
     { id: 'top100' as const, label: 'Top100', count: top100.length, icon: LineChart },
-  ], [listings.length, whales.length, top100.length]);
+  ], [listings.length, pending.length, whales.length, top100.length]);
 
   if (hasMessages) return null;
 
@@ -252,8 +306,29 @@ export function IntelPanel() {
         <div className="max-h-[25rem] space-y-2.5 overflow-auto border-t border-zinc-100 p-3">
           {loading ? <div className="text-xs text-zinc-500">Loading intel...</div> : null}
           {!loading && tab === 'listings' && (
-            listings.length ? listings.slice(0, 5).map((item) => <ListingCard key={item.id || `${item.exchange}-${item.token}`} item={item} />)
-              : <div className="text-xs text-zinc-500">No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.</div>
+            <>
+              {pending.length > 0 && (
+                <>
+                  <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-amber-600">
+                    Under investigation
+                  </div>
+                  {pending.slice(0, 4).map((item) => (
+                    <PrelistingCard key={item.token} item={item} />
+                  ))}
+                  {listings.length > 0 && (
+                    <div className="mb-1 mt-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400">
+                      Exchange wallet radar
+                    </div>
+                  )}
+                </>
+              )}
+              {listings.length > 0
+                ? listings.slice(0, 3).map((item) => <ListingCard key={item.id || `${item.exchange}-${item.token}`} item={item} />)
+                : pending.length === 0
+                  ? <div className="text-xs text-zinc-500">No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.</div>
+                  : null
+              }
+            </>
           )}
           {!loading && tab === 'whales' && (
             whales.length ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} />)
