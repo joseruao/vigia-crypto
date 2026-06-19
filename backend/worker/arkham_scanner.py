@@ -1442,6 +1442,20 @@ def save_wallet_activity(wallet_row: dict[str, Any], activity: dict[str, Any]) -
     return response.status_code in (200, 204)
 
 
+def _insider_score(value_usd: float, wallet_score: int = 0) -> int:
+    if value_usd >= 5_000_000:
+        base = 97
+    elif value_usd >= 1_000_000:
+        base = 92
+    elif value_usd >= 500_000:
+        base = 87
+    elif value_usd >= 100_000:
+        base = 82
+    else:
+        base = 75
+    return max(base, wallet_score)
+
+
 def save_insider_signal_to_arkham(wallet_row: dict[str, Any], activity: dict[str, Any]) -> None:
     flow = activity.get("flow", "?")
     value_usd = float(activity.get("value_usd") or 0)
@@ -1464,7 +1478,7 @@ def save_insider_signal_to_arkham(wallet_row: dict[str, Any], activity: dict[str
         "value_delta_usd": value_usd,
         "signal_direction": flow,
         "exchange_count": 1,
-        "score": max(80, int(wallet_row.get("score") or 80)),
+        "score": _insider_score(value_usd, int(wallet_row.get("score") or 0)),
         "ts": activity.get("timestamp"),
         "type": "insider",
         "signature": signal_key,
