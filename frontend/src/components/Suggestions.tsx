@@ -1,5 +1,6 @@
 'use client';
 
+import { useLang } from '@/lib/LangContext';
 import {
   CandlestickChart,
   CircleHelp,
@@ -111,13 +112,10 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
   ],
 };
 
-function getLang(): 'pt' | 'en' {
-  return 'en';
-}
-
 export function Suggestions({ visible, onSelect }: Props) {
+  const { lang } = useLang();
   if (!visible) return null;
-  const items = SUGGESTIONS[getLang()];
+  const items = SUGGESTIONS[lang];
 
   return (
     <div className="mb-4 grid w-full grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">

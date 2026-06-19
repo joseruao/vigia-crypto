@@ -4,7 +4,8 @@
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Github, Linkedin, Mail, Plus, Send, Trash2, X } from 'lucide-react';
-import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
+import { useChatHistoryContext } from '@/lib/ChatHistoryProvider'
+import { useLang } from '@/lib/LangContext';
 
 type SidebarProps = {
   mobile?: boolean;
@@ -39,6 +40,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState('');
   const pathname = usePathname();
+  const { lang, toggle } = useLang();
 
   if (pathname === '/login') return null;
 
@@ -165,7 +167,15 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
       </div>
 
       <div className="border-t border-zinc-200 bg-zinc-50 p-3">
-        <div className="mb-2 text-center text-xs text-zinc-500">joseruao.com · crypto intel</div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-zinc-500">joseruao.com · crypto intel</span>
+          <button
+            onClick={toggle}
+            className="rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-600 hover:border-zinc-400 hover:text-zinc-950 transition"
+          >
+            {lang === 'en' ? 'PT' : 'EN'}
+          </button>
+        </div>
         <div className="grid grid-cols-4 gap-1.5">
           <a
             href="mailto:jose@joseruao.com"

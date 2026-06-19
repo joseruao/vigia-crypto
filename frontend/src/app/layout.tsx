@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Sidebar } from '@/components/Sidebar'
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
+import { LangProvider } from '@/lib/LangContext'
 
 export const metadata: Metadata = {
   title: 'joseruao.com',
@@ -15,10 +16,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="pt">
       <body className="flex h-screen bg-white text-black antialiased overflow-hidden">
-        <ChatHistoryProvider>
-          <Sidebar />
-          <div className="flex-1 flex flex-col overflow-y-auto">{children}</div>
-        </ChatHistoryProvider>
+        <LangProvider>
+          <ChatHistoryProvider>
+            <Sidebar />
+            <div className="flex-1 flex flex-col overflow-y-auto">{children}</div>
+          </ChatHistoryProvider>
+        </LangProvider>
       </body>
     </html>
   )

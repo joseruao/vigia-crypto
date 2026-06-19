@@ -8,6 +8,7 @@ import { TradingViewChart } from '@/components/TradingViewChart';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
+import { useLang } from '@/lib/LangContext';
 import { CircleStop, Menu, MessageSquarePlus, Send } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
 
@@ -31,8 +32,8 @@ export function ChatWindow() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [gotFirstChunk, setGotFirstChunk] = useState(false);
-  const [lang, setLang] = useState<'pt' | 'en'>('pt');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { lang } = useLang();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -41,11 +42,6 @@ export function ChatWindow() {
   const abortedRef = useRef(false);
   const urlPromptHandledRef = useRef(false);
   const sendMessageRef = useRef<(text: string) => Promise<void>>(async () => {});
-
-  useEffect(() => {
-    const browserLang = navigator.language.toLowerCase();
-    setLang(browserLang.startsWith('pt') ? 'pt' : 'en');
-  }, []);
 
   // Em desenvolvimento, usa localhost se estiver em localhost
   const getApiUrl = () => {

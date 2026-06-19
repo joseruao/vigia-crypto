@@ -12,7 +12,8 @@ import {
   type SmartMoneySignal,
   type Top100Coin,
 } from '@/lib/api';
-import { useChatHistoryContext } from '@/lib/ChatHistoryProvider';
+import { useChatHistoryContext } from '@/lib/ChatHistoryProvider'
+import { useLang } from '@/lib/LangContext';
 
 type Tab = 'listings' | 'whales' | 'top100';
 
@@ -286,14 +287,9 @@ export function IntelPanel() {
   const [whales, setWhales] = useState<SmartMoneySignal[]>([]);
   const [top100, setTop100] = useState<Top100Coin[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lang, setLang] = useState<'pt' | 'en'>('en');
+  const { lang } = useLang();
   const { active } = useChatHistoryContext();
   const hasMessages = (active?.messages?.length ?? 0) > 0;
-
-  useEffect(() => {
-    const browserLang = navigator.language.toLowerCase();
-    setLang(browserLang.startsWith('pt') ? 'pt' : 'en');
-  }, []);
 
   useEffect(() => {
     let mounted = true;
