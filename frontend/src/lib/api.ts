@@ -57,10 +57,13 @@ export type SmartMoneySignal = {
   previous_value_usd?: number | null;
   value_delta_usd?: number | null;
   value_delta_pct?: number | null;
-  signal_direction?: 'new' | 'increased' | 'decreased' | string | null;
+  signal_direction?: 'new' | 'increased' | 'decreased' | 'in' | 'out' | string | null;
   score?: number | null;
   pair_url?: string | null;
   ts?: string | null;
+  analysis_text?: string | null;
+  entity_type?: string | null;
+  exchange?: string | null;
 };
 
 export async function fetchHoldings(params?: {

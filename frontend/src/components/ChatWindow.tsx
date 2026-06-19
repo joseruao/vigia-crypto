@@ -40,6 +40,7 @@ export function ChatWindow() {
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
   const urlPromptHandledRef = useRef(false);
+  const sendMessageRef = useRef<(text: string) => void>(() => {});
 
   useEffect(() => {
     const browserLang = navigator.language.toLowerCase();
@@ -94,7 +95,14 @@ export function ChatWindow() {
     return false;
   }
 
+  useEffect(() => {
+    const handler = (e: Event) => sendMessageRef.current((e as CustomEvent<string>).detail);
+    window.addEventListener('vigia:prompt', handler);
+    return () => window.removeEventListener('vigia:prompt', handler);
+  }, []);
+
   async function sendMessage(text?: string) {
+    sendMessageRef.current = (t: string) => sendMessage(t);
     const content = (text ?? input).trim();
     if (!content || loading) return;
 

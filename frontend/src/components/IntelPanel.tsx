@@ -172,12 +172,20 @@ function ListingCard({ item }: { item: Holding }) {
   );
 }
 
+function askPrompt(text: string) {
+  window.dispatchEvent(new CustomEvent('vigia:prompt', { detail: text }));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function WhaleCard({ item }: { item: SmartMoneySignal }) {
   const isInsider = (item as { entity_type?: string }).entity_type === 'insider';
   const directionLabel = item.signal_direction === 'out' ? 'saída' : item.signal_direction === 'in' ? 'entrada' : item.signal_direction || 'move';
   const entityLabel = isInsider
     ? (item.entity || '').replace('insider:', '')
     : (item.entity || 'Arkham');
+  const prompt = isInsider
+    ? `Analisa o movimento do insider ${entityLabel}: ${directionLabel} de ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. O que pode significar?`
+    : `${entityLabel} ${directionLabel === 'saída' ? 'reduziu' : directionLabel === 'entrada' ? 'aumentou' : 'moveu'} a posição em ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analisa este movimento.`;
   return (
     <div className={`rounded-xl border p-3 text-xs shadow-sm ${isInsider ? 'border-amber-200 bg-amber-50/60' : 'border-indigo-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
@@ -213,11 +221,20 @@ function WhaleCard({ item }: { item: SmartMoneySignal }) {
           {item.analysis_text}
         </div>
       )}
+      <div className="mt-2 border-t border-zinc-100 pt-2">
+        <button
+          onClick={() => askPrompt(prompt)}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold transition hover:opacity-80 ${isInsider ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-700'}`}
+        >
+          Analisa este sinal →
+        </button>
+      </div>
     </div>
   );
 }
 
 function Top100Card({ item }: { item: Top100Coin }) {
+  const prompt = `Analisa ${item.symbol}${item.name ? ` (${item.name})` : ''}: preço ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Vale a pena entrar?`;
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3 text-xs shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -239,6 +256,14 @@ function Top100Card({ item }: { item: Top100Coin }) {
         </a>
       </div>
       <div className="mt-2 line-clamp-1 text-[11px] text-zinc-600">{top100Reason(item)}</div>
+      <div className="mt-2 border-t border-zinc-100 pt-2">
+        <button
+          onClick={() => askPrompt(prompt)}
+          className="inline-flex items-center gap-1 rounded-full bg-zinc-50 px-2 py-1 text-[10px] font-semibold text-zinc-600 transition hover:bg-zinc-100"
+        >
+          Analisa este sinal →
+        </button>
+      </div>
     </div>
   );
 }
@@ -279,84 +304,87 @@ export function IntelPanel() {
     { id: 'top100' as const, label: 'Top100', count: top100.length, icon: LineChart },
   ], [listings.length, pending.length, whales.length, top100.length]);
 
-  if (hasMessages) return null;
-
-  return (
-    <aside className="fixed right-4 top-4 z-30 hidden w-[21rem] xl:block">
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
-        <div className="border-b border-zinc-100 bg-zinc-50/80 p-2">
-          <div className="grid grid-cols-3 gap-1">
-            {tabs.map((item) => {
-              const Icon = item.icon;
-              const active = tab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[11px] font-semibold transition ${
-                    active ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200' : 'text-zinc-500 hover:bg-white/70'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{item.label}</span>
-                  <span className="rounded-full bg-zinc-100 px-1.5 text-[10px] text-zinc-500">{item.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="px-3.5 py-3">
-          <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">
-            {tab === 'listings' ? 'Listing Radar' : tab === 'whales' ? 'Whale Moves' : 'Top100 Setups'}
-          </div>
-          <div className="mt-0.5 text-[10px] text-zinc-500">
-            {tab === 'listings'
-              ? 'Unlisted tokens detected in exchange wallets'
-              : tab === 'whales'
-                ? 'Arkham entity position changes'
-                : 'Technical setups near support'}
-          </div>
-        </div>
-
-        <div className="max-h-[25rem] space-y-2.5 overflow-auto border-t border-zinc-100 p-3">
-          {loading ? <div className="text-xs text-zinc-500">Loading intel...</div> : null}
-          {!loading && tab === 'listings' && (
-            <>
-              {pending.length > 0 && (
-                <>
-                  <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-amber-600">
-                    Under investigation
-                  </div>
-                  {pending.slice(0, 4).map((item) => (
-                    <PrelistingCard key={item.token} item={item} />
-                  ))}
-                  {listings.length > 0 && (
-                    <div className="mb-1 mt-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                      Exchange wallet radar
-                    </div>
-                  )}
-                </>
-              )}
-              {listings.length > 0
-                ? listings.slice(0, 3).map((item) => <ListingCard key={item.id || `${item.exchange}-${item.token}`} item={item} />)
-                : pending.length === 0
-                  ? <div className="text-xs text-zinc-500">No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.</div>
-                  : null
-              }
-            </>
-          )}
-          {!loading && tab === 'whales' && (
-            whales.length ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} />)
-              : <div className="text-xs text-zinc-500">No notable whale moves yet.</div>
-          )}
-          {!loading && tab === 'top100' && (
-            top100.length ? top100.slice(0, 5).map((item) => <Top100Card key={item.symbol} item={item} />)
-              : <div className="text-xs text-zinc-500">No top100 ranking available.</div>
-          )}
+  const panelContent = (
+    <>
+      <div className="border-b border-zinc-100 bg-zinc-50/80 p-2">
+        <div className="grid grid-cols-3 gap-1">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const isActive = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[11px] font-semibold transition ${
+                  isActive ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200' : 'text-zinc-500 hover:bg-white/70'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{item.label}</span>
+                <span className="rounded-full bg-zinc-100 px-1.5 text-[10px] text-zinc-500">{item.count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
-    </aside>
+      <div className="px-3.5 py-3">
+        <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">
+          {tab === 'listings' ? 'Listing Radar' : tab === 'whales' ? 'Whale Moves' : 'Top100 Setups'}
+        </div>
+        <div className="mt-0.5 text-[10px] text-zinc-500">
+          {tab === 'listings'
+            ? 'Unlisted tokens detected in exchange wallets'
+            : tab === 'whales'
+              ? 'Arkham entity position changes'
+              : 'Technical setups near support'}
+        </div>
+      </div>
+      <div className="max-h-[25rem] space-y-2.5 overflow-auto border-t border-zinc-100 p-3">
+        {loading ? <div className="text-xs text-zinc-500">Loading intel...</div> : null}
+        {!loading && tab === 'listings' && (
+          <>
+            {pending.length > 0 && (
+              <>
+                <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-amber-600">Under investigation</div>
+                {pending.slice(0, 4).map((item) => <PrelistingCard key={item.token} item={item} />)}
+                {listings.length > 0 && <div className="mb-1 mt-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400">Exchange wallet radar</div>}
+              </>
+            )}
+            {listings.length > 0
+              ? listings.slice(0, 3).map((item) => <ListingCard key={item.id || `${item.exchange}-${item.token}`} item={item} />)
+              : pending.length === 0
+                ? <div className="text-xs text-zinc-500">No fresh unlisted-token signals in the last 2 weeks. Monitoring continues.</div>
+                : null}
+          </>
+        )}
+        {!loading && tab === 'whales' && (
+          whales.length ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} />)
+            : <div className="text-xs text-zinc-500">No notable whale moves yet.</div>
+        )}
+        {!loading && tab === 'top100' && (
+          top100.length ? top100.slice(0, 5).map((item) => <Top100Card key={item.symbol} item={item} />)
+            : <div className="text-xs text-zinc-500">No top100 ranking available.</div>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile: below chat, always visible */}
+      <div className="xl:hidden border-t border-zinc-200 bg-white/95">
+        <div className="overflow-hidden">{panelContent}</div>
+      </div>
+
+      {/* Desktop: fixed sidebar, hidden when chat is active */}
+      {!hasMessages && (
+        <aside className="fixed right-4 top-4 z-30 hidden w-[21rem] xl:block">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-lg shadow-zinc-200/70 backdrop-blur">
+            {panelContent}
+          </div>
+        </aside>
+      )}
+    </>
   );
 }
