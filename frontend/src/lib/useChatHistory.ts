@@ -29,14 +29,14 @@ export function useChatHistory() {
       const parsed = JSON.parse(raw) as StoredConversation[];
       const migrated: Conversation[] = parsed.map((c) => ({
         id: c.id ?? uuidv4(),
-        title: c.title ?? 'Nova conversa',
+        title: c.title ?? 'New conversation',
         createdAt: typeof c.createdAt === 'number' ? c.createdAt : Date.now(),
         messages: Array.isArray(c.messages) ? c.messages : [],
       }));
       setConversations(migrated);
       if (migrated.length > 0) setActiveId(migrated[0].id);
     } catch {
-      console.error('Erro ao carregar histórico');
+      console.error('Failed to load chat history');
     }
   }, []);
 
@@ -48,7 +48,7 @@ export function useChatHistory() {
 
   function newConversation(): string {
     const id = uuidv4();
-    const conv: Conversation = { id, title: 'Nova conversa', createdAt: Date.now(), messages: [] };
+    const conv: Conversation = { id, title: 'New conversation', createdAt: Date.now(), messages: [] };
     setConversations((prev) => [conv, ...prev]);
     setActiveId(id);
     return id;
@@ -60,7 +60,7 @@ export function useChatHistory() {
     setConversations((prev) => {
       const exists = prev.some((c) => c.id === id);
       if (!exists) {
-        const title = msg.role === 'user' ? msg.content.slice(0, 40) : 'Nova conversa';
+        const title = msg.role === 'user' ? msg.content.slice(0, 40) : 'New conversation';
         return [{ id, title, createdAt: Date.now(), messages: [msg] }, ...prev];
       }
       return prev.map((c) =>
