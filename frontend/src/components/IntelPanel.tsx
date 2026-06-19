@@ -189,13 +189,10 @@ function WhaleCard({ item, lang }: { item: SmartMoneySignal; lang: 'pt' | 'en' }
   const entityLabel = isInsider
     ? (item.entity || '').replace('insider:', '')
     : (item.entity || 'Arkham');
-  const prompt = isPt
-    ? (isInsider
-        ? `Analisa o movimento do insider ${entityLabel}: ${directionLabel} de ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. O que pode significar?`
-        : `${entityLabel} ${directionLabel === 'saída' ? 'reduziu' : directionLabel === 'entrada' ? 'aumentou' : 'moveu'} a posição em ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analisa este movimento.`)
-    : (isInsider
-        ? `Analyze insider move from ${entityLabel}: ${directionLabel} of ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. What could this signal?`
-        : `${entityLabel} ${directionLabel === 'sell' ? 'reduced' : directionLabel === 'buy' ? 'increased' : 'moved'} position in ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analyze this move.`);
+  const enDirection = item.signal_direction === 'out' ? 'sell' : item.signal_direction === 'in' ? 'buy' : 'move';
+  const prompt = isInsider
+    ? `Analyze insider move from ${entityLabel}: ${enDirection} of ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. What could this signal?`
+    : `${entityLabel} ${enDirection === 'sell' ? 'reduced' : enDirection === 'buy' ? 'increased' : 'moved'} position in ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analyze this move.`;
   return (
     <div className={`rounded-xl border p-3 text-xs shadow-sm ${isInsider ? 'border-amber-200 bg-amber-50/60' : 'border-indigo-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
@@ -244,9 +241,7 @@ function WhaleCard({ item, lang }: { item: SmartMoneySignal; lang: 'pt' | 'en' }
 }
 
 function Top100Card({ item, lang }: { item: Top100Coin; lang: 'pt' | 'en' }) {
-  const prompt = lang === 'pt'
-    ? `Analisa ${item.symbol}${item.name ? ` (${item.name})` : ''}: preço ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Vale a pena entrar?`
-    : `Analyze ${item.symbol}${item.name ? ` (${item.name})` : ''}: price ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Is this a good entry?`;
+  const prompt = `Analyze ${item.symbol}${item.name ? ` (${item.name})` : ''}: price ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Is this a good entry?`;
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3 text-xs shadow-sm">
       <div className="flex items-start justify-between gap-2">

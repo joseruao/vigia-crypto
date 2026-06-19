@@ -188,7 +188,7 @@ def get_smart_money(lang: str = "en") -> Dict[str, Any]:
     except Exception as exc:
         return _answer_payload(f"Could not fetch smart money signals now: {exc}", count=0, items=[])
 
-    english = str(lang or "en").lower().startswith("en")
+    english = True  # always respond in English
     if not rows:
         msg = (
             "No smart money moves stored yet. Let the Arkham scanner run twice so it can compare deltas."
