@@ -40,7 +40,7 @@ export function ChatWindow() {
   const abortRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
   const urlPromptHandledRef = useRef(false);
-  const sendMessageRef = useRef<(text: string) => void>(() => {});
+  const sendMessageRef = useRef<(text: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
     const browserLang = navigator.language.toLowerCase();
@@ -101,8 +101,10 @@ export function ChatWindow() {
     return () => window.removeEventListener('vigia:prompt', handler);
   }, []);
 
+  // Keep ref pointing to latest sendMessage so event handler always has current closure
+  useEffect(() => { sendMessageRef.current = sendMessage; });
+
   async function sendMessage(text?: string) {
-    sendMessageRef.current = (t: string) => sendMessage(t);
     const content = (text ?? input).trim();
     if (!content || loading) return;
 
@@ -238,7 +240,17 @@ export function ChatWindow() {
         {!hasMessages && !loading ? (
           <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
-              <img src="/logo_full.png" alt="Exchange Wallet Radar" className="mb-10 h-auto w-[min(520px,82vw)] object-contain opacity-95 sm:mb-12" />
+              <div className="mb-10 sm:mb-12">
+                <div className="text-3xl font-bold tracking-tight text-zinc-950 sm:text-4xl">
+                  Inteligência on-chain.
+                </div>
+                <div className="text-3xl font-bold tracking-tight text-zinc-400 sm:text-4xl">
+                  Antes dos outros.
+                </div>
+                <div className="mt-3 text-sm text-zinc-500">
+                  AI treinada em sinais de insiders, market makers e listing radar.
+                </div>
+              </div>
               <div className="w-full max-w-2xl">
                 <Suggestions
                   visible={!hasMessages}
