@@ -314,7 +314,7 @@ export function ChatWindow() {
               className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm"
             >
               <MessageSquarePlus className="h-4 w-4" />
-              Novo
+              New
             </button>
           </div>
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-blue-500">
@@ -322,7 +322,7 @@ export function ChatWindow() {
               <button
                 onClick={stopStreaming}
                 className="mb-1 rounded p-1 text-gray-500 hover:bg-gray-100"
-                title="Parar geração"
+                title="Stop generation"
               >
                 <CircleStop className="h-5 w-5" />
               </button>
@@ -343,7 +343,7 @@ export function ChatWindow() {
               onClick={() => sendMessage()}
               disabled={!input.trim() || loading}
               className="mb-0.5 rounded-full p-2 transition-colors enabled:bg-blue-600 enabled:text-white enabled:hover:bg-blue-700 disabled:text-gray-300 disabled:cursor-not-allowed"
-              title="Enviar mensagem"
+              title="Send message"
             >
               <Send className="h-4 w-4" />
             </button>

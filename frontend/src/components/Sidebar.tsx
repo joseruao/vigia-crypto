@@ -58,7 +58,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
   }
 
   function confirmEdit(id: string) {
-    updateTitle(id, tempTitle.trim() || 'Sem título');
+    updateTitle(id, tempTitle.trim() || 'Untitled');
     setEditingId(null);
   }
 
@@ -68,8 +68,8 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
         <button
           onClick={handleNewConversation}
           className="rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300"
-          title="Voltar ao início"
-          aria-label="Voltar ao início"
+          title="Back to home"
+          aria-label="Back to home"
         >
           <img src="/logo_small.png" alt="JR" className="h-6 w-auto" />
         </button>
@@ -77,8 +77,8 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-            title="Fechar menu"
-            aria-label="Fechar menu"
+            title="Close menu"
+            aria-label="Close menu"
           >
             <X size={18} />
           </button>
@@ -91,18 +91,18 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium transition hover:border-zinc-900 hover:bg-zinc-950 hover:text-white"
         >
           <Plus size={16} />
-          <span>Novo chat</span>
+          <span>New chat</span>
         </button>
       </div>
 
       <div className="px-4 pb-2 text-[11px] uppercase tracking-wider text-zinc-500">
-        Chats
+        History
       </div>
 
       <div className="flex-1 space-y-1 overflow-y-auto px-3 text-sm">
         {conversations.length === 0 ? (
           <div className="rounded-lg border border-dashed border-zinc-200 px-3 py-4 text-xs leading-relaxed text-zinc-500">
-            Ainda sem conversas. Usa as sugestões no ecrã inicial ou escreve uma pergunta.
+            No conversations yet. Use the suggestions on the home screen or type a question.
           </div>
         ) : null}
 
@@ -133,7 +133,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
                     className="truncate cursor-text"
                     onDoubleClick={() => startEdit(c.id, c.title)}
                   >
-                    {c.title || 'Sem título'}
+                    {c.title || 'Untitled'}
                   </div>
                   <div className="text-[11px] text-zinc-500">
                     {formatDate(c.createdAt)}
@@ -147,7 +147,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
                 deleteConversation(c.id);
               }}
               className="ml-2 p-1 text-zinc-500 opacity-0 transition hover:text-red-600 group-hover:opacity-100"
-              title="Apagar conversa"
+              title="Delete conversation"
             >
               <Trash2 size={14} />
             </button>
@@ -160,7 +160,7 @@ export function Sidebar({ mobile = false, onClose }: SidebarProps) {
           onClick={clearAll}
           className="w-full rounded-lg px-3 py-2 text-xs text-zinc-500 hover:bg-red-50 hover:text-red-600"
         >
-          Limpar tudo
+          Clear all
         </button>
       </div>
 
