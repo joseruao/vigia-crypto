@@ -241,7 +241,7 @@ export function ChatWindow() {
           <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
               <div className="mb-10 sm:mb-12">
-                <img src="/logo_full.png" alt="Vigia Crypto" className="mx-auto h-20 sm:h-24 object-contain" />
+                <img src="/logo_full.png" alt="Vigia Crypto" className="mx-auto max-h-40 w-auto max-w-xs object-contain sm:max-h-52 sm:max-w-sm" />
               </div>
               <div className="w-full max-w-2xl">
                 <Suggestions
