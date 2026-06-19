@@ -545,10 +545,9 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
 
     if raw is None or (isinstance(raw, list) and len(raw) == 0 and not has_tech):
         answer = (
-            "Ainda nao tenho o ranking tecnico diario do top100 disponivel.\n\n"
-            "Confirma nos logs do cron dos holders a linha "
-            "`Confirmacao Supabase: X linhas visiveis em top100_technical_rankings`.\n\n"
-            "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
+            "The daily top100 technical ranking isn't available yet.\n\n"
+            "The holders cron updates it — check that it ran without errors.\n\n"
+            "In the meantime you can try `analyze BTC`, `analyze SOL`, `analyze NEAR`, etc."
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
@@ -607,12 +606,12 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
                 reason = _delta_reason(r, yest_by_symbol.get(sym), english=False)
                 lines.append(
                     f"{i}. **{sym}** {arrow} score {score:.0f} "
-                    f"({'+' if delta >= 0 else ''}{delta:.1f} pontos vs ontem){zone_change}\n"
-                    f"   Porque mudou: {reason}."
+                    f"({'+' if delta >= 0 else ''}{delta:.1f} pts vs yesterday){zone_change}\n"
+                    f"   Why it changed: {reason}."
                 )
-            lines.append("\nNota: a variacao e em pontos do score tecnico. O score combina zona tecnica, RSI, momentum, proximidade ao suporte/resistencia e risco.")
+            lines.append("\nNote: variation is in technical score points. The score combines technical zone, RSI, momentum, proximity to support/resistance and risk.")
             return {"ok": True, "answer": "\n".join(lines), "count": len(rows), "items": rows}
-        return {"ok": True, "answer": "Ainda não tenho dados de ontem para comparar.", "count": 0, "items": []}
+        return {"ok": True, "answer": "No yesterday's data available yet to compare.", "count": 0, "items": []}
 
     rows = [
         row for row in raw
@@ -623,9 +622,9 @@ def _answer_top100_buy_watchlist(log=None, prompt: str = "") -> Dict[str, Any]:
     rows = _sort_top100_rows(rows, mode)[:10]
     if not rows:
         answer = (
-            "A tabela top100 existe mas nao tem dados validos para hoje.\n\n"
-            "O cron dos holders atualiza o top100 na FASE 1.5 — verifica nos logs se correu sem erros.\n\n"
-            "Enquanto isso podes usar `analisa BTC`, `analisa SOL`, `analisa NEAR`, etc."
+            "The top100 table exists but has no valid data for today.\n\n"
+            "The holders cron updates it — check the logs for any errors.\n\n"
+            "In the meantime you can try `analyze BTC`, `analyze SOL`, `analyze NEAR`, etc."
         )
         return {"ok": True, "answer": answer, "count": 0, "items": []}
 
