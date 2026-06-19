@@ -1464,7 +1464,7 @@ def save_insider_signal_to_arkham(wallet_row: dict[str, Any], activity: dict[str
         "value_delta_usd": value_usd,
         "signal_direction": flow,
         "exchange_count": 1,
-        "score": int(wallet_row.get("score") or 60),
+        "score": max(80, int(wallet_row.get("score") or 80)),
         "ts": activity.get("timestamp"),
         "type": "insider",
         "signature": signal_key,

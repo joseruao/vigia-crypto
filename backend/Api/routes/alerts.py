@@ -1272,14 +1272,11 @@ def get_smart_money(limit: int = 10):
             and str(row.get("token") or "").strip().upper() not in TOP100_EXCLUDED_SYMBOLS
             and _num(row, "value_usd") <= LISTING_EXCLUDED_MAX_VALUE_USD
         ]
-        rows.sort(
-            key=lambda row: (
-                abs(_num(row, "value_delta_usd")),
-                _num(row, "value_usd"),
-                str(row.get("ts") or ""),
-            ),
-            reverse=True,
-        )
+        # Insiders always first, then sort by value within each group
+        def _sort_key(row):
+            is_insider = 0 if str(row.get("entity_type") or "") == "insider" else 1
+            return (is_insider, -abs(_num(row, "value_delta_usd")), -_num(row, "value_usd"))
+        rows.sort(key=_sort_key)
         return {"ok": True, "count": len(rows), "items": rows[:safe_limit]}
     except Exception as e:
         log.error("Erro ao processar smart money: %s", e, exc_info=True)
