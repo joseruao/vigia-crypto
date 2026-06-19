@@ -49,13 +49,15 @@ SMART_MONEY_THRESHOLD_USD = float(os.getenv("ARKHAM_SMART_MONEY_MIN_VALUE_USD", 
 ARKHAM_SIGNALS_TABLE = os.getenv("ARKHAM_SIGNALS_TABLE", "arkham_signals")
 
 TELEGRAM_BOT_TOKEN = (
-    os.getenv("TELEGRAM_BOT_TOKEN_SOL")
+    os.getenv("TELEGRAM_BOT_TOKEN_ETH")
+    or os.getenv("TELEGRAM_BOT_TOKEN_SOL")
     or os.getenv("TELEGRAM_BOT_TOKEN_1")
     or os.getenv("TELEGRAM_BOT_TOKEN")
     or ""
 )
 TELEGRAM_CHAT_ID = (
-    os.getenv("TELEGRAM_CHAT_ID_SOL")
+    os.getenv("TELEGRAM_CHAT_ID_ETH")
+    or os.getenv("TELEGRAM_CHAT_ID_SOL")
     or os.getenv("TELEGRAM_CHAT_ID_1")
     or os.getenv("TELEGRAM_CHAT_ID")
     or ""
