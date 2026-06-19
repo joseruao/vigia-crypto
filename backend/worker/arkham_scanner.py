@@ -92,6 +92,12 @@ EXCLUDED_PREFIXES = ("W", "CB", "S", "BSC", "USD", "EUR")
 EXCLUDED_SUFFIXES = ("BTC", "ETH", "SOL", "USD", "EUR", "USDT", "BNB")
 MAX_SIGNAL_VALUE_USD = 500_000_000
 
+CANDIDATE_WALLETS_TABLE = os.getenv("CANDIDATE_WALLETS_TABLE", "candidate_wallets")
+INSIDER_MIN_VALUE_USD = float(os.getenv("ARKHAM_INSIDER_MIN_VALUE_USD", "25000"))
+INSIDER_WALLET_LIMIT = int(os.getenv("ARKHAM_ACTIVITY_LIMIT", "100"))
+TRANSFER_LOOKBACK_LIMIT = int(os.getenv("ARKHAM_ACTIVITY_TRANSFER_LIMIT", "25"))
+REQUEST_TIMEOUT_ACTIVITY = int(os.getenv("ARKHAM_ACTIVITY_TIMEOUT", "45"))
+
 LOW_SIGNAL_SMART_MONEY_SYMBOLS = STABLE_OR_FIAT_SYMBOLS | {
     # Tokenized funds / cash-like assets. Wrapped majors are intentionally not
     # here: for smart money, WETH/WBTC/WHYPE can be useful exposure signals.
@@ -258,6 +264,15 @@ def _supabase_jwt_role(token: str) -> str:
         return str(data.get("role") or "").strip()
     except Exception:
         return ""
+
+
+def _fmt_val(v: Any) -> str:
+    v = float(v or 0)
+    if v >= 1_000_000:
+        return f"${v/1_000_000:.1f}M"
+    if v >= 1_000:
+        return f"${v/1_000:.0f}K"
+    return f"${v:.0f}"
 
 
 def _normalize_symbol(value: Any) -> str:
@@ -1201,24 +1216,14 @@ def scan_smart_money_with_deltas(token_exchanges: dict[str, set[str]]) -> tuple[
     return len(candidates), saved, candidates
 
 
-def send_smart_money_telegram_report(candidates: list) -> None:
+def send_daily_telegram_report(sm_candidates: list, insider_alerts: list[dict]) -> None:
+    """Combined narrative report: smart money moves + insider activity."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    if not candidates:
-        return
 
-    def _fmt_val(v):
-        v = float(v or 0)
-        if v >= 1_000_000:
-            return f"${v/1_000_000:.1f}M"
-        if v >= 1_000:
-            return f"${v/1_000:.0f}K"
-        return f"${v:.0f}"
-
-    # Sort by direction priority then score
     direction_order = {"new": 0, "increased": 1, "decreased": 2, "removed_or_moved": 3, "flat": 4}
     enriched = []
-    for candidate, previous in candidates:
+    for candidate, previous in sm_candidates:
         prev_val = _float_or_zero((previous or {}).get("value_usd"))
         prev_amt = _float_or_zero((previous or {}).get("amount"))
         direction = signal_direction(
@@ -1227,27 +1232,55 @@ def send_smart_money_telegram_report(candidates: list) -> None:
             _float_or_zero(candidate.get("amount")),
             prev_amt,
         )
-        enriched.append((candidate, direction))
+        enriched.append((candidate, previous, direction))
 
-    enriched = [e for e in enriched if e[1] in ("new", "increased", "decreased")]
-    enriched.sort(key=lambda e: (direction_order.get(e[1], 9), -float(e[0].get("score") or 0)))
+    active_sm = [(c, p, d) for c, p, d in enriched if d in ("new", "increased", "decreased", "removed_or_moved")]
+    active_sm.sort(key=lambda x: (direction_order.get(x[2], 9), -float(x[0].get("score") or 0)))
 
-    top = enriched[:8]
-    if not top:
+    lines = ["*📡 Vigia Crypto — Resumo Diário*", ""]
+
+    if active_sm:
+        lines.append("*🐋 Market Makers & Smart Money*")
+        lines.append("")
+        for candidate, previous, direction in active_sm[:8]:
+            token = candidate.get("token", "?")
+            fund = candidate.get("exchange", "?")
+            val = _fmt_val(candidate.get("value_usd", 0))
+            prev_val_num = _float_or_zero((previous or {}).get("value_usd"))
+            if direction == "new":
+                lines.append(f"🆕 *{fund}* entrou em *{token}* com {val}")
+            elif direction == "increased":
+                delta = _fmt_val(float(candidate.get("value_usd", 0)) - prev_val_num)
+                lines.append(f"📈 *{fund}* aumentou *{token}* (+{delta}, total {val})")
+            elif direction == "decreased":
+                delta = _fmt_val(prev_val_num - float(candidate.get("value_usd", 0)))
+                lines.append(f"📉 *{fund}* reduziu *{token}* (-{delta}, total {val})")
+            elif direction == "removed_or_moved":
+                lines.append(f"🚪 *{fund}* saiu de *{token}* ({_fmt_val(prev_val_num)})")
+
+    if insider_alerts:
+        if lines and lines[-1] != "":
+            lines.append("")
+        lines.append("*🕵️ Insiders*")
+        lines.append("")
+        for alert in insider_alerts[:6]:
+            entity = str(alert.get("entity") or "").replace("insider:", "")
+            token = alert.get("token") or "token"
+            val = _fmt_val(float(alert.get("value_usd") or 0))
+            flow = alert.get("flow", "?")
+            cp = alert.get("counterparty_label") or ""
+            if flow == "out":
+                line = f"📤 *{entity}* enviou {val} *{token}*"
+                if cp:
+                    line += f" → {cp}"
+            else:
+                line = f"📥 *{entity}* recebeu {val} *{token}*"
+                if cp:
+                    line += f" de {cp}"
+            lines.append(line)
+
+    if len(lines) <= 2:
         return
-
-    lines = ["*🐋 Smart Money — Resumo do scan*", ""]
-
-    direction_emoji = {"new": "🆕", "increased": "📈", "decreased": "📉"}
-    for candidate, direction in top:
-        emoji = direction_emoji.get(direction, "•")
-        token = candidate.get("token", "?")
-        fund = candidate.get("exchange", "?")
-        val = _fmt_val(candidate.get("value_usd", 0))
-        score = int(candidate.get("score") or 0)
-        lines.append(f"{emoji} *{token}* — {fund} · {val} · score {score}")
-
-    lines += ["", f"_{len(enriched)} movimentos detectados_"]
 
     try:
         requests.post(
@@ -1260,9 +1293,226 @@ def send_smart_money_telegram_report(candidates: list) -> None:
             },
             timeout=10,
         )
-        print("Telegram smart money report enviado.", flush=True)
+        print("Telegram daily report enviado.", flush=True)
     except Exception as exc:
-        print(f"Telegram smart money report falhou: {exc}", flush=True)
+        print(f"Telegram daily report falhou: {exc}", flush=True)
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _extract_transfer_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [r for r in payload if isinstance(r, dict)]
+    if isinstance(payload, dict):
+        for key in ("transfers", "items", "data", "results"):
+            if isinstance(payload.get(key), list):
+                return [r for r in payload[key] if isinstance(r, dict)]
+    return []
+
+
+def _entity_name(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    entity = value.get("arkhamEntity") if isinstance(value.get("arkhamEntity"), dict) else {}
+    predicted = value.get("predictedEntity") if isinstance(value.get("predictedEntity"), dict) else {}
+    label = value.get("arkhamLabel") if isinstance(value.get("arkhamLabel"), dict) else {}
+    return str(entity.get("name") or predicted.get("name") or label.get("name") or "").strip()
+
+
+def _addr_str(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("address") or "").strip()
+    return str(value or "").strip()
+
+
+def _is_new_activity(row: dict[str, Any], activity: dict[str, Any]) -> bool:
+    prev_ts = _parse_ts(row.get("last_activity_ts"))
+    new_ts = _parse_ts(activity.get("timestamp"))
+    if not new_ts:
+        return False
+    if not prev_ts:
+        return True
+    return new_ts > prev_ts
+
+
+def fetch_candidate_wallets() -> list[dict[str, Any]]:
+    params = {
+        "select": "id,entity,address,chain,score,balance_usd,classification,source,last_activity_ts,raw",
+        "order": "score.desc,balance_usd.desc",
+        "limit": str(INSIDER_WALLET_LIMIT),
+    }
+    response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/{CANDIDATE_WALLETS_TABLE}",
+        headers=SUPABASE_HEADERS,
+        params=params,
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        print(f"candidate_wallets fetch falhou: HTTP {response.status_code}", flush=True)
+        return []
+    return response.json()
+
+
+def latest_activity_for_wallet(address: str, min_value_usd: float) -> dict[str, Any] | None:
+    candidates = []
+    for flow in ("out", "in"):
+        try:
+            response = requests.get(
+                f"{ARKHAM_BASE_URL}/transfers",
+                headers=ARKHAM_HEADERS,
+                params={"base": address, "flow": flow, "limit": TRANSFER_LOOKBACK_LIMIT},
+                timeout=REQUEST_TIMEOUT_ACTIVITY,
+            )
+        except Exception:
+            time.sleep(1.05)
+            continue
+        if response.status_code >= 400:
+            time.sleep(1.05)
+            continue
+        rows = _extract_transfer_rows(response.json() if response.content else {})
+        for row in rows:
+            value_usd = _float_or_zero(row.get("historicalUSD") or row.get("usdValue") or row.get("valueUsd") or 0)
+            if value_usd >= min_value_usd:
+                ts = _parse_ts(row.get("blockTimestamp"))
+                from_obj = row.get("fromAddress")
+                to_obj = row.get("toAddress")
+                candidates.append({
+                    "flow": flow,
+                    "timestamp": ts.isoformat() if ts else str(row.get("blockTimestamp") or ""),
+                    "timestamp_dt": ts,
+                    "token": str(row.get("tokenSymbol") or row.get("tokenName") or "").strip(),
+                    "value_usd": value_usd,
+                    "tx": row.get("transactionHash"),
+                    "chain": row.get("chain"),
+                    "from": _addr_str(from_obj),
+                    "to": _addr_str(to_obj),
+                    "from_label": _entity_name(from_obj),
+                    "to_label": _entity_name(to_obj),
+                })
+                break
+        time.sleep(1.05)
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda r: r.get("timestamp_dt") or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    result = candidates[0].copy()
+    result.pop("timestamp_dt", None)
+    return result
+
+
+def save_wallet_activity(wallet_row: dict[str, Any], activity: dict[str, Any]) -> bool:
+    raw = wallet_row.get("raw") if isinstance(wallet_row.get("raw"), dict) else {}
+    raw = {**raw, "last_activity": activity, "last_activity_checked_at": datetime.now(timezone.utc).isoformat()}
+    flow = activity.get("flow")
+    counterparty = activity.get("to") if flow == "out" else activity.get("from")
+    counterparty_label = activity.get("to_label") if flow == "out" else activity.get("from_label")
+    payload = {
+        "last_activity_ts": activity.get("timestamp") or None,
+        "last_activity_value_usd": activity.get("value_usd") or 0,
+        "last_activity_flow": flow or None,
+        "last_activity_token": activity.get("token") or None,
+        "last_activity_chain": activity.get("chain") or None,
+        "last_activity_counterparty": counterparty or None,
+        "last_activity_counterparty_label": counterparty_label or None,
+        "last_activity_tx": activity.get("tx") or None,
+        "activity_checked_at": datetime.now(timezone.utc).isoformat(),
+        "raw": raw,
+    }
+    response = requests.patch(
+        f"{SUPABASE_URL}/rest/v1/{CANDIDATE_WALLETS_TABLE}",
+        headers={**SUPABASE_HEADERS, "Prefer": "return=minimal"},
+        params={"id": f"eq.{wallet_row['id']}"},
+        data=json.dumps(payload),
+        timeout=30,
+    )
+    return response.status_code in (200, 204)
+
+
+def save_insider_signal_to_arkham(wallet_row: dict[str, Any], activity: dict[str, Any]) -> None:
+    flow = activity.get("flow", "?")
+    value_usd = float(activity.get("value_usd") or 0)
+    entity = str(wallet_row.get("entity") or "")
+    token = activity.get("token") or ""
+    chain = activity.get("chain") or wallet_row.get("chain") or ""
+    counterparty = activity.get("to_label") if flow == "out" else activity.get("from_label")
+    signal_key = f"insider:{str(wallet_row.get('address',''))[:12]}:{token}:{(activity.get('timestamp') or '')[:10]}"
+    payload = {
+        "signal_key": signal_key,
+        "entity": entity,
+        "entity_type": "insider",
+        "token": token,
+        "chain": chain,
+        "value_usd": value_usd,
+        "signal_direction": flow,
+        "exchange": counterparty or "",
+        "score": int(wallet_row.get("score") or 60),
+        "ts": activity.get("timestamp"),
+        "analysis_text": f"Insider {entity.replace('insider:', '')} · {_fmt_val(value_usd)} {token} {flow}",
+    }
+    try:
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/{ARKHAM_SIGNALS_TABLE}",
+            headers={**SUPABASE_HEADERS, "Prefer": "resolution=ignore-duplicates,return=minimal"},
+            data=json.dumps(payload),
+            timeout=15,
+        )
+        if response.status_code not in (200, 201, 204):
+            print(f"  arkham_signals insider insert falhou HTTP {response.status_code}", flush=True)
+    except Exception as exc:
+        print(f"  arkham_signals insider insert falhou: {exc}", flush=True)
+
+
+def scan_insider_wallets() -> list[dict[str, Any]]:
+    """Check latest Arkham activity for prelisting insider wallets. Returns list of new alerts."""
+    wallets = fetch_candidate_wallets()
+    insiders = [w for w in wallets if str(w.get("source") or "").startswith("prelisting")]
+    if not insiders:
+        print("Insider wallets: nenhuma encontrada.", flush=True)
+        return []
+
+    print(f"INSIDERS — {len(insiders)} wallets a verificar (min ${INSIDER_MIN_VALUE_USD:,.0f})", flush=True)
+    alerts: list[dict[str, Any]] = []
+    for index, row in enumerate(insiders, 1):
+        address = str(row.get("address") or "").strip()
+        if not address:
+            continue
+        activity = latest_activity_for_wallet(address, INSIDER_MIN_VALUE_USD)
+        if not activity:
+            print(f"[{index}/{len(insiders)}] {address[:12]}... sem actividade >= ${INSIDER_MIN_VALUE_USD:,.0f}", flush=True)
+            continue
+        is_new = _is_new_activity(row, activity)
+        entity = str(row.get("entity") or "")
+        label = activity.get("to_label") if activity.get("flow") == "out" else activity.get("from_label")
+        print(
+            f"[{index}/{len(insiders)}] {entity} {address[:12]}...{'[NEW]' if is_new else ''} "
+            f"{activity['flow']} {activity.get('token') or 'token'} {_fmt_val(activity.get('value_usd', 0))}"
+            f"{(' → ' + label) if label else ''}",
+            flush=True,
+        )
+        save_wallet_activity(row, activity)
+        if is_new:
+            save_insider_signal_to_arkham(row, activity)
+            alerts.append({
+                "entity": entity,
+                "token": activity.get("token") or "",
+                "value_usd": activity.get("value_usd") or 0,
+                "flow": activity.get("flow") or "",
+                "counterparty_label": (activity.get("to_label") if activity.get("flow") == "out" else activity.get("from_label")) or "",
+                "chain": activity.get("chain") or row.get("chain") or "",
+            })
+
+    print(f"Insiders: {len(insiders)} verificadas, {len(alerts)} novos alertas.", flush=True)
+    return alerts
 
 
 def main() -> None:
@@ -1272,11 +1522,12 @@ def main() -> None:
 
     token_exchanges, exchange_candidates, exchange_saved = scan_exchange_candidates()
     smart_candidates, smart_saved, raw_candidates = scan_smart_money_with_deltas(token_exchanges)
-    send_smart_money_telegram_report(raw_candidates)
+    insider_alerts = scan_insider_wallets()
+    send_daily_telegram_report(raw_candidates, insider_alerts)
 
     print(
         f"🏁 Arkham concluido: exchange={exchange_candidates}/{exchange_saved}, "
-        f"smart_money={smart_candidates}/{smart_saved}. "
+        f"smart_money={smart_candidates}/{smart_saved}, insiders={len(insider_alerts)} alertas. "
         f"Duracao total: {round(time.time() - start, 1)}s",
         flush=True,
     )

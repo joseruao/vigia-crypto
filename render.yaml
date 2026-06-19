@@ -27,13 +27,3 @@ services:
     schedule: "0 7 * * *"
     autoDeploy: yes
 
-  - type: cron
-    name: insider-wallet-activity
-    runtime: python
-    region: oregon
-    rootDir: backend
-    pythonVersion: "3.12"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python worker/arkham_candidate_wallet_activity.py
-    schedule: "0 */6 * * *"
-    autoDeploy: yes
