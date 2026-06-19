@@ -112,7 +112,7 @@ const SUGGESTIONS: Record<'pt' | 'en', Suggestion[]> = {
 };
 
 function getLang(): 'pt' | 'en' {
-  if (typeof navigator === 'undefined') return 'pt';
+  if (typeof navigator === 'undefined') return 'en';
   return navigator.language.toLowerCase().startsWith('pt') ? 'pt' : 'en';
 }
 
