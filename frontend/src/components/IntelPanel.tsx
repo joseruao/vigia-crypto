@@ -317,7 +317,7 @@ export function IntelPanel() {
 
   const tabs = useMemo(() => [
     { id: 'listings' as const, label: 'Listings', count: listings.length + pending.length, icon: Radar },
-    { id: 'whales' as const, label: 'Insiders', count: whales.filter(w => w.entity_type === 'insider').length, icon: Waves },
+    { id: 'whales' as const, label: 'Smart Money', count: whales.length, icon: Waves },
     { id: 'top100' as const, label: 'Top100', count: top100.length, icon: LineChart },
   ], [listings.length, pending.length, whales.length, top100.length]);
 
@@ -347,13 +347,13 @@ export function IntelPanel() {
       </div>
       <div className="px-3.5 py-3">
         <div className="text-xs font-bold uppercase tracking-wide text-zinc-800">
-          {tab === 'listings' ? 'Listing Radar' : tab === 'whales' ? 'Insider Alerts' : 'Top100 Setups'}
+          {tab === 'listings' ? 'Listing Radar' : tab === 'whales' ? 'Smart Money' : 'Top100 Setups'}
         </div>
         <div className="mt-0.5 text-[10px] text-zinc-500">
           {tab === 'listings'
             ? 'Unlisted tokens detected in exchange wallets'
             : tab === 'whales'
-              ? 'Wallet moves above $25K from tracked insider wallets'
+              ? 'Position changes from market makers and insider wallets'
               : 'Technical setups near support'}
         </div>
       </div>
@@ -375,18 +375,11 @@ export function IntelPanel() {
                 : null}
           </>
         )}
-        {!loading && tab === 'whales' && (() => {
-          const insiders = whales.filter(w => w.entity_type === 'insider');
-          if (insiders.length === 0) return (
-            <div className="space-y-2 text-center py-4">
-              <div className="text-xs font-semibold text-zinc-500">No insider alerts yet</div>
-              <div className="text-[10px] text-zinc-400 leading-relaxed">
-                Scanner checks wallets every few hours.<br />Alerts appear here when an insider moves &gt;$25K.
-              </div>
-            </div>
-          );
-          return insiders.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} lang={lang} />);
-        })()}
+        {!loading && tab === 'whales' && (
+          whales.length
+            ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} lang={lang} />)
+            : <div className="text-xs text-zinc-500">No smart money signals yet.</div>
+        )}
         {!loading && tab === 'top100' && (
           top100.length ? top100.slice(0, 5).map((item) => <Top100Card key={item.symbol} item={item} lang={lang} />)
             : <div className="text-xs text-zinc-500">No top100 ranking available.</div>
