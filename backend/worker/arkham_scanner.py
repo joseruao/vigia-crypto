@@ -1519,10 +1519,11 @@ def scan_insider_wallets() -> list[dict[str, Any]]:
         is_new = _is_new_activity(row, activity)
         entity = str(row.get("entity") or "")
         label = activity.get("to_label") if activity.get("flow") == "out" else activity.get("from_label")
+        computed_score = _insider_score(float(activity.get("value_usd") or 0), int(row.get("score") or 0))
         print(
             f"[{index}/{len(insiders)}] {entity} {address[:12]}...{'[NEW]' if is_new else ''} "
-            f"{activity['flow']} {activity.get('token') or 'token'} {_fmt_val(activity.get('value_usd', 0))}"
-            f"{(' → ' + label) if label else ''}",
+            f"{activity['flow']} {activity.get('token') or 'token'} {_fmt_val(activity.get('value_usd', 0))} "
+            f"score {computed_score}{(' → ' + label) if label else ''}",
             flush=True,
         )
         save_wallet_activity(row, activity)
