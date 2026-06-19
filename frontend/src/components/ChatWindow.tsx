@@ -241,7 +241,15 @@ export function ChatWindow() {
           <div className="relative min-h-[calc(100dvh-152px)] overflow-hidden px-4 py-8 sm:min-h-[calc(100vh-104px)] sm:py-14">
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
               <div className="mb-10 sm:mb-12">
-                <img src="/logo_full.png" alt="Vigia Crypto" className="mx-auto w-64 object-contain sm:w-80" />
+                <div className="text-3xl font-bold tracking-tight text-zinc-950 sm:text-4xl">
+                  On-chain intelligence.
+                </div>
+                <div className="text-3xl font-bold tracking-tight text-zinc-400 sm:text-4xl">
+                  Before everyone else.
+                </div>
+                <div className="mt-4 text-sm text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                  AI trained on insider wallets, market maker flows and listing radar signals.
+                </div>
               </div>
               <div className="w-full max-w-2xl">
                 <Suggestions
