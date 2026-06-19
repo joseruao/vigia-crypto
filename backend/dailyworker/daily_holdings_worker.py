@@ -163,6 +163,8 @@ WRAPPED_OR_STAKED_SUFFIXES = ("BTC", "ETH", "SOL", "PENDLE")
 # ===========================
 SOLANA_WALLETS = {
     "Binance 1": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "Binance Cold SOL 1": "3gd3dqgtJ4jWfBfLYTX67DALFetjc5iS72sCgRhCkW2u",
+    "Binance Cold SOL 2": "3yFwqXBfZY4jBVUafQ1YEXw189y2dN3V5KQq9uzBDy1E",
     "Binance 2": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
     "Binance 3": "8kPLJg9eKSwCoDJjK3CixgB3Mf7i5p2hWQqRgt7F5XkR",
     "Coinbase 1": "9obNtb5GyUegcs3a1CbBkLuc5hEWynWfJC6gjz5uWQkE",
@@ -181,9 +183,12 @@ ETHEREUM_WALLETS = {
     "Binance 14": "0x564286362092d8e7936f0549571a803b203aaced",
     "Binance 7": "0x28c6c06298d514db089934071355e5743bf21d60",
     "Binance 16": "0x21a31ee1afc51d94c2efccaa2092ad1028285549",
+    "Binance Cold 1": "0x5a52E96BAcdaBb82fd05763E25335261B270Efcb",
+    "Binance Cold 2": "0x4aeFa39caEAdD662aE31ab0CE7c8C2c9c0a013E8",
+    "Binance Cold 3": "0x4E9ce36E442e55EcD9025B9a6E0D88485d628A67",
+    "Binance Cold 4": "0x18e226459CCf0Eec276514a4fd3b226D8961e4d1",
     "Kraken": "0xe9f7ecae3a53d2a67105292894676b00d1fab785",
     "OKX 73": "0x2c4b9d9a57d7b6f91e3d6b1a3b4c1d81b37c0c2c",
-    "OKX 93": "0x5a52e96bacdabb82fd05763e25335261b270efcb",
     "Robinhood": "0x7e4a8391c728fEd9069B2962699AB416628B19Fa",
     "Coinbase 10": "0x503828976d22510aad0201ac7ec88293211d23da",
     "Upbit": "0x55fe002aeff02f77364de339a1292923a15844b8",
@@ -192,7 +197,7 @@ ETHEREUM_WALLETS = {
 }
 
 BNB_WALLETS = {
-    "Binance BNB 7": "0xBE0eB53F3423E596e0C4977B08C8DCfff7B2404d33E8",
+    "Binance BNB 7": "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
     # BscScan tag: Binance 51 / Binance Exchange / Binance hot wallet.
     "Binance BNB 51": "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3",
     "Binance BNB 70": "0x835678a611B28684005a5e2233695fB6cbbB0007",
