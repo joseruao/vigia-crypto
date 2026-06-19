@@ -1282,20 +1282,22 @@ def send_daily_telegram_report(sm_candidates: list, insider_alerts: list[dict]) 
     if len(lines) <= 2:
         return
 
+    text = "\n".join(lines)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": "\n".join(lines),
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True,
-            },
-            timeout=10,
-        )
-        print("Telegram daily report enviado.", flush=True)
+        r = requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown", "disable_web_page_preview": True}, timeout=10)
+        if r.status_code == 200:
+            print("Telegram daily report enviado.", flush=True)
+        else:
+            print(f"Telegram Markdown falhou ({r.status_code}: {r.text[:200]}), a tentar sem parse_mode...", flush=True)
+            plain = text.replace("*", "").replace("_", "").replace("`", "")
+            r2 = requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": plain, "disable_web_page_preview": True}, timeout=10)
+            if r2.status_code == 200:
+                print("Telegram daily report enviado (plain text).", flush=True)
+            else:
+                print(f"Telegram plain também falhou: {r2.status_code} {r2.text[:200]}", flush=True)
     except Exception as exc:
-        print(f"Telegram daily report falhou: {exc}", flush=True)
+        print(f"Telegram daily report excepção: {exc}", flush=True)
 
 
 def _parse_ts(value: Any) -> datetime | None:
