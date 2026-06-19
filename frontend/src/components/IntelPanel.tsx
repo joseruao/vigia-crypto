@@ -173,22 +173,34 @@ function ListingCard({ item }: { item: Holding }) {
 }
 
 function WhaleCard({ item }: { item: SmartMoneySignal }) {
+  const isInsider = (item as { entity_type?: string }).entity_type === 'insider';
+  const directionLabel = item.signal_direction === 'out' ? 'saída' : item.signal_direction === 'in' ? 'entrada' : item.signal_direction || 'move';
+  const entityLabel = isInsider
+    ? (item.entity || '').replace('insider:', '')
+    : (item.entity || 'Arkham');
   return (
-    <div className="rounded-xl border border-indigo-100 bg-white p-3 text-xs shadow-sm">
+    <div className={`rounded-xl border p-3 text-xs shadow-sm ${isInsider ? 'border-amber-200 bg-amber-50/60' : 'border-indigo-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-zinc-950">{item.token}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-bold text-zinc-950">{item.token || entityLabel}</span>
+            {isInsider && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                Insider
+              </span>
+            )}
+          </div>
           <div className="truncate text-[10px] text-zinc-500">
-            {item.entity || 'Arkham'}{item.chain ? ` · ${chainLabel(item.chain)}` : ''}
+            {entityLabel}{item.chain ? ` · ${chainLabel(item.chain)}` : ''}
           </div>
         </div>
-        <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
-          {item.signal_direction || 'move'}
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${isInsider ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-700'}`}>
+          {directionLabel}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-zinc-50 px-2 py-1.5">
-          <div className="text-[9px] uppercase tracking-wide text-zinc-400">Delta</div>
+          <div className="text-[9px] uppercase tracking-wide text-zinc-400">{isInsider ? 'Valor' : 'Delta'}</div>
           <div className="font-semibold text-zinc-900">{deltaText(item)}</div>
         </div>
         <div className="rounded-lg bg-zinc-50 px-2 py-1.5 text-right">
@@ -196,6 +208,11 @@ function WhaleCard({ item }: { item: SmartMoneySignal }) {
           <div className="font-semibold text-zinc-900">{compactUsd(item.value_usd) || '$0'}</div>
         </div>
       </div>
+      {item.analysis_text && isInsider && (
+        <div className="mt-2 rounded-lg bg-white/80 px-2 py-1.5 text-[10px] text-zinc-600 ring-1 ring-amber-100 line-clamp-2">
+          {item.analysis_text}
+        </div>
+      )}
     </div>
   );
 }

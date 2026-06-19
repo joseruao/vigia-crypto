@@ -1235,27 +1235,40 @@ def get_smart_money(limit: int = 10):
 
     try:
         safe_limit = max(1, min(int(limit or 10), 25))
-        params = {
+        select_cols = (
+            "id,signal_key,entity,entity_type,token,token_address,chain,amount,value_usd,"
+            "previous_value_usd,value_delta_usd,value_delta_pct,previous_amount,"
+            "amount_delta,signal_direction,score,exchange_count,pair_url,analysis_text,ts"
+        )
+        # Fetch smart_money signals
+        params_sm = {
             "entity_type": "eq.smart_money",
             "signal_direction": "in.(new,increased,decreased)",
-            "select": (
-                "id,signal_key,entity,token,token_address,chain,amount,value_usd,"
-                "previous_value_usd,value_delta_usd,value_delta_pct,previous_amount,"
-                "amount_delta,signal_direction,score,exchange_count,pair_url,analysis_text,ts"
-            ),
-            "limit": "500",
+            "select": select_cols,
+            "limit": "400",
             "order": "ts.desc",
         }
-        r = supa.rest_get("arkham_signals", params=params, timeout=8)
-        if r.status_code != 200:
-            log.warning("Erro ao buscar smart money: HTTP %s - %s", r.status_code, r.text[:200])
-            return {"ok": False, "error": r.text[:200], "items": []}
+        r_sm = supa.rest_get("arkham_signals", params=params_sm, timeout=8)
+        # Fetch insider signals (in/out activity from prelisting_investigation wallets)
+        params_ins = {
+            "entity_type": "eq.insider",
+            "select": select_cols,
+            "limit": "100",
+            "order": "ts.desc",
+        }
+        r_ins = supa.rest_get("arkham_signals", params=params_ins, timeout=8)
 
-        rows = r.json() or []
+        if r_sm.status_code != 200:
+            log.warning("Erro ao buscar smart money: HTTP %s - %s", r_sm.status_code, r_sm.text[:200])
+            return {"ok": False, "error": r_sm.text[:200], "items": []}
+
+        rows = (r_sm.json() or []) + (r_ins.json() if r_ins.status_code == 200 else [])
         rows = [
             row for row in rows
             if str(row.get("token") or "").strip()
-            and str(row.get("signal_direction") or "") in {"new", "increased", "decreased"}
+            and (
+                str(row.get("signal_direction") or "") in {"new", "increased", "decreased", "in", "out"}
+            )
             and str(row.get("token") or "").strip().upper() not in TEST_TOKENS
             and str(row.get("token") or "").strip().upper() not in TOP100_EXCLUDED_SYMBOLS
             and _num(row, "value_usd") <= LISTING_EXCLUDED_MAX_VALUE_USD
