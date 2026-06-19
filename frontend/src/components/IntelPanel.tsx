@@ -177,15 +177,24 @@ function askPrompt(text: string) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function WhaleCard({ item }: { item: SmartMoneySignal }) {
+function WhaleCard({ item, lang }: { item: SmartMoneySignal; lang: 'pt' | 'en' }) {
   const isInsider = (item as { entity_type?: string }).entity_type === 'insider';
-  const directionLabel = item.signal_direction === 'out' ? 'saída' : item.signal_direction === 'in' ? 'entrada' : item.signal_direction || 'move';
+  const isPt = lang === 'pt';
+  const directionLabel = item.signal_direction === 'out'
+    ? (isPt ? 'saída' : 'sell')
+    : item.signal_direction === 'in'
+      ? (isPt ? 'entrada' : 'buy')
+      : item.signal_direction || 'move';
   const entityLabel = isInsider
     ? (item.entity || '').replace('insider:', '')
     : (item.entity || 'Arkham');
-  const prompt = isInsider
-    ? `Analisa o movimento do insider ${entityLabel}: ${directionLabel} de ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. O que pode significar?`
-    : `${entityLabel} ${directionLabel === 'saída' ? 'reduziu' : directionLabel === 'entrada' ? 'aumentou' : 'moveu'} a posição em ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analisa este movimento.`;
+  const prompt = isPt
+    ? (isInsider
+        ? `Analisa o movimento do insider ${entityLabel}: ${directionLabel} de ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. O que pode significar?`
+        : `${entityLabel} ${directionLabel === 'saída' ? 'reduziu' : directionLabel === 'entrada' ? 'aumentou' : 'moveu'} a posição em ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analisa este movimento.`)
+    : (isInsider
+        ? `Analyze insider move from ${entityLabel}: ${directionLabel} of ${item.token}${item.value_usd ? ` ($${Math.round(item.value_usd).toLocaleString()})` : ''}. What could this signal?`
+        : `${entityLabel} ${directionLabel === 'sell' ? 'reduced' : directionLabel === 'buy' ? 'increased' : 'moved'} position in ${item.token}${item.value_delta_usd ? ` (${deltaText(item)})` : ''}. Analyze this move.`);
   return (
     <div className={`rounded-xl border p-3 text-xs shadow-sm ${isInsider ? 'border-amber-200 bg-amber-50/60' : 'border-indigo-100 bg-white'}`}>
       <div className="flex items-start justify-between gap-2">
@@ -208,7 +217,7 @@ function WhaleCard({ item }: { item: SmartMoneySignal }) {
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-zinc-50 px-2 py-1.5">
-          <div className="text-[9px] uppercase tracking-wide text-zinc-400">{isInsider ? 'Valor' : 'Delta'}</div>
+          <div className="text-[9px] uppercase tracking-wide text-zinc-400">{isInsider ? (lang === 'pt' ? 'Valor' : 'Value') : 'Delta'}</div>
           <div className="font-semibold text-zinc-900">{deltaText(item)}</div>
         </div>
         <div className="rounded-lg bg-zinc-50 px-2 py-1.5 text-right">
@@ -226,15 +235,17 @@ function WhaleCard({ item }: { item: SmartMoneySignal }) {
           onClick={() => askPrompt(prompt)}
           className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold transition hover:opacity-80 ${isInsider ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-700'}`}
         >
-          Analisa este sinal →
+          {lang === 'pt' ? 'Analisa este sinal →' : 'Ask AI →'}
         </button>
       </div>
     </div>
   );
 }
 
-function Top100Card({ item }: { item: Top100Coin }) {
-  const prompt = `Analisa ${item.symbol}${item.name ? ` (${item.name})` : ''}: preço ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Vale a pena entrar?`;
+function Top100Card({ item, lang }: { item: Top100Coin; lang: 'pt' | 'en' }) {
+  const prompt = lang === 'pt'
+    ? `Analisa ${item.symbol}${item.name ? ` (${item.name})` : ''}: preço ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Vale a pena entrar?`
+    : `Analyze ${item.symbol}${item.name ? ` (${item.name})` : ''}: price ${compactUsd(item.price) || 'N/A'}, score ${Math.round(item.score || 0)}/100, ${top100Reason(item)}. Is this a good entry?`;
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3 text-xs shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -261,7 +272,7 @@ function Top100Card({ item }: { item: Top100Coin }) {
           onClick={() => askPrompt(prompt)}
           className="inline-flex items-center gap-1 rounded-full bg-zinc-50 px-2 py-1 text-[10px] font-semibold text-zinc-600 transition hover:bg-zinc-100"
         >
-          Analisa este sinal →
+          {lang === 'pt' ? 'Analisa este sinal →' : 'Ask AI →'}
         </button>
       </div>
     </div>
@@ -275,8 +286,14 @@ export function IntelPanel() {
   const [whales, setWhales] = useState<SmartMoneySignal[]>([]);
   const [top100, setTop100] = useState<Top100Coin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<'pt' | 'en'>('en');
   const { active } = useChatHistoryContext();
   const hasMessages = (active?.messages?.length ?? 0) > 0;
+
+  useEffect(() => {
+    const browserLang = navigator.language.toLowerCase();
+    setLang(browserLang.startsWith('pt') ? 'pt' : 'en');
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -359,11 +376,11 @@ export function IntelPanel() {
           </>
         )}
         {!loading && tab === 'whales' && (
-          whales.length ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} />)
+          whales.length ? whales.slice(0, 5).map((item) => <WhaleCard key={item.id || `${item.entity}-${item.token}`} item={item} lang={lang} />)
             : <div className="text-xs text-zinc-500">No notable whale moves yet.</div>
         )}
         {!loading && tab === 'top100' && (
-          top100.length ? top100.slice(0, 5).map((item) => <Top100Card key={item.symbol} item={item} />)
+          top100.length ? top100.slice(0, 5).map((item) => <Top100Card key={item.symbol} item={item} lang={lang} />)
             : <div className="text-xs text-zinc-500">No top100 ranking available.</div>
         )}
       </div>
