@@ -6,16 +6,16 @@ import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
 import { LangProvider } from '@/lib/LangContext'
 
 export const metadata: Metadata = {
-  title: 'joseruao.com',
-  description: 'Análise de mercado crypto — joseruao.com',
+  title: 'Vigia Crypto — On-chain Intelligence',
+  description: 'AI trained on insider wallets, market maker flows and listing radar signals. Built by José Ruão.',
 }
 
 export const dynamic = 'force-dynamic'
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt">
-      <body className="flex h-screen bg-white text-black antialiased overflow-hidden">
+    <html lang="en">
+      <body className="flex h-screen bg-white text-black antialiased overflow-hidden" suppressHydrationWarning>
         <LangProvider>
           <ChatHistoryProvider>
             <Sidebar />

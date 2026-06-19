@@ -141,9 +141,9 @@ export function ChatWindow() {
         const data = await res.json().catch(() => ({}));
 
         let answer = data?.answer;
-        if (!answer && data?.error) answer = `Erro: ${data.error}`;
+        if (!answer && data?.error) answer = `Error: ${data.error}`;
         if (!answer && Array.isArray(data?.items) && data.items.length > 0) {
-          answer = `Encontrei ${data.items.length} resultado(s).`;
+          answer = `Found ${data.items.length} result(s).`;
         }
         if (!answer) answer = 'The backend may take a few seconds to wake up on the first request. Please try again in a moment.';
 
@@ -153,7 +153,7 @@ export function ChatWindow() {
         }, convId);
       } else {
         const reader = res.body?.getReader();
-        if (!reader) throw new Error('Sem stream');
+        if (!reader) throw new Error('No stream available');
 
         addMessage({ role: 'assistant', content: '' }, convId);
 
@@ -178,7 +178,7 @@ export function ChatWindow() {
       }
     } catch (e: unknown) {
       if (!abortedRef.current) {
-        const msg = e instanceof Error ? e.message : '⚠️ Erro ao comunicar com a API';
+        const msg = e instanceof Error ? e.message : '⚠️ Error communicating with the API';
         addMessage({ role: 'assistant', content: msg }, convId);
       }
     } finally {
@@ -207,8 +207,8 @@ export function ChatWindow() {
   const hasMessages = (active?.messages.length ?? 0) > 0;
   const copy = lang === 'pt'
     ? {
-        placeholder: 'Ask about listings, top100 setups, or a coin...',
-        disclaimer: 'May contain errors. Verify important information. Informational only; not financial advice.',
+        placeholder: 'Pergunta sobre listings, top100 ou uma moeda...',
+        disclaimer: 'Pode conter erros. Verifica informação importante. Apenas informativo; não é conselho financeiro.',
       }
     : {
         placeholder: 'Ask about listings, top100 setups, or a coin...',
@@ -222,7 +222,7 @@ export function ChatWindow() {
           <button
             type="button"
             className="absolute inset-0 bg-black/30"
-            aria-label="Fechar menu"
+            aria-label="Close menu"
             onClick={() => setMobileMenuOpen(false)}
           />
           <div className="relative h-full">
@@ -238,13 +238,15 @@ export function ChatWindow() {
             <div className="relative mx-auto flex min-h-[calc(100dvh-232px)] w-full max-w-3xl flex-col items-center justify-center text-center sm:min-h-[calc(100vh-184px)]">
               <div className="mb-10 sm:mb-12">
                 <div className="text-3xl font-bold tracking-tight text-zinc-950 sm:text-4xl">
-                  On-chain intelligence.
+                  {lang === 'pt' ? 'Inteligência on-chain.' : 'On-chain intelligence.'}
                 </div>
                 <div className="text-3xl font-bold tracking-tight text-zinc-400 sm:text-4xl">
-                  Before everyone else.
+                  {lang === 'pt' ? 'Antes dos outros.' : 'Before everyone else.'}
                 </div>
                 <div className="mt-4 text-sm text-zinc-500 max-w-sm mx-auto leading-relaxed">
-                  AI trained on insider wallets, market maker flows and listing radar signals.
+                  {lang === 'pt'
+                    ? 'IA treinada em wallets de insiders, movimentos de market makers e radar de listings.'
+                    : 'AI trained on insider wallets, market maker flows and listing radar signals.'}
                 </div>
               </div>
               <div className="w-full max-w-2xl">
