@@ -2,16 +2,42 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
-from datetime import date
-from datetime import timedelta
 import unicodedata
-from urllib.parse import quote
+from typing import Optional
 
 import requests
 from pydantic import BaseModel, Field
 
 
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+class MatchPrepRequest(BaseModel):
+    my_team: str = Field(..., min_length=1, max_length=120, description="Your team, e.g. 'Cruzeiro'")
+    opponent_team: str = Field(..., min_length=1, max_length=120, description="Opponent, e.g. 'Flamengo'")
+    extra_notes: str = Field(default="", max_length=5000, description="Optional coach observations")
+
+
+class MatchPrepReport(BaseModel):
+    my_team: str
+    opponent_team: str
+    data_source: str
+    executive_summary: str
+    opponent_strengths: list[str]
+    opponent_weaknesses: list[str]
+    key_threats: list[str]
+    tactical_approach: str
+    pressing_triggers: list[str]
+    attacking_approach: list[str]
+    set_piece_plan: list[str]
+    risk_assessment: str
+    raw_stats_used: str
+
+
+# Legacy models kept for backward compat
 class FootballAnalyzeRequest(BaseModel):
     team_name: str = Field(..., min_length=1, max_length=120)
     stats: str = Field(default="", max_length=12000)
@@ -41,940 +67,419 @@ class FootballTeamContext(BaseModel):
     observations: str
 
 
-_TEAM_CONTEXT_CACHE: dict[str, tuple[float, FootballTeamContext]] = {}
-_TEAM_CONTEXT_CACHE_TTL_SECONDS = int(os.getenv("FOOTBALL_CONTEXT_CACHE_TTL_SECONDS", "21600"))
+# ---------------------------------------------------------------------------
+# ESPN unofficial API — no key required
+# ---------------------------------------------------------------------------
+
+_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1"
+_ESPN_STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer/bra.1/standings"
+_ESPN_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
+
+_CACHE: dict[str, tuple[float, object]] = {}
+_CACHE_TTL = int(os.getenv("FOOTBALL_CACHE_TTL_SECONDS", "1800"))  # 30 min
 
 
-def _system_prompt() -> str:
-    return (
-        "You are a senior football opposition analyst helping coaches prepare match plans. "
-        "Use only the team name, stats, and raw observations supplied by the user. "
-        "If information is missing, state the uncertainty inside the relevant section instead of inventing facts. "
-        "Return concise, practical coaching language. "
-        "Output valid JSON only."
+def _cached(key: str, fn):
+    now = time.time()
+    if key in _CACHE:
+        ts, val = _CACHE[key]
+        if now - ts < _CACHE_TTL:
+            return val
+    val = fn()
+    _CACHE[key] = (now, val)
+    return val
+
+
+def _get(url: str, params: dict | None = None) -> dict:
+    r = requests.get(url, headers=_ESPN_HEADERS, params=params or {}, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+# ---------------------------------------------------------------------------
+# Team name normalisation
+# ---------------------------------------------------------------------------
+
+_ALIASES: dict[str, list[str]] = {
+    "atletico mineiro": ["atletico-mg", "atletico mg", "galo", "atl\xe9tico-mg", "atl\xe9tico mineiro", "atl. mineiro"],
+    "athletico paranaense": ["atletico-pr", "athletico-pr", "furacao", "athletico pr", "cap", "atletico paranaense"],
+    "sao paulo": ["s\xe3o paulo", "sao paulo fc", "spfc"],
+    "internacional": ["inter", "sc internacional"],
+    "gremio": ["gr\xeamio", "gremio fbpa", "imortal"],
+    "fluminense": ["flu"],
+    "flamengo": ["fla", "cr flamengo"],
+    "botafogo": ["bota", "botafogo fr"],
+    "vasco": ["vasco da gama", "cr vasco da gama"],
+    "corinthians": ["timao", "sc corinthians"],
+    "palmeiras": ["verdao", "se palmeiras"],
+    "santos": ["santos fc"],
+    "cruzeiro": ["raposa", "cruzeiro ec"],
+    "bragantino": ["rb bragantino", "red bull bragantino", "red bull"],
+    "bahia": ["ec bahia"],
+    "fortaleza": ["fortaleza ec"],
+    "ceara": ["vozao", "ceara sc"],
+    "sport": ["sport recife"],
+    "cuiaba": ["cuiab\xe1", "cuiaba ec"],
+    "america mineiro": ["am\xe9rica mineiro", "america-mg", "america mg"],
+    "goias": ["go\xedas", "goias ec"],
+    "coritiba": ["coritiba fbc"],
+    "juventude": ["juventude ec"],
+    "mirassol": ["mirassol fc"],
+    "vitoria": ["vit\xf3ria", "ec vitoria"],
+}
+
+
+def _norm(name: str) -> str:
+    text = unicodedata.normalize("NFKD", name or "")
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", text.lower().strip())
+
+
+def _teams_match(a: str, b: str) -> bool:
+    na, nb = _norm(a), _norm(b)
+    if na == nb or na in nb or nb in na:
+        return True
+    for aliases in _ALIASES.values():
+        normed = [_norm(x) for x in aliases]
+        if na in normed and nb in normed:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# ESPN data fetchers
+# ---------------------------------------------------------------------------
+
+def _fetch_standings_raw() -> list[dict]:
+    data = _get(_ESPN_STANDINGS)
+    entries = (
+        data.get("children", [data])[0]
+        .get("standings", data.get("standings", {}))
+        .get("entries", [])
     )
+    rows = []
+    for entry in entries:
+        team = entry.get("team", {})
+        stats_map = {}
+        for s in entry.get("stats", []):
+            if "value" in s:
+                stats_map[s["name"]] = s["value"]
+        rows.append({
+            "team": team.get("displayName", ""),
+            "abbr": team.get("abbreviation", ""),
+            "rank": int(stats_map.get("rank", 0)),
+            "mp": int(stats_map.get("gamesPlayed", 0)),
+            "w": int(stats_map.get("wins", 0)),
+            "d": int(stats_map.get("ties", 0)),
+            "l": int(stats_map.get("losses", 0)),
+            "gf": int(stats_map.get("pointsFor", 0)),
+            "ga": int(stats_map.get("pointsAgainst", 0)),
+            "gd": int(stats_map.get("pointDifferential", 0)),
+            "pts": int(stats_map.get("points", 0)),
+        })
+    return sorted(rows, key=lambda r: r["rank"])
 
 
-def _sportsdb_key() -> str:
-    return os.getenv("THESPORTSDB_API_KEY") or "123"
-
-
-def _api_football_key() -> str | None:
-    return os.getenv("API_FOOTBALL_KEY") or os.getenv("APISPORTS_KEY")
-
-
-def _football_data_key() -> str | None:
-    return os.getenv("FOOTBALL_DATA_API_KEY")
-
-
-def _api_football_get(path: str, params: dict | None = None) -> dict:
-    api_key = _api_football_key()
-    if not api_key:
-        raise RuntimeError("API_FOOTBALL_KEY is not configured")
-
-    response = requests.get(
-        f"https://v3.football.api-sports.io/{path}",
-        headers={"x-apisports-key": api_key},
-        params=params or {},
-        timeout=15,
+def _fetch_season_matches_raw() -> list[dict]:
+    year = time.strftime("%Y")
+    data = _get(
+        f"{_ESPN_BASE}/scoreboard",
+        params={"dates": f"{year}0101-{year}1231", "limit": 400},
     )
-    response.raise_for_status()
-    return response.json()
+    matches = []
+    for ev in data.get("events", []):
+        status = ev.get("status", {}).get("type", {}).get("name", "")
+        comp = ev.get("competitions", [{}])[0]
+        competitors = comp.get("competitors", [])
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+        score = None
+        if status == "STATUS_FULL_TIME":
+            score = f"{home.get('score', '?')}-{away.get('score', '?')}"
+        matches.append({
+            "date": ev.get("date", "")[:10],
+            "home": home.get("team", {}).get("displayName", ""),
+            "away": away.get("team", {}).get("displayName", ""),
+            "score": score,
+            "status": status,
+            "round": comp.get("series", {}).get("title") or ev.get("season", {}).get("displayName", ""),
+        })
+    return matches
 
 
-def _football_data_get(path: str, params: dict | None = None) -> dict:
-    api_key = _football_data_key()
-    if not api_key:
-        raise RuntimeError("FOOTBALL_DATA_API_KEY is not configured")
-
-    response = requests.get(
-        f"https://api.football-data.org/v4/{path.lstrip('/')}",
-        headers={"X-Auth-Token": api_key},
-        params=params or {},
-        timeout=15,
-    )
-    response.raise_for_status()
-    return response.json()
+def fetch_serie_a_standings() -> list[dict]:
+    return _cached("standings", _fetch_standings_raw)
 
 
-def _cache_key(team_name: str) -> str:
-    return " ".join(team_name.lower().strip().split())
+def fetch_serie_a_schedule() -> list[dict]:
+    return _cached("schedule", _fetch_season_matches_raw)
 
 
-def _get_cached_team_context(team_name: str) -> FootballTeamContext | None:
-    cached = _TEAM_CONTEXT_CACHE.get(_cache_key(team_name))
-    if not cached:
-        return None
-    created_at, context = cached
-    if time.time() - created_at > _TEAM_CONTEXT_CACHE_TTL_SECONDS:
-        _TEAM_CONTEXT_CACHE.pop(_cache_key(team_name), None)
-        return None
-    return context
+def list_serie_a_teams() -> list[str]:
+    return [r["team"] for r in fetch_serie_a_standings()]
 
 
-def _set_cached_team_context(team_name: str, context: FootballTeamContext) -> FootballTeamContext:
-    _TEAM_CONTEXT_CACHE[_cache_key(team_name)] = (time.time(), context)
-    return context
+# ---------------------------------------------------------------------------
+# Analysis helpers
+# ---------------------------------------------------------------------------
 
-
-def _sportsdb_get(path: str) -> dict:
-    url = f"https://www.thesportsdb.com/api/v1/json/{_sportsdb_key()}/{path}"
-    response = requests.get(url, timeout=12)
-    response.raise_for_status()
-    return response.json()
-
-
-def _pick_soccer_team(teams: list[dict] | None) -> dict | None:
-    for team in teams or []:
-        if (team.get("strSport") or "").lower() == "soccer":
-            return team
-    return (teams or [None])[0]
-
-
-def _pick_api_football_team(items: list[dict] | None) -> tuple[dict, dict] | None:
-    for item in items or []:
-        team = item.get("team") or {}
-        if (team.get("name") or "").strip():
-            return team, item.get("venue") or {}
+def _find_team_row(team: str, standings: list[dict]) -> Optional[dict]:
+    for row in standings:
+        if _teams_match(team, row["team"]):
+            return row
     return None
 
 
-def _team_search_terms(team_name: str) -> list[str]:
-    raw = team_name.strip().strip("'\"`´“”‘’")
-    aliases = {
-        "benfica": ["Benfica", "SL Benfica", "Sport Lisboa Benfica"],
-        "porto": ["Porto", "FC Porto"],
-        "fc porto": ["FC Porto", "Porto"],
-        "cruzeiro": ["Cruzeiro"],
-    }
-    parts = [raw]
-    for separator in ["/", "\\", "|", " vs ", " v ", " - ", ","]:
-        if separator in raw.lower():
-            if separator.strip() in {"vs", "v"}:
-                split_parts = raw.lower().split(separator.strip())
-            else:
-                split_parts = raw.split(separator)
-            parts.extend(part.strip().strip("'\"`´“”‘’") for part in split_parts if part.strip())
-
-    expanded = []
-    for part in parts:
-        clean_part = part.strip()
-        expanded.append(clean_part)
-        expanded.extend(aliases.get(clean_part.lower(), []))
-
-    seen = []
-    for part in expanded:
-        clean = part.strip()
-        if clean and clean.lower() not in [item.lower() for item in seen]:
-            seen.append(clean)
-    return seen
+def _team_recent(team: str, schedule: list[dict], n: int = 6) -> list[dict]:
+    finished = [
+        m for m in schedule
+        if m.get("score") and (_teams_match(team, m["home"]) or _teams_match(team, m["away"]))
+    ]
+    return finished[-n:]
 
 
-def _team_query_parts(team_name: str) -> list[str]:
-    raw = team_name.strip().strip("'\"`´“”‘’")
-    lower = raw.lower()
-    separators = ["/", "\\", "|", " vs ", " v ", " - ", ","]
-    for separator in separators:
-        if separator in lower:
-            if separator.strip() in {"vs", "v"}:
-                parts = raw.split(separator.strip())
-            else:
-                parts = raw.split(separator)
-            cleaned = [part.strip().strip("'\"`´“”‘’") for part in parts if part.strip()]
-            if len(cleaned) > 1:
-                return cleaned
-    return [raw] if raw else []
+def _head_to_head(a: str, b: str, schedule: list[dict]) -> list[dict]:
+    return [
+        m for m in schedule
+        if (
+            (_teams_match(a, m["home"]) and _teams_match(b, m["away"])) or
+            (_teams_match(b, m["home"]) and _teams_match(a, m["away"]))
+        )
+    ]
 
 
-def _search_api_football_team(team_name: str) -> tuple[dict, dict] | None:
-    for term in _team_search_terms(team_name):
-        search = _api_football_get("teams", {"search": term})
-        picked = _pick_api_football_team(search.get("response"))
-        if picked:
-            return picked
-    return None
-
-
-def _format_event(event: dict, team_name: str) -> str:
-    home = event.get("strHomeTeam") or "Home"
-    away = event.get("strAwayTeam") or "Away"
-    home_score = event.get("intHomeScore")
-    away_score = event.get("intAwayScore")
-    date = event.get("dateEvent") or "date unknown"
-    league = event.get("strLeague") or "competition unknown"
-    score = f"{home_score}-{away_score}" if home_score is not None and away_score is not None else "score unavailable"
-    venue = "home" if home.lower() == team_name.lower() else ("away" if away.lower() == team_name.lower() else "neutral/unknown")
-    return f"{date} | {league} | {home} {score} {away} | {venue}"
-
-
-def _format_api_football_fixture(fixture: dict, team_id: int | None = None) -> str:
-    fixture_meta = fixture.get("fixture") or {}
-    league = fixture.get("league") or {}
-    teams = fixture.get("teams") or {}
-    goals = fixture.get("goals") or {}
-    home = teams.get("home") or {}
-    away = teams.get("away") or {}
-    venue = fixture_meta.get("venue") or {}
-    status = (fixture_meta.get("status") or {}).get("short") or "unknown"
-    played_where = "home" if home.get("id") == team_id else ("away" if away.get("id") == team_id else "neutral/unknown")
-    score = (
-        f"{goals.get('home')}-{goals.get('away')}"
-        if goals.get("home") is not None and goals.get("away") is not None
-        else "score unavailable"
-    )
+def _fmt_standing(row: dict) -> str:
+    mp = max(row["mp"], 1)
+    ppg = round(row["pts"] / mp, 2)
+    avg_gf = round(row["gf"] / mp, 2)
+    avg_ga = round(row["ga"] / mp, 2)
     return (
-        f"{(fixture_meta.get('date') or '')[:10]} | {league.get('name') or 'competition unknown'} | "
-        f"{home.get('name') or 'Home'} {score} {away.get('name') or 'Away'} | "
-        f"{played_where} | status {status} | venue {venue.get('name') or 'unknown'}"
+        f"#{row['rank']} {row['team']} | {row['mp']}MP | "
+        f"W{row['w']} D{row['d']} L{row['l']} | Pts {row['pts']} ({ppg}ppg) | "
+        f"GF {row['gf']} ({avg_gf}/g) GA {row['ga']} ({avg_ga}/g) GD {row['gd']:+d}"
     )
 
 
-def _pick_latest_competition(leagues: list[dict] | None) -> tuple[dict, dict] | None:
-    league_priority_terms = ("liga", "league", "serie", "premier", "la liga", "bundesliga", "ligue")
-    candidates: list[tuple[int, int, dict, dict]] = []
-    for item in leagues or []:
-        league = item.get("league") or {}
-        league_name = (league.get("name") or "").lower()
-        league_type = (league.get("type") or "").lower()
-        priority = 1 if league_type == "league" or any(term in league_name for term in league_priority_terms) else 0
-        seasons = item.get("seasons") or []
-        for season in seasons:
-            year = season.get("year")
-            if year:
-                current_bonus = 10_000 if season.get("current") else 0
-                candidates.append((priority, int(year) + current_bonus, league, season))
-    if not candidates:
-        return None
-    _priority, _score, league, season = max(candidates, key=lambda item: (item[0], item[1]))
-    return league, season
+def _fmt_match(m: dict, perspective: str) -> str:
+    score = m.get("score") or "upcoming"
+    venue = "HOME" if _teams_match(perspective, m["home"]) else "AWAY"
+    result = ""
+    if m.get("score"):
+        h, a = m["score"].split("-")
+        h, a = int(h), int(a)
+        if _teams_match(perspective, m["home"]):
+            result = "W" if h > a else ("D" if h == a else "L")
+        else:
+            result = "W" if a > h else ("D" if h == a else "L")
+    return f"{m['date']} | {m['home']} {score} {m['away']} | {venue} {result}"
 
 
-def _stats_played_total(stats: dict) -> int:
-    try:
-        return int((((stats.get("fixtures") or {}).get("played") or {}).get("total")) or 0)
-    except (TypeError, ValueError):
-        return 0
+def _form_string(team: str, recent: list[dict]) -> str:
+    results = []
+    for m in recent:
+        if not m.get("score"):
+            continue
+        h, a = m["score"].split("-")
+        h, a = int(h), int(a)
+        if _teams_match(team, m["home"]):
+            results.append("W" if h > a else ("D" if h == a else "L"))
+        else:
+            results.append("W" if a > h else ("D" if h == a else "L"))
+    return "".join(results) or "no data"
 
 
-def _season_candidates(preferred: int | None, current: int) -> list[int]:
-    candidates = []
-    for value in [preferred, current, current - 1, current - 2, current - 3]:
-        if value and value not in candidates:
-            candidates.append(int(value))
-    return candidates
+# ---------------------------------------------------------------------------
+# Match prep report
+# ---------------------------------------------------------------------------
 
+def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
+    standings = fetch_serie_a_standings()
+    schedule = fetch_serie_a_schedule()
 
-def _format_team_statistics(stats: dict) -> list[str]:
-    if not stats:
+    my_row = _find_team_row(req.my_team, standings)
+    opp_row = _find_team_row(req.opponent_team, standings)
+    my_recent = _team_recent(req.my_team, schedule)
+    opp_recent = _team_recent(req.opponent_team, schedule)
+    h2h = _head_to_head(req.my_team, req.opponent_team, schedule)
+
+    my_stats_str = _fmt_standing(my_row) if my_row else f"{req.my_team}: NOT FOUND in current standings"
+    opp_stats_str = _fmt_standing(opp_row) if opp_row else f"{req.opponent_team}: NOT FOUND in current standings"
+    my_form = _form_string(req.my_team, my_recent)
+    opp_form = _form_string(req.opponent_team, opp_recent)
+
+    my_recent_str = "\n".join(f"  {_fmt_match(m, req.my_team)}" for m in my_recent) or "  no data"
+    opp_recent_str = "\n".join(f"  {_fmt_match(m, req.opponent_team)}" for m in opp_recent) or "  no data"
+    h2h_str = (
+        "\n".join(
+            f"  {m['date']} | {m['home']} {m.get('score','?')} {m['away']}"
+            for m in h2h
+        )
+        or "  no H2H matches found this season"
+    )
+
+    raw_stats = "\n".join([
+        f"MY TEAM [{my_form}]:  {my_stats_str}",
+        f"OPPONENT [{opp_form}]: {opp_stats_str}",
+        "",
+        f"MY TEAM — LAST {len(my_recent)} MATCHES:",
+        my_recent_str,
+        "",
+        f"OPPONENT — LAST {len(opp_recent)} MATCHES:",
+        opp_recent_str,
+        "",
+        "HEAD-TO-HEAD (this season):",
+        h2h_str,
+    ])
+
+    extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
+
+    prompt = f"""You are the lead analyst for a professional football club competing in the Campeonato Brasileiro Série A.
+The head coach needs a match preparation report before the next game.
+
+MY TEAM: {req.my_team}
+OPPONENT: {req.opponent_team}
+
+=== DATA SOURCE: ESPN (Série A {time.strftime('%Y')}) ===
+
+{raw_stats}{extra}
+
+ANALYSIS INSTRUCTIONS:
+- Work ONLY from the data above. Do not invent stats.
+- Calculate patterns: goals scored/conceded per game, home vs away performance, winning/losing streaks, form trajectory.
+- Identify exploitable patterns vs the opponent (e.g. "opponent concedes 2+ in 4 of last 6 away games").
+- Be concrete and practical — this report goes directly to the coaching staff.
+- If data for a team is missing, acknowledge it briefly and work with what you have.
+
+Return EXACTLY this JSON (no extra keys, no markdown):
+{{
+  "executive_summary": "3-4 sentences: current form of both teams, what the numbers say about this matchup, tactical context",
+  "opponent_strengths": ["data-backed strength 1", "strength 2", "strength 3"],
+  "opponent_weaknesses": ["exploitable weakness from data 1", "weakness 2", "weakness 3"],
+  "key_threats": ["specific threat or player pattern to neutralise 1", "threat 2"],
+  "tactical_approach": "2-3 sentences: game plan — how to approach this game given the data (high block? press? possession?)",
+  "pressing_triggers": ["specific situation to press hard 1", "trigger 2"],
+  "attacking_approach": ["attacking instruction based on opponent weakness 1", "instruction 2", "instruction 3"],
+  "set_piece_plan": ["set piece consideration based on data 1", "consideration 2"],
+  "risk_assessment": "main risks in this specific game and how to mitigate them"
+}}"""
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.15,
+    )
+
+    raw = json.loads(resp.choices[0].message.content or "{}")
+
+    def to_list(v: object) -> list[str]:
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str) and v.strip():
+            return [v.strip()]
         return []
 
-    fixtures = stats.get("fixtures") or {}
-    goals = stats.get("goals") or {}
-    clean_sheet = stats.get("clean_sheet") or {}
-    failed_to_score = stats.get("failed_to_score") or {}
-    cards = stats.get("cards") or {}
-    biggest = stats.get("biggest") or {}
-
-    played = (fixtures.get("played") or {}).get("total")
-    wins = (fixtures.get("wins") or {}).get("total")
-    draws = (fixtures.get("draws") or {}).get("total")
-    loses = (fixtures.get("loses") or {}).get("total")
-    goals_for = ((goals.get("for") or {}).get("total") or {}).get("total")
-    goals_against = ((goals.get("against") or {}).get("total") or {}).get("total")
-    avg_for = ((goals.get("for") or {}).get("average") or {}).get("total")
-    avg_against = ((goals.get("against") or {}).get("average") or {}).get("total")
-    clean_total = (clean_sheet or {}).get("total")
-    failed_total = (failed_to_score or {}).get("total")
-
-    lines = [
-        f"- Record: played {played or 0}, wins {wins or 0}, draws {draws or 0}, losses {loses or 0}",
-        f"- Goals: scored {goals_for or 0} ({avg_for or 'n/a'} avg), conceded {goals_against or 0} ({avg_against or 'n/a'} avg)",
-        f"- Clean sheets: {clean_total or 0}; failed to score: {failed_total or 0}",
-    ]
-
-    streak = biggest.get("streak") or {}
-    if streak:
-        lines.append(
-            f"- Streaks: wins {streak.get('wins') or 0}, draws {streak.get('draws') or 0}, losses {streak.get('loses') or 0}"
-        )
-
-    card_total = 0
-    for colour in ("yellow", "red"):
-        for bucket in (cards.get(colour) or {}).values():
-            card_total += int((bucket or {}).get("total") or 0)
-    if card_total:
-        lines.append(f"- Cards total: {card_total}")
-
-    return lines
-
-
-def _format_standings(standings: list[dict], team_id: int | None = None) -> list[str]:
-    rows = []
-    for league_group in standings or []:
-        for row in league_group or []:
-            team = row.get("team") or {}
-            if team_id and team.get("id") != team_id:
-                continue
-            all_stats = row.get("all") or {}
-            goals = all_stats.get("goals") or {}
-            rows.append(
-                f"- Rank {row.get('rank') or 'n/a'} | {team.get('name') or 'Unknown'} | "
-                f"points {row.get('points') or 0} | played {all_stats.get('played') or 0} | "
-                f"W-D-L {all_stats.get('win') or 0}-{all_stats.get('draw') or 0}-{all_stats.get('lose') or 0} | "
-                f"GF {goals.get('for') or 0} / GA {goals.get('against') or 0} | form {row.get('form') or 'n/a'}"
-            )
-    return rows
-
-
-def _format_fixture_statistics(stats: list[dict]) -> list[str]:
-    wanted = {
-        "Shots on Goal",
-        "Shots off Goal",
-        "Total Shots",
-        "Blocked Shots",
-        "Shots insidebox",
-        "Shots outsidebox",
-        "Fouls",
-        "Corner Kicks",
-        "Offsides",
-        "Ball Possession",
-        "Yellow Cards",
-        "Red Cards",
-        "Goalkeeper Saves",
-        "Total passes",
-        "Passes accurate",
-        "Passes %",
-        "expected_goals",
-    }
-    lines: list[str] = []
-    for team_stats in stats or []:
-        team = (team_stats.get("team") or {}).get("name") or "Team"
-        values = []
-        for item in team_stats.get("statistics") or []:
-            stat_type = item.get("type")
-            value = item.get("value")
-            if stat_type in wanted and value is not None:
-                values.append(f"{stat_type}: {value}")
-        if values:
-            lines.append(f"- {team}: " + " | ".join(values[:12]))
-    return lines
-
-
-def _format_lineups(lineups: list[dict]) -> list[str]:
-    lines = []
-    for lineup in lineups or []:
-        team = lineup.get("team") or {}
-        coach = lineup.get("coach") or {}
-        start_xi = lineup.get("startXI") or []
-        players = []
-        for item in start_xi[:11]:
-            player = item.get("player") or {}
-            name = player.get("name")
-            pos = player.get("pos")
-            if name:
-                players.append(f"{name}{f' ({pos})' if pos else ''}")
-        lines.append(
-            f"- {team.get('name') or 'Unknown team'} | formation {lineup.get('formation') or 'unknown'} | "
-            f"coach {coach.get('name') or 'unknown'}"
-        )
-        if players:
-            lines.append(f"  XI: {', '.join(players)}")
-    return lines
-
-
-def _format_injuries(injuries: list[dict]) -> list[str]:
-    latest_by_player: dict[str, dict] = {}
-    for injury in injuries or []:
-        player = injury.get("player") or {}
-        name = player.get("name") or "Unknown player"
-        fixture = injury.get("fixture") or {}
-        key = name.lower()
-        existing = latest_by_player.get(key)
-        if not existing or (fixture.get("date") or "") > (((existing.get("fixture") or {}).get("date")) or ""):
-            latest_by_player[key] = injury
-
-    lines = []
-    for injury in list(latest_by_player.values())[:10]:
-        player = injury.get("player") or {}
-        team = injury.get("team") or {}
-        fixture = injury.get("fixture") or {}
-        league = injury.get("league") or {}
-        lines.append(
-            f"- {player.get('name') or 'Unknown player'} | {team.get('name') or 'Unknown team'} | "
-            f"{injury.get('type') or 'Unavailable'} | {injury.get('reason') or 'reason unknown'} | "
-            f"{league.get('name') or 'competition unknown'} | {(fixture.get('date') or '')[:10]}"
-        )
-    return lines
-
-
-def _format_squad(players: list[dict]) -> list[str]:
-    lines = []
-    for player in players[:18]:
-        lines.append(
-            f"- {player.get('name') or 'Unknown player'} | {player.get('position') or 'Unknown position'} | "
-            f"age {player.get('age') or 'unknown'}"
-        )
-    return lines
-
-
-def _normalise_team_name(value: str | None) -> str:
-    text = unicodedata.normalize("NFKD", value or "")
-    text = "".join(char for char in text if not unicodedata.combining(char))
-    cleaned = text.lower()
-    for char in [".", "-", "_", "(", ")", "[", "]"]:
-        cleaned = cleaned.replace(char, " ")
-    stop_words = {"fc", "cf", "sl", "sc", "club", "clube", "sport", "sporting", "futebol"}
-    words = [word for word in cleaned.split() if word not in stop_words]
-    return " ".join(words)
-
-
-def _football_data_team_matches(search_term: str, team: dict) -> bool:
-    wanted = _normalise_team_name(search_term)
-    if not wanted:
-        return False
-
-    names = [team.get("name"), team.get("shortName")]
-    normalised_names = [_normalise_team_name(name) for name in names if _normalise_team_name(name)]
-    if wanted in normalised_names:
-        return True
-
-    wanted_words = set(wanted.split())
-    for name in normalised_names:
-        name_words = set(name.split())
-        if wanted_words and wanted_words.issubset(name_words):
-            return True
-
-    tla = (team.get("tla") or "").lower()
-    return bool(tla and tla == search_term.strip().lower())
-
-
-def _find_football_data_team_id(team_name: str) -> int | None:
-    search_terms = _team_search_terms(team_name)
-    try:
-        teams = _football_data_get("teams").get("teams") or []
-    except Exception:
-        teams = []
-
-    competition_codes = ["PPL", "CL", "PL", "PD", "SA", "BL1", "FL1"]
-    for code in competition_codes:
-        try:
-            teams.extend((_football_data_get(f"competitions/{code}/teams").get("teams") or []))
-        except Exception:
-            continue
-
-    for term in search_terms:
-        for team in teams:
-            if _football_data_team_matches(term, team):
-                return team.get("id")
-    return None
-
-
-def _format_football_data_match(match: dict) -> str:
-    home = (match.get("homeTeam") or {}).get("name") or "Home"
-    away = (match.get("awayTeam") or {}).get("name") or "Away"
-    competition = (match.get("competition") or {}).get("name") or "competition unknown"
-    score = match.get("score") or {}
-    full_time = score.get("fullTime") or {}
-    home_goals = full_time.get("home")
-    away_goals = full_time.get("away")
-    score_text = (
-        f"{home_goals}-{away_goals}"
-        if home_goals is not None and away_goals is not None
-        else match.get("status", "score unavailable")
-    )
-    return f"{(match.get('utcDate') or '')[:10]} | {competition} | {home} {score_text} {away} | status {match.get('status') or 'unknown'}"
-
-
-def _fetch_football_data_matches(team_name: str) -> tuple[list[str], list[str]]:
-    diagnostics: list[str] = []
-    if not _football_data_key():
-        return [], ["football-data.org skipped: FOOTBALL_DATA_API_KEY not configured"]
-
-    team_id = _find_football_data_team_id(team_name)
-    diagnostics.append(f"football-data.org team lookup '{team_name}' -> {team_id or 'not found'}")
-    if not team_id:
-        return [], diagnostics
-
-    today = date.today()
-    params = {
-        "dateFrom": (today - timedelta(days=365)).isoformat(),
-        "dateTo": (today + timedelta(days=30)).isoformat(),
-    }
-    try:
-        matches = _football_data_get(f"teams/{team_id}/matches", params).get("matches") or []
-    except Exception:
-        matches = []
-    diagnostics.append(f"football-data.org team matches -> {len(matches)}")
-
-    finished = [match for match in matches if match.get("status") == "FINISHED"]
-    scheduled = [match for match in matches if match.get("status") != "FINISHED"]
-
-    lines = []
-    if finished:
-        lines.append("Recent matches from football-data.org:")
-        lines.extend(f"- {_format_football_data_match(match)}" for match in finished[-8:])
-    if scheduled:
-        lines.append("Upcoming matches from football-data.org:")
-        lines.extend(f"- {_format_football_data_match(match)}" for match in scheduled[:4])
-    return lines, diagnostics
-
-
-def _fetch_recent_fixtures(team_id: int, league_id: int | None, season_year: int, current_season: int) -> tuple[list[dict], int, list[str]]:
-    diagnostics: list[str] = []
-    attempts: list[dict] = []
-
-    if league_id:
-        attempts.append({"team": team_id, "league": league_id, "season": season_year, "last": 8})
-        for fallback_season in _season_candidates(season_year, current_season):
-            attempts.append({"team": team_id, "league": league_id, "season": fallback_season, "last": 8})
-
-    for fallback_season in _season_candidates(season_year, current_season):
-        attempts.append({"team": team_id, "season": fallback_season, "last": 8})
-
-    today = date.today()
-    windows = [
-        (today - timedelta(days=180), today + timedelta(days=7)),
-        (today - timedelta(days=365), today + timedelta(days=14)),
-        (today - timedelta(days=730), today + timedelta(days=14)),
-    ]
-    for start, end in windows:
-        params = {"team": team_id, "from": start.isoformat(), "to": end.isoformat()}
-        if league_id:
-            params["league"] = league_id
-            params["season"] = season_year
-        attempts.append(params)
-        attempts.append({"team": team_id, "from": start.isoformat(), "to": end.isoformat()})
-
-    attempts.append({"team": team_id, "last": 8})
-
-    seen = set()
-    for params in attempts:
-        key = tuple(sorted(params.items()))
-        if key in seen:
-            continue
-        seen.add(key)
-        fixtures = _api_football_get("fixtures", params).get("response") or []
-        diagnostics.append(f"fixtures {params} -> {len(fixtures)}")
-        if fixtures:
-            fixture_league = fixtures[0].get("league") or {}
-            return fixtures[:8], int(fixture_league.get("season") or params.get("season") or season_year), diagnostics
-
-    return [], season_year, diagnostics
-
-
-def _fetch_next_fixtures(team_id: int, league_id: int | None, season_year: int) -> tuple[list[dict], list[str]]:
-    diagnostics = []
-    attempts = []
-    if league_id:
-        attempts.append({"team": team_id, "league": league_id, "season": season_year, "next": 4})
-    attempts.append({"team": team_id, "next": 4})
-
-    for params in attempts:
-        fixtures = _api_football_get("fixtures", params).get("response") or []
-        diagnostics.append(f"next fixtures {params} -> {len(fixtures)}")
-        if fixtures:
-            return fixtures[:4], diagnostics
-    return [], diagnostics
-
-
-def _fetch_single_team_context_api_football(team_name: str) -> FootballTeamContext:
-    clean_name = team_name.strip()
-    if not clean_name:
-        raise ValueError("team_name is required")
-
-    picked = _search_api_football_team(clean_name)
-    if not picked:
-        raise LookupError(f"No football team found for '{clean_name}'")
-
-    team, venue = picked
-    team_id = team.get("id")
-    resolved_name = team.get("name") or clean_name
-    current_season = date.today().year
-    league: dict = {}
-    season: dict = {}
-    league_id = None
-    season_year = current_season
-    diagnostics: list[str] = []
-
-    try:
-        league_items = _api_football_get("leagues", {"team": team_id}).get("response") or []
-        diagnostics.append(f"leagues team={team_id} -> {len(league_items)}")
-        picked_competition = _pick_latest_competition(league_items)
-        if picked_competition:
-            league, season = picked_competition
-            league_id = league.get("id")
-            season_year = season.get("year") or current_season
-    except requests.RequestException:
-        league_items = []
-
-    fixtures: list[dict] = []
-    next_fixtures: list[dict] = []
-    if team_id:
-        fixtures, season_year, fixture_diagnostics = _fetch_recent_fixtures(team_id, league_id, season_year, current_season)
-        diagnostics.extend(fixture_diagnostics)
-        if fixtures:
-            fixture_league = fixtures[0].get("league") or {}
-            league = fixture_league or league
-            league_id = fixture_league.get("id") or league_id
-            season_year = fixture_league.get("season") or season_year
-        next_fixtures, next_diagnostics = _fetch_next_fixtures(team_id, league_id, season_year)
-        diagnostics.extend(next_diagnostics)
-
-    team_statistics: dict = {}
-    if team_id and league_id:
-        for stats_season in _season_candidates(season_year, current_season):
-            try:
-                candidate_stats = _api_football_get(
-                    "teams/statistics",
-                    {"team": team_id, "league": league_id, "season": stats_season},
-                ).get("response") or {}
-            except requests.RequestException:
-                candidate_stats = {}
-            diagnostics.append(f"team statistics league={league_id} season={stats_season} -> played {_stats_played_total(candidate_stats)}")
-            if _stats_played_total(candidate_stats) > 0:
-                team_statistics = candidate_stats
-                season_year = stats_season
-                break
-            if candidate_stats and not team_statistics:
-                team_statistics = candidate_stats
-
-    squad: list[dict] = []
-    try:
-        squad_response = _api_football_get("players/squads", {"team": team_id}).get("response") or []
-        if squad_response:
-            squad = squad_response[0].get("players") or []
-    except requests.RequestException:
-        squad = []
-
-    injuries: list[dict] = []
-    try:
-        injury_params = {"team": team_id, "season": season_year}
-        if league_id:
-            injury_params["league"] = league_id
-        injuries = _api_football_get("injuries", injury_params).get("response") or []
-        diagnostics.append(f"injuries {injury_params} -> {len(injuries)}")
-    except requests.RequestException:
-        injuries = []
-
-    standings_lines: list[str] = []
-    if league_id:
-        try:
-            standings_response = _api_football_get("standings", {"league": league_id, "season": season_year}).get("response") or []
-            diagnostics.append(f"standings league={league_id} season={season_year} -> {len(standings_response)}")
-            if standings_response:
-                standings = ((standings_response[0].get("league") or {}).get("standings") or [])
-                standings_lines = _format_standings(standings, team_id)
-        except requests.RequestException:
-            standings_lines = []
-
-    football_data_lines: list[str] = []
-    if not fixtures:
-        football_data_lines, football_data_diagnostics = _fetch_football_data_matches(resolved_name)
-        diagnostics.extend(football_data_diagnostics)
-
-    lines = [
-        f"Team: {resolved_name}",
-        f"Country: {team.get('country') or 'Unknown'}",
-        f"Founded: {team.get('founded') or 'Unknown'}",
-        f"Venue: {venue.get('name') or 'Unknown'}",
-        f"Venue capacity: {venue.get('capacity') or 'Unknown'}",
-        f"Competition: {league.get('name') or 'Unknown'}",
-        f"Season: {season_year}",
-        f"Data provider: API-Football/API-Sports",
-    ]
-
-    team_stat_lines = _format_team_statistics(team_statistics)
-    if team_stat_lines:
-        lines.append("")
-        lines.append("Season team statistics:")
-        lines.extend(team_stat_lines)
-
-    if standings_lines:
-        lines.append("")
-        lines.append("League standing:")
-        lines.extend(standings_lines)
-
-    if fixtures:
-        lines.append("")
-        lines.append("Recent matches:")
-        lines.extend(f"- {_format_api_football_fixture(fixture, team_id)}" for fixture in fixtures)
-
-        lines.append("")
-        lines.append("Match statistics from recent fixtures:")
-        added_stats = False
-        for fixture in fixtures[:3]:
-            fixture_id = (fixture.get("fixture") or {}).get("id")
-            if not fixture_id:
-                continue
-            try:
-                stats = _api_football_get("fixtures/statistics", {"fixture": fixture_id}).get("response") or []
-            except requests.RequestException:
-                stats = []
-            stat_lines = _format_fixture_statistics(stats)
-            if stat_lines:
-                lines.append(f"Fixture {fixture_id}:")
-                lines.extend(stat_lines)
-                added_stats = True
-        if not added_stats:
-            lines.append("- No per-match statistics returned by provider for the recent fixtures.")
-
-        lines.append("")
-        lines.append("Recent lineups / formations:")
-        added_lineups = False
-        for fixture in fixtures[:3]:
-            fixture_id = (fixture.get("fixture") or {}).get("id")
-            if not fixture_id:
-                continue
-            try:
-                lineups = _api_football_get("fixtures/lineups", {"fixture": fixture_id}).get("response") or []
-            except requests.RequestException:
-                lineups = []
-            diagnostics.append(f"lineups fixture={fixture_id} -> {len(lineups)}")
-            lineup_lines = _format_lineups(lineups)
-            if lineup_lines:
-                lines.append(f"Fixture {fixture_id}:")
-                lines.extend(lineup_lines)
-                added_lineups = True
-        if not added_lineups:
-            lines.append("- No lineups/formations returned by provider for the recent fixtures.")
-    else:
-        lines.append("")
-        lines.append("Recent matches: none returned by provider after league/season and team-only fallbacks.")
-
-    if football_data_lines:
-        lines.append("")
-        lines.extend(football_data_lines)
-
-    if next_fixtures:
-        lines.append("")
-        lines.append("Next fixtures:")
-        lines.extend(f"- {_format_api_football_fixture(fixture, team_id)}" for fixture in next_fixtures)
-
-    if injuries:
-        lines.append("")
-        lines.append("Injuries / suspensions / doubtful players:")
-        lines.extend(_format_injuries(injuries))
-    else:
-        lines.append("")
-        lines.append("Injuries / suspensions / doubtful players: none returned by provider for the selected team/season.")
-
-    if squad:
-        lines.append("")
-        lines.append("Squad sample:")
-        lines.extend(_format_squad(squad))
-
-    lines.append("")
-    lines.append("Provider diagnostics:")
-    lines.extend(f"- {item}" for item in diagnostics[:40])
-
-    observations = (
-        "Automatic data loaded from API-Football/API-Sports. This includes recent fixtures, available match statistics, "
-        "squad sample and injury/suspension availability where the provider has coverage. Add human tactical observations "
-        "for pressing triggers, build-up patterns, transition behaviour, set pieces and individual matchups."
-    )
-
-    return FootballTeamContext(
-        team_name=resolved_name,
-        source="API-Football",
-        stats="\n".join(lines),
-        observations=observations,
+    warnings = []
+    if not my_row:
+        warnings.append(f"WARNING: '{req.my_team}' not matched in standings")
+    if not opp_row:
+        warnings.append(f"WARNING: '{req.opponent_team}' not matched in standings")
+
+    source = f"ESPN Série A {time.strftime('%Y')} ({len(schedule)} fixtures, {len(standings)} teams)"
+    if warnings:
+        source += " | " + " | ".join(warnings)
+
+    return MatchPrepReport(
+        my_team=req.my_team,
+        opponent_team=req.opponent_team,
+        data_source=source,
+        executive_summary=str(raw.get("executive_summary", "")).strip(),
+        opponent_strengths=to_list(raw.get("opponent_strengths")),
+        opponent_weaknesses=to_list(raw.get("opponent_weaknesses")),
+        key_threats=to_list(raw.get("key_threats")),
+        tactical_approach=str(raw.get("tactical_approach", "")).strip(),
+        pressing_triggers=to_list(raw.get("pressing_triggers")),
+        attacking_approach=to_list(raw.get("attacking_approach")),
+        set_piece_plan=to_list(raw.get("set_piece_plan")),
+        risk_assessment=str(raw.get("risk_assessment", "")).strip(),
+        raw_stats_used=raw_stats,
     )
 
 
-def fetch_team_context_api_football(team_name: str) -> FootballTeamContext:
-    parts = _team_query_parts(team_name)
-    if len(parts) <= 1:
-        return _fetch_single_team_context_api_football(team_name)
-
-    contexts: list[FootballTeamContext] = []
-    failures: list[str] = []
-    for part in parts:
-        try:
-            contexts.append(_fetch_single_team_context_api_football(part))
-        except Exception as exc:
-            failures.append(f"{part}: {exc}")
-
-    if not contexts:
-        raise LookupError(f"No football team found for '{team_name}'")
-
-    stats_sections = []
-    for context in contexts:
-        stats_sections.append(f"=== Team report: {context.team_name} ===\n{context.stats}")
-    if failures:
-        stats_sections.append("=== Teams not found ===\n" + "\n".join(f"- {failure}" for failure in failures))
-
-    return FootballTeamContext(
-        team_name=" / ".join(context.team_name for context in contexts),
-        source="API-Football multi-team",
-        stats="\n\n".join(stats_sections),
-        observations=(
-            "Automatic multi-team data loaded. Use this for opponent comparison or match preparation. "
-            "Add human tactical observations for each side if you want the AI report to discuss matchups."
-        ),
-    )
-
-
-def fetch_team_context(team_name: str) -> FootballTeamContext:
-    cached = _get_cached_team_context(team_name)
-    if cached:
-        return cached
-
-    if _api_football_key():
-        return _set_cached_team_context(team_name, fetch_team_context_api_football(team_name))
-
-    clean_name = team_name.strip()
-    if not clean_name:
-        raise ValueError("team_name is required")
-
-    search = _sportsdb_get(f"searchteams.php?t={quote(clean_name)}")
-    team = _pick_soccer_team(search.get("teams"))
-    if not team:
-        raise LookupError(f"No football team found for '{clean_name}'")
-
-    resolved_name = team.get("strTeam") or clean_name
-    team_id = team.get("idTeam")
-    league = team.get("strLeague") or "Unknown league"
-    country = team.get("strCountry") or "Unknown country"
-    stadium = team.get("strStadium") or "Unknown stadium"
-    formed = team.get("intFormedYear") or "Unknown"
-    description = (team.get("strDescriptionEN") or "").strip()
-
-    last_events: list[dict] = []
-    next_events: list[dict] = []
-    players: list[dict] = []
-    if team_id:
-        try:
-            last_events = (_sportsdb_get(f"eventslast.php?id={team_id}").get("results") or [])[:5]
-        except requests.RequestException:
-            last_events = []
-        try:
-            next_events = (_sportsdb_get(f"eventsnext.php?id={team_id}").get("events") or [])[:3]
-        except requests.RequestException:
-            next_events = []
-        try:
-            players = (_sportsdb_get(f"lookup_all_players.php?id={team_id}").get("player") or [])[:8]
-        except requests.RequestException:
-            players = []
-
-    lines = [
-        f"Team: {resolved_name}",
-        f"Country: {country}",
-        f"League: {league}",
-        f"Stadium: {stadium}",
-        f"Founded: {formed}",
-    ]
-
-    if last_events:
-        lines.append("")
-        lines.append("Recent matches:")
-        lines.extend(f"- {_format_event(event, resolved_name)}" for event in last_events)
-
-    if next_events:
-        lines.append("")
-        lines.append("Upcoming matches:")
-        lines.extend(f"- {_format_event(event, resolved_name)}" for event in next_events)
-
-    if players:
-        lines.append("")
-        lines.append("Listed squad sample:")
-        for player in players:
-            name = player.get("strPlayer") or "Unknown player"
-            position = player.get("strPosition") or "Unknown position"
-            nationality = player.get("strNationality") or "Unknown nationality"
-            lines.append(f"- {name} | {position} | {nationality}")
-
-    observations = ""
-    if description:
-        short_description = description[:1200].rsplit(".", 1)[0]
-        observations = (
-            "Automatic public-data note: this is club/context data, not tactical scouting. "
-            "Add match observations for pressing, build-up, transitions and set pieces.\n\n"
-            f"Club context: {short_description}."
-        )
-    else:
-        observations = (
-            "Automatic public-data note: only basic team/event data was found. "
-            "Add human match observations before generating a serious tactical report."
-        )
-
-    return _set_cached_team_context(team_name, FootballTeamContext(
-        team_name=resolved_name,
-        source="TheSportsDB",
-        stats="\n".join(lines),
-        observations=observations,
-    ))
-
-
-def _user_prompt(payload: FootballAnalyzeRequest) -> str:
-    return f"""
-Create an opponent analysis report for: {payload.team_name}
-
-Raw statistics:
-{payload.stats or "No structured stats provided."}
-
-Raw match observations:
-{payload.observations or "No observations provided."}
-
-Return this JSON object exactly:
-{{
-  "executive_summary": "2-4 sentence overview",
-  "tactical_strengths": ["strength 1", "strength 2", "strength 3"],
-  "tactical_weaknesses": ["weakness 1", "weakness 2", "weakness 3"],
-  "key_players_to_watch": ["player or role 1", "player or role 2"],
-  "recommended_match_strategy": "clear match plan",
-  "pressing_recommendations": ["pressing trigger 1", "pressing trigger 2"],
-  "set_piece_considerations": ["set piece note 1", "set piece note 2"],
-  "risk_assessment": "main risks and mitigation"
-}}
-""".strip()
-
-
-def _coerce_list(value: object) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    return []
-
-
-def _normalise_report(raw: dict) -> FootballAnalysisReport:
-    return FootballAnalysisReport(
-        executive_summary=str(raw.get("executive_summary") or "").strip(),
-        tactical_strengths=_coerce_list(raw.get("tactical_strengths")),
-        tactical_weaknesses=_coerce_list(raw.get("tactical_weaknesses")),
-        key_players_to_watch=_coerce_list(raw.get("key_players_to_watch")),
-        recommended_match_strategy=str(raw.get("recommended_match_strategy") or "").strip(),
-        pressing_recommendations=_coerce_list(raw.get("pressing_recommendations")),
-        set_piece_considerations=_coerce_list(raw.get("set_piece_considerations")),
-        risk_assessment=str(raw.get("risk_assessment") or "").strip(),
-    )
-
+# ---------------------------------------------------------------------------
+# Legacy single-team report (kept for backward compat)
+# ---------------------------------------------------------------------------
 
 def generate_opponent_report(payload: FootballAnalyzeRequest) -> FootballAnalyzeResponse:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
 
-    from openai import OpenAI
+    system = (
+        "You are a senior football opposition analyst. "
+        "Use only the stats and observations supplied. "
+        "Return concise, practical coaching language as valid JSON only."
+    )
+    user = f"""Create an opponent analysis for: {payload.team_name}
 
+Stats:
+{payload.stats or 'No stats provided.'}
+
+Observations:
+{payload.observations or 'No observations provided.'}
+
+Return JSON:
+{{
+  "executive_summary": "2-4 sentence overview",
+  "tactical_strengths": ["strength 1", "strength 2"],
+  "tactical_weaknesses": ["weakness 1", "weakness 2"],
+  "key_players_to_watch": ["player 1", "player 2"],
+  "recommended_match_strategy": "clear match plan",
+  "pressing_recommendations": ["trigger 1", "trigger 2"],
+  "set_piece_considerations": ["note 1", "note 2"],
+  "risk_assessment": "risks and mitigation"
+}}"""
+
+    from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
+    resp = client.chat.completions.create(
         model="gpt-4o-mini",
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": _system_prompt()},
-            {"role": "user", "content": _user_prompt(payload)},
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ],
         temperature=0.25,
     )
+    raw = json.loads(resp.choices[0].message.content or "{}")
 
-    content = response.choices[0].message.content or "{}"
-    try:
-        raw = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError("OpenAI returned invalid JSON") from exc
+    def cl(v):
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str) and v.strip():
+            return [v.strip()]
+        return []
 
     return FootballAnalyzeResponse(
         team_name=payload.team_name.strip(),
-        report=_normalise_report(raw),
+        report=FootballAnalysisReport(
+            executive_summary=str(raw.get("executive_summary", "")).strip(),
+            tactical_strengths=cl(raw.get("tactical_strengths")),
+            tactical_weaknesses=cl(raw.get("tactical_weaknesses")),
+            key_players_to_watch=cl(raw.get("key_players_to_watch")),
+            recommended_match_strategy=str(raw.get("recommended_match_strategy", "")).strip(),
+            pressing_recommendations=cl(raw.get("pressing_recommendations")),
+            set_piece_considerations=cl(raw.get("set_piece_considerations")),
+            risk_assessment=str(raw.get("risk_assessment", "")).strip(),
+        ),
     )

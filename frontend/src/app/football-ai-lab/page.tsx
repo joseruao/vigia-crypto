@@ -1,9 +1,10 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  ChevronDown,
   ClipboardList,
   Loader2,
   ShieldAlert,
@@ -13,21 +14,9 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
-import {
-  FootballAnalysisReport,
-  analyzeFootballOpponent,
-  fetchFootballTeamContext,
-} from '@/lib/api';
+import { MatchPrepReport, generateMatchPrep, fetchSerieATeams } from '@/lib/api';
 
-function SectionCard({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: ReactNode;
-  children: ReactNode;
-}) {
+function SectionCard({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-2 text-slate-950">
@@ -43,13 +32,12 @@ function SectionCard({
 
 function BulletList({ items }: { items: string[] }) {
   if (!items.length) {
-    return <p className="text-sm leading-6 text-slate-500">No clear signal found in the supplied notes.</p>;
+    return <p className="text-sm leading-6 text-slate-500">No data available.</p>;
   }
-
   return (
     <ul className="space-y-2 text-sm leading-6 text-slate-700">
-      {items.map((item, index) => (
-        <li key={`${item}-${index}`} className="flex gap-2">
+      {items.map((item, i) => (
+        <li key={i} className="flex gap-2">
           <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-600" />
           <span>{item}</span>
         </li>
@@ -58,129 +46,137 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-export default function FootballAiLabPage() {
-  const [teamName, setTeamName] = useState('');
-  const [stats, setStats] = useState('');
-  const [observations, setObservations] = useState('');
-  const [report, setReport] = useState<FootballAnalysisReport | null>(null);
-  const [reportedTeam, setReportedTeam] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [fetchingData, setFetchingData] = useState(false);
-  const [error, setError] = useState('');
-  const [dataSource, setDataSource] = useState('');
+function TeamSelect({
+  label,
+  value,
+  onChange,
+  teams,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  teams: string[];
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-slate-700">{label}</span>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-11 w-full appearance-none rounded-md border border-slate-300 bg-white px-3 pr-9 text-sm text-slate-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+        >
+          <option value="">{placeholder}</option>
+          {teams.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+      </div>
+    </label>
+  );
+}
 
-  const canSubmit = useMemo(() => {
-    return teamName.trim().length > 0 && (stats.trim().length > 0 || observations.trim().length > 0);
-  }, [teamName, stats, observations]);
+export default function FootballAiLabPage() {
+  const [teams, setTeams] = useState<string[]>([]);
+  const [myTeam, setMyTeam] = useState('');
+  const [opponentTeam, setOpponentTeam] = useState('');
+  const [extraNotes, setExtraNotes] = useState('');
+  const [report, setReport] = useState<MatchPrepReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingTeams, setLoadingTeams] = useState(true);
+  const [error, setError] = useState('');
+  const [showRaw, setShowRaw] = useState(false);
+
+  useEffect(() => {
+    fetchSerieATeams()
+      .then(setTeams)
+      .finally(() => setLoadingTeams(false));
+  }, []);
 
   async function handleGenerate() {
-    if (!canSubmit || loading) return;
+    if (!myTeam || !opponentTeam || loading) return;
+    if (myTeam === opponentTeam) {
+      setError('Select two different teams.');
+      return;
+    }
     setLoading(true);
     setError('');
+    setReport(null);
 
     try {
-      const result = await analyzeFootballOpponent({
-        team_name: teamName.trim(),
-        stats: stats.trim(),
-        observations: observations.trim(),
+      const result = await generateMatchPrep({
+        my_team: myTeam,
+        opponent_team: opponentTeam,
+        extra_notes: extraNotes.trim(),
       });
-      setReport(result.report);
-      setReportedTeam(result.team_name);
+      setReport(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not generate the report.';
-      setError(message);
+      setError(err instanceof Error ? err.message : 'Could not generate the report.');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleFetchData() {
-    if (!teamName.trim() || fetchingData) return;
-    setFetchingData(true);
-    setError('');
-
-    try {
-      const context = await fetchFootballTeamContext(teamName.trim());
-      setTeamName(context.team_name);
-      setStats(context.stats);
-      setDataSource(context.source);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not fetch public football data.';
-      setError(message);
-    } finally {
-      setFetchingData(false);
-    }
-  }
+  const canSubmit = myTeam.length > 0 && opponentTeam.length > 0 && myTeam !== opponentTeam;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="border-b border-slate-200 pb-5">
-          <div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Experimental module</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">Football AI Lab</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Turn coach notes and match stats into a structured opposition report for tactical preparation.
-              </p>
-            </div>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Experimental module</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">Football AI Lab</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Match preparation reports for Campeonato Brasileiro Série A — powered by live ESPN data.
+          </p>
         </header>
 
-        <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
+          {/* --- Input panel --- */}
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-5 flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-700">
                 <Target className="h-4 w-4" />
               </span>
-              <h2 className="text-base font-semibold">Opponent Inputs</h2>
+              <h2 className="text-base font-semibold">Match Setup</h2>
             </div>
 
             <div className="space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Team name</span>
-                <input
-                  value={teamName}
-                  onChange={(event) => setTeamName(event.target.value)}
-                  placeholder="e.g. Sporting CP U19"
-                  className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-
-              <button
-                type="button"
-                onClick={handleFetchData}
-                disabled={!teamName.trim() || fetchingData}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-              >
-                {fetchingData ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
-                Fetch public data
-              </button>
-
-              {dataSource && (
-                <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
-                  Public data loaded from {dataSource}. API-Football gives richer stats and injuries when configured; fallback data is only club context.
-                </p>
+              {loadingTeams ? (
+                <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading Série A teams…
+                </div>
+              ) : (
+                <>
+                  <TeamSelect
+                    label="My team"
+                    value={myTeam}
+                    onChange={setMyTeam}
+                    teams={teams}
+                    placeholder="Select your team"
+                  />
+                  <TeamSelect
+                    label="Opponent"
+                    value={opponentTeam}
+                    onChange={setOpponentTeam}
+                    teams={teams.filter((t) => t !== myTeam)}
+                    placeholder="Select opponent"
+                  />
+                </>
               )}
 
               <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Statistics</span>
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Extra coach notes <span className="font-normal text-slate-400">(optional)</span>
+                </span>
                 <textarea
-                  value={stats}
-                  onChange={(event) => setStats(event.target.value)}
-                  placeholder="Paste metrics, formations, event notes, recent results..."
-                  rows={8}
-                  className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Raw match observations</span>
-                <textarea
-                  value={observations}
-                  onChange={(event) => setObservations(event.target.value)}
-                  placeholder="Describe build-up, pressing, transitions, key players, set pieces..."
-                  rows={10}
+                  value={extraNotes}
+                  onChange={(e) => setExtraNotes(e.target.value)}
+                  placeholder="Add context not in the data — injuries, tactical adjustments, last training observations..."
+                  rows={5}
                   className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 />
               </label>
@@ -199,57 +195,85 @@ export default function FootballAiLabPage() {
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Generate Report
+                {loading ? 'Generating report…' : 'Generate Match Prep Report'}
               </button>
             </div>
           </section>
 
+          {/* --- Report panel --- */}
           <section className="min-h-[640px] rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             {!report ? (
               <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
                   <Trophy className="h-7 w-7" />
                 </div>
-                <h2 className="mt-4 text-xl font-semibold">Opponent report preview</h2>
+                <h2 className="mt-4 text-xl font-semibold">Match preparation report</h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Add a team name plus observations or stats, then generate a professional tactical report.
+                  Select your team and the opponent. The report is generated from live Série A data — no manual data entry needed.
                 </p>
               </div>
             ) : (
               <div className="space-y-5">
+                {/* Header */}
                 <div className="rounded-lg bg-slate-950 p-6 text-white">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Opponent Analysis</p>
-                  <h2 className="mt-2 text-2xl font-semibold">{reportedTeam}</h2>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Match Preparation</p>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    {report.my_team} <span className="text-slate-400">vs</span> {report.opponent_team}
+                  </h2>
                   <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-200">{report.executive_summary}</p>
+                  <p className="mt-3 text-xs text-slate-500">Source: {report.data_source}</p>
                 </div>
 
+                {/* Opponent analysis */}
                 <div className="grid gap-5 lg:grid-cols-2">
-                  <SectionCard title="Tactical Strengths" icon={<Zap className="h-4 w-4" />}>
-                    <BulletList items={report.tactical_strengths} />
+                  <SectionCard title="Opponent Strengths" icon={<Zap className="h-4 w-4" />}>
+                    <BulletList items={report.opponent_strengths} />
                   </SectionCard>
-                  <SectionCard title="Tactical Weaknesses" icon={<ShieldAlert className="h-4 w-4" />}>
-                    <BulletList items={report.tactical_weaknesses} />
-                  </SectionCard>
-                  <SectionCard title="Key Players To Watch" icon={<Users className="h-4 w-4" />}>
-                    <BulletList items={report.key_players_to_watch} />
-                  </SectionCard>
-                  <SectionCard title="Pressing Recommendations" icon={<Target className="h-4 w-4" />}>
-                    <BulletList items={report.pressing_recommendations} />
+                  <SectionCard title="Opponent Weaknesses" icon={<ShieldAlert className="h-4 w-4" />}>
+                    <BulletList items={report.opponent_weaknesses} />
                   </SectionCard>
                 </div>
 
-                <SectionCard title="Recommended Match Strategy" icon={<ClipboardList className="h-4 w-4" />}>
-                  <p className="text-sm leading-6 text-slate-700">{report.recommended_match_strategy}</p>
+                <SectionCard title="Key Threats to Neutralise" icon={<Users className="h-4 w-4" />}>
+                  <BulletList items={report.key_threats} />
+                </SectionCard>
+
+                {/* Game plan */}
+                <SectionCard title="Tactical Approach" icon={<ClipboardList className="h-4 w-4" />}>
+                  <p className="text-sm leading-6 text-slate-700">{report.tactical_approach}</p>
                 </SectionCard>
 
                 <div className="grid gap-5 lg:grid-cols-2">
-                  <SectionCard title="Set Piece Considerations" icon={<Trophy className="h-4 w-4" />}>
-                    <BulletList items={report.set_piece_considerations} />
+                  <SectionCard title="Pressing Triggers" icon={<Target className="h-4 w-4" />}>
+                    <BulletList items={report.pressing_triggers} />
+                  </SectionCard>
+                  <SectionCard title="Attacking Approach" icon={<Zap className="h-4 w-4" />}>
+                    <BulletList items={report.attacking_approach} />
+                  </SectionCard>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <SectionCard title="Set Pieces" icon={<Trophy className="h-4 w-4" />}>
+                    <BulletList items={report.set_piece_plan} />
                   </SectionCard>
                   <SectionCard title="Risk Assessment" icon={<AlertTriangle className="h-4 w-4" />}>
                     <p className="text-sm leading-6 text-slate-700">{report.risk_assessment}</p>
                   </SectionCard>
                 </div>
+
+                {/* Raw data toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowRaw((v) => !v)}
+                  className="text-xs text-slate-400 underline hover:text-slate-600"
+                >
+                  {showRaw ? 'Hide raw data' : 'Show raw data used'}
+                </button>
+                {showRaw && (
+                  <pre className="overflow-x-auto rounded-md bg-slate-900 p-4 text-xs leading-5 text-slate-300">
+                    {report.raw_stats_used}
+                  </pre>
+                )}
               </div>
             )}
           </section>

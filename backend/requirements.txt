@@ -21,6 +21,9 @@ joblib==1.4.2
 websockets>=11,<13
 pandas>=2.0.0
 
+# --- Football analysis (FBref scraping) ---
+lxml>=4.9.0
+
 # --- OpenAI (se usas) ---
 openai>=1.45.0
 

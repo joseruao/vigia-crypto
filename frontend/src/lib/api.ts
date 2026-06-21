@@ -166,6 +166,49 @@ export type FootballTeamContext = {
   observations: string;
 };
 
+export type MatchPrepReport = {
+  my_team: string;
+  opponent_team: string;
+  data_source: string;
+  executive_summary: string;
+  opponent_strengths: string[];
+  opponent_weaknesses: string[];
+  key_threats: string[];
+  tactical_approach: string;
+  pressing_triggers: string[];
+  attacking_approach: string[];
+  set_piece_plan: string[];
+  risk_assessment: string;
+  raw_stats_used: string;
+};
+
+export async function generateMatchPrep(input: {
+  my_team: string;
+  opponent_team: string;
+  extra_notes?: string;
+}): Promise<MatchPrepReport> {
+  const res = await fetch(`${API_BASE}/api/football/match-prep`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchSerieATeams(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/football/serie-a/teams`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function analyzeFootballOpponent(input: {
   team_name: string;
   stats: string;
