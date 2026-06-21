@@ -233,6 +233,10 @@ def _fetch_standings_raw(competition: str = "serie_a") -> list[dict]:
     return sorted(rows, key=lambda r: (r.get("group", ""), r["rank"]))
 
 
+def _league_slug(competition: str) -> str:
+    return _COMPS[competition]["standings"].split("/soccer/")[1].split("/")[0]
+
+
 def _fetch_matches_raw(competition: str = "serie_a") -> list[dict]:
     cfg = _COMPS[competition]
     data = _get(cfg["scoreboard"], params={"dates": cfg["date_range"], "limit": 400})
@@ -249,6 +253,7 @@ def _fetch_matches_raw(competition: str = "serie_a") -> list[dict]:
         if status == "STATUS_FULL_TIME":
             score = f"{home.get('score', '?')}-{away.get('score', '?')}"
         matches.append({
+            "event_id": str(ev.get("id", "")),
             "date": ev.get("date", "")[:10],
             "home": home.get("team", {}).get("displayName", ""),
             "away": away.get("team", {}).get("displayName", ""),
@@ -260,12 +265,102 @@ def _fetch_matches_raw(competition: str = "serie_a") -> list[dict]:
     return matches
 
 
+def _fetch_event_summary(event_id: str, competition: str) -> dict:
+    """Fetch rich per-match data: scorers, possession, shots, cards, corners."""
+    slug = _league_slug(competition)
+    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/summary"
+    try:
+        return _get(url, params={"event": event_id})
+    except Exception:
+        return {}
+
+
+def _parse_match_detail(summary: dict) -> dict:
+    """Extract scorers and per-team stats from ESPN summary response."""
+    detail: dict = {"scorers": [], "stats": {}}
+
+    # Goal scorers from keyEvents (ESPN soccer uses keyEvents, not scoringPlays)
+    for ev in summary.get("keyEvents", []):
+        if not ev.get("scoringPlay"):
+            continue
+        ptype = ev.get("type", {}).get("type", "")
+        team = ev.get("team", {}).get("displayName", "")
+        clock = ev.get("clock", {}).get("displayValue", "?")
+        period = ev.get("period", {}).get("number", 1)
+        # Rich text already formatted by ESPN e.g. "Julián Quiñones Goal"
+        short = ev.get("shortText", "")
+        full_text = ev.get("text", "")
+        # Extract scorer from participants if available
+        participants = ev.get("participants", [])
+        scorer = participants[0].get("athlete", {}).get("displayName", "") if participants else ""
+        if not scorer:
+            scorer = short.replace(" Goal", "").replace(" goal", "").strip()
+        own_goal = "own" in ptype.lower() or "owngoal" in ptype.lower()
+        label = f"{scorer} ({team}) {clock}'"
+        if period > 2:
+            label += " [ET]"
+        if own_goal:
+            label += " [OG]"
+        detail["scorers"].append(label)
+        # Store full description for LLM context
+        if full_text:
+            detail.setdefault("goal_descriptions", []).append(full_text)
+
+    # Box score stats per team (ESPN field names confirmed from API)
+    for team_data in summary.get("boxscore", {}).get("teams", []):
+        tname = team_data.get("team", {}).get("displayName", "")
+        rs = {s["name"]: s.get("displayValue", str(s.get("value", "")))
+              for s in team_data.get("statistics", [])}
+        detail["stats"][tname] = {
+            "possession": rs.get("possessionPct", ""),
+            "shots": rs.get("totalShots", ""),
+            "shots_on_target": rs.get("shotsOnTarget", ""),
+            "corners": rs.get("wonCorners", ""),
+            "fouls": rs.get("foulsCommitted", ""),
+            "yellow_cards": rs.get("yellowCards", ""),
+            "red_cards": rs.get("redCards", ""),
+            "offsides": rs.get("offsides", ""),
+            "pass_pct": rs.get("passPct", ""),
+            "accurate_passes": rs.get("accuratePasses", ""),
+            "total_passes": rs.get("totalPasses", ""),
+            "tackles": rs.get("effectiveTackles", ""),
+            "interceptions": rs.get("interceptions", ""),
+            "long_ball_pct": rs.get("longballPct", ""),
+        }
+    return detail
+
+
+def _enrich_matches(matches: list[dict], competition: str, limit: int = 80) -> list[dict]:
+    """Add scorers + stats to the most recent finished matches."""
+    finished = [m for m in matches if m.get("score")][-limit:]
+    ids_to_fetch = {m["event_id"] for m in finished if m.get("event_id")}
+    summaries: dict[str, dict] = {}
+    for eid in ids_to_fetch:
+        cache_key = f"summary_{eid}"
+        summaries[eid] = _cached(cache_key, lambda eid=eid: _parse_match_detail(
+            _fetch_event_summary(eid, competition)
+        ))
+    enriched = []
+    for m in matches:
+        if m.get("event_id") in summaries:
+            m = {**m, "detail": summaries[m["event_id"]]}
+        enriched.append(m)
+    return enriched
+
+
 def fetch_standings(competition: str = "serie_a") -> list[dict]:
     return _cached(f"standings_{competition}", lambda: _fetch_standings_raw(competition))
 
 
 def fetch_schedule(competition: str = "serie_a") -> list[dict]:
     return _cached(f"schedule_{competition}", lambda: _fetch_matches_raw(competition))
+
+
+def fetch_rich_schedule(competition: str = "serie_a") -> list[dict]:
+    """Schedule enriched with per-match scorers and stats (cached separately)."""
+    base = fetch_schedule(competition)
+    return _cached(f"rich_schedule_{competition}",
+                   lambda: _enrich_matches(base, competition))
 
 
 # Backwards compat aliases
@@ -327,9 +422,8 @@ def _fmt_standing(row: dict) -> str:
     )
 
 
-def _fmt_match(m: dict, perspective: str) -> str:
+def _fmt_match(m: dict, perspective: str, neutral_venue: bool = False) -> str:
     score = m.get("score") or "upcoming"
-    venue = "HOME" if _teams_match(perspective, m["home"]) else "AWAY"
     result = ""
     if m.get("score"):
         h, a = m["score"].split("-")
@@ -338,7 +432,63 @@ def _fmt_match(m: dict, perspective: str) -> str:
             result = "W" if h > a else ("D" if h == a else "L")
         else:
             result = "W" if a > h else ("D" if h == a else "L")
-    return f"{m['date']} | {m['home']} {score} {m['away']} | {venue} {result}"
+
+    if neutral_venue:
+        side = ""
+    else:
+        side = " [H]" if _teams_match(perspective, m["home"]) else " [A]"
+
+    line = f"{m['date']} | {m['home']} {score} {m['away']}{side} {result}"
+
+    detail = m.get("detail", {})
+    scorers = detail.get("scorers", [])
+    stats = detail.get("stats", {})
+
+    if scorers:
+        line += f"\n      Goals: {', '.join(scorers)}"
+
+    # Show stats for perspective team
+    t_stats = None
+    for tname, ts in stats.items():
+        if _teams_match(perspective, tname):
+            t_stats = ts
+            break
+    if t_stats:
+        parts = []
+        if t_stats.get("possession"):
+            try: parts.append(f"Poss {float(t_stats['possession']):.1f}%")
+            except: parts.append(f"Poss {t_stats['possession']}%")
+        if t_stats.get("shots") and t_stats.get("shots_on_target"):
+            parts.append(f"Shots {t_stats['shots_on_target']}/{t_stats['shots']} on tgt")
+        if t_stats.get("corners"):
+            parts.append(f"Corners {t_stats['corners']}")
+        if t_stats.get("pass_pct") and t_stats.get("accurate_passes"):
+            try: parts.append(f"Passes {t_stats['accurate_passes']}/{t_stats.get('total_passes','')} ({float(t_stats['pass_pct'])*100:.0f}%)")
+            except: pass
+        if t_stats.get("yellow_cards") and t_stats["yellow_cards"] != "0":
+            parts.append(f"YC {t_stats['yellow_cards']}")
+        if t_stats.get("red_cards") and t_stats["red_cards"] != "0":
+            parts.append(f"RC {t_stats['red_cards']}")
+        if parts:
+            line += f"\n      Stats: {' | '.join(parts)}"
+
+    return line
+
+
+def _comp_context(competition: str) -> str:
+    if competition == "world_cup":
+        return (
+            "COMPETITION CONTEXT: FIFA World Cup 2026, hosted at NEUTRAL VENUES in USA, Mexico, and Canada. "
+            "There is NO home advantage — all matches are on neutral ground. "
+            "NEVER mention 'home crowd support', 'home advantage', or 'home performance' as a strength. "
+            "Do not label teams as 'home' or 'away' — use their actual names. "
+            "Teams have played very few matches (group stage). Be careful not to over-extrapolate from limited data."
+        )
+    return (
+        "COMPETITION CONTEXT: Campeonato Brasileiro Série A. "
+        "Home/away splits are significant in Brazilian football — explicitly analyse them. "
+        "Teams have played multiple matches — use patterns and trends in the data."
+    )
 
 
 def _form_string(team: str, recent: list[dict]) -> str:
@@ -361,8 +511,9 @@ def _form_string(team: str, recent: list[dict]) -> str:
 
 def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
     comp = getattr(req, "competition", "serie_a")
+    neutral = comp == "world_cup"
     standings = fetch_standings(comp)
-    schedule = fetch_schedule(comp)
+    schedule = fetch_rich_schedule(comp)
 
     my_row = _find_team_row(req.my_team, standings)
     opp_row = _find_team_row(req.opponent_team, standings)
@@ -375,8 +526,8 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
     my_form = _form_string(req.my_team, my_recent)
     opp_form = _form_string(req.opponent_team, opp_recent)
 
-    my_recent_str = "\n".join(f"  {_fmt_match(m, req.my_team)}" for m in my_recent) or "  no data"
-    opp_recent_str = "\n".join(f"  {_fmt_match(m, req.opponent_team)}" for m in opp_recent) or "  no data"
+    my_recent_str = "\n".join(f"  {_fmt_match(m, req.my_team, neutral)}" for m in my_recent) or "  no data"
+    opp_recent_str = "\n".join(f"  {_fmt_match(m, req.opponent_team, neutral)}" for m in opp_recent) or "  no data"
     h2h_str = (
         "\n".join(
             f"  {m['date']} | {m['home']} {m.get('score','?')} {m['away']}"
@@ -385,14 +536,15 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
         or "  no H2H matches found this season"
     )
 
+    comp_label = _COMPS[comp]["label"]
     raw_stats = "\n".join([
         f"MY TEAM [{my_form}]:  {my_stats_str}",
         f"OPPONENT [{opp_form}]: {opp_stats_str}",
         "",
-        f"MY TEAM — LAST {len(my_recent)} MATCHES:",
+        f"MY TEAM — LAST {len(my_recent)} MATCHES (with match stats where available):",
         my_recent_str,
         "",
-        f"OPPONENT — LAST {len(opp_recent)} MATCHES:",
+        f"OPPONENT — LAST {len(opp_recent)} MATCHES (with match stats where available):",
         opp_recent_str,
         "",
         "HEAD-TO-HEAD (this season):",
@@ -400,7 +552,6 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
     ])
 
     extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
-
     lang = getattr(req, "language", "en")
     lang_instruction = (
         "CRITICAL INSTRUCTION: You MUST write every single word of your response in Brazilian Portuguese. "
@@ -410,36 +561,41 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
         else "Write the entire report in English."
     )
 
-    prompt = f"""You are the lead analyst for a professional football club competing in the Campeonato Brasileiro Série A.
-The head coach needs a match preparation report before the next game.
+    prompt = f"""You are the lead analyst for a professional football club.
+The head coach needs a match preparation report.
 
 LANGUAGE: {lang_instruction}
+
+{_comp_context(comp)}
 
 MY TEAM: {req.my_team}
 OPPONENT: {req.opponent_team}
 
-=== DATA SOURCE: ESPN (Série A {time.strftime('%Y')}) ===
+=== DATA SOURCE: ESPN {comp_label} ===
 
 {raw_stats}{extra}
 
 ANALYSIS INSTRUCTIONS:
-- Work ONLY from the data above. Do not invent stats.
-- Calculate patterns: goals scored/conceded per game, home vs away performance, winning/losing streaks, form trajectory.
-- Identify exploitable patterns vs the opponent (e.g. "opponent concedes 2+ in 4 of last 6 away games").
-- Be concrete and practical — this report goes directly to the coaching staff.
-- If data for a team is missing, acknowledge it briefly and work with what you have.
+- Work ONLY from the data above. Do not invent stats or players.
+- The match data includes: result, goal scorers with times, possession %, shots on target/total, corners, yellow cards.
+- Use goal scorers to identify key threats by name.
+- Use possession and shots data to infer playing style (high possession = controlled play, low shots = defensive).
+- Use corners data for set piece analysis.
+- Calculate patterns from results: goals scored/conceded per game, winning/losing streaks, form trajectory.
+- Be concrete and coaching-practical — name patterns with evidence (e.g. "conceded in 3 of last 4 matches from set pieces").
+- If match stats are not available for some games, note it and work with what you have.
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "3-4 sentences: current form of both teams, what the numbers say about this matchup, tactical context",
-  "opponent_strengths": ["data-backed strength 1", "strength 2", "strength 3"],
-  "opponent_weaknesses": ["exploitable weakness from data 1", "weakness 2", "weakness 3"],
-  "key_threats": ["specific threat or player pattern to neutralise 1", "threat 2"],
-  "tactical_approach": "2-3 sentences: game plan — how to approach this game given the data (high block? press? possession?)",
-  "pressing_triggers": ["specific situation to press hard 1", "trigger 2"],
-  "attacking_approach": ["attacking instruction based on opponent weakness 1", "instruction 2", "instruction 3"],
-  "set_piece_plan": ["set piece consideration based on data 1", "consideration 2"],
-  "risk_assessment": "main risks in this specific game and how to mitigate them"
+  "executive_summary": "3-4 sentences: current form of both teams, what the stats say about this matchup, key tactical context",
+  "opponent_strengths": ["data-backed strength with evidence 1", "strength 2", "strength 3"],
+  "opponent_weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
+  "key_threats": ["named player or pattern to neutralise, with evidence 1", "threat 2"],
+  "tactical_approach": "2-3 sentences: concrete game plan based on the data — how to set up, what to exploit",
+  "pressing_triggers": ["specific moment/situation to press 1", "trigger 2"],
+  "attacking_approach": ["specific attacking instruction based on opponent weakness 1", "instruction 2", "instruction 3"],
+  "set_piece_plan": ["set piece insight from corners/free kicks data 1", "consideration 2"],
+  "risk_assessment": "main risks in this specific matchup and how to mitigate them"
 }}"""
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -498,8 +654,9 @@ Return EXACTLY this JSON (no extra keys, no markdown):
 
 def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     comp = getattr(req, "competition", "serie_a")
+    neutral = comp == "world_cup"
     standings = fetch_standings(comp)
-    schedule = fetch_schedule(comp)
+    schedule = fetch_rich_schedule(comp)
 
     row = _find_team_row(req.team, standings)
     recent = _team_recent(req.team, schedule, n=10)
@@ -507,48 +664,74 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     stats_str = _fmt_standing(row) if row else f"{req.team}: NOT FOUND in current standings"
     form = _form_string(req.team, recent)
 
-    home_matches = [m for m in recent if _teams_match(req.team, m["home"])]
-    away_matches = [m for m in recent if _teams_match(req.team, m["away"])]
-
     def goals_for(matches, team):
-        totals = []
-        for m in matches:
-            if not m.get("score"):
-                continue
-            h, a = m["score"].split("-")
-            totals.append(int(h) if _teams_match(team, m["home"]) else int(a))
-        return totals
+        return [int(m["score"].split("-")[0 if _teams_match(team, m["home"]) else 1])
+                for m in matches if m.get("score")]
 
     def goals_against(matches, team):
-        totals = []
-        for m in matches:
-            if not m.get("score"):
-                continue
-            h, a = m["score"].split("-")
-            totals.append(int(a) if _teams_match(team, m["home"]) else int(h))
-        return totals
-
-    home_gf = goals_for(home_matches, req.team)
-    home_ga = goals_against(home_matches, req.team)
-    away_gf = goals_for(away_matches, req.team)
-    away_ga = goals_against(away_matches, req.team)
+        return [int(m["score"].split("-")[1 if _teams_match(team, m["home"]) else 0])
+                for m in matches if m.get("score")]
 
     def avg(lst): return round(sum(lst) / len(lst), 2) if lst else 0.0
 
-    home_away_breakdown = (
-        f"HOME ({len(home_matches)} games): avg {avg(home_gf)} scored / {avg(home_ga)} conceded | "
-        f"AWAY ({len(away_matches)} games): avg {avg(away_gf)} scored / {avg(away_ga)} conceded"
-    )
+    if neutral:
+        location_breakdown = f"ALL MATCHES AT NEUTRAL VENUES ({len(recent)} games played)"
+    else:
+        home_m = [m for m in recent if _teams_match(req.team, m["home"])]
+        away_m = [m for m in recent if not _teams_match(req.team, m["home"])]
+        location_breakdown = (
+            f"HOME ({len(home_m)} games): avg {avg(goals_for(home_m, req.team))} scored / "
+            f"{avg(goals_against(home_m, req.team))} conceded | "
+            f"AWAY ({len(away_m)} games): avg {avg(goals_for(away_m, req.team))} scored / "
+            f"{avg(goals_against(away_m, req.team))} conceded"
+        )
 
-    recent_str = "\n".join(f"  {_fmt_match(m, req.team)}" for m in recent) or "  no data"
+    # Aggregate match stats across all recent games
+    total_shots, total_sot, total_corners, total_yc = [], [], [], []
+    total_poss = []
+    for m in recent:
+        detail = m.get("detail", {})
+        for tname, ts in detail.get("stats", {}).items():
+            if not _teams_match(req.team, tname):
+                continue
+            if ts.get("shots"):
+                try: total_shots.append(float(ts["shots"]))
+                except: pass
+            if ts.get("shots_on_target"):
+                try: total_sot.append(float(ts["shots_on_target"]))
+                except: pass
+            if ts.get("corners"):
+                try: total_corners.append(float(ts["corners"]))
+                except: pass
+            if ts.get("yellow_cards"):
+                try: total_yc.append(float(ts["yellow_cards"]))
+                except: pass
+            if ts.get("possession"):
+                try: total_poss.append(float(str(ts["possession"]).replace("%", "")))
+                except: pass
+
+    agg_stats_parts = []
+    if total_shots:
+        agg_stats_parts.append(f"avg shots/game: {avg(total_shots)} ({avg(total_sot)} on target)")
+    if total_corners:
+        agg_stats_parts.append(f"avg corners/game: {avg(total_corners)}")
+    if total_poss:
+        agg_stats_parts.append(f"avg possession: {avg(total_poss):.1f}%")
+    if total_yc:
+        agg_stats_parts.append(f"avg yellow cards/game: {avg(total_yc):.1f}")
+    agg_stats_str = " | ".join(agg_stats_parts) if agg_stats_parts else "match stats not yet available"
+
+    recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
 
+    comp_label = _COMPS[comp]["label"]
     raw_stats = "\n".join([
         f"TEAM: {stats_str}",
         f"FORM (last {len(recent)}): {form}",
-        f"HOME/AWAY: {home_away_breakdown}",
+        f"LOCATION SPLIT: {location_breakdown}",
+        f"AGGREGATED MATCH STATS: {agg_stats_str}",
         "",
-        f"LAST {len(recent)} MATCHES:",
+        f"LAST {len(recent)} MATCHES (scorers + per-match stats where available):",
         recent_str,
     ])
 
@@ -561,35 +744,39 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         else "Write the entire report in English."
     )
 
-    prompt = f"""You are a senior football scout preparing a deep opposition report for a coaching staff in the Campeonato Brasileiro Série A.
+    prompt = f"""You are a senior football scout preparing a deep opposition report for a professional coaching staff.
 
 LANGUAGE: {lang_instruction}
 
+{_comp_context(comp)}
+
 TEAM BEING SCOUTED: {req.team}
 
-=== DATA SOURCE: ESPN (Série A {time.strftime('%Y')}) ===
+=== DATA SOURCE: ESPN {comp_label} ===
 
 {raw_stats}{extra}
 
 ANALYSIS INSTRUCTIONS:
-- This is a standalone deep scout — there is no "my team" context. Focus entirely on {req.team}.
-- Calculate home vs away split carefully — teams often have very different profiles at home vs away.
-- Identify concrete patterns: do they score early? concede in the final 15? struggle on the road?
-- "how_to_beat_them" must be specific and data-driven, not generic advice.
-- pressing_vulnerabilities should identify when/where they can be pressed based on their results.
-- If data is limited, say so clearly — do not invent numbers.
+- Focus entirely on {req.team}. No "my team" context needed here.
+- The data includes: match results, goal scorers with times (use to identify top scorers and goal timing patterns),
+  per-match possession %, shots on target/total (use to infer style), corners (set piece volume), yellow cards (aggression).
+- Use aggregated stats to infer playing style: high possession = ball-dominant; high shots off target = wasteful finishing.
+- Use corner count to infer set piece danger. Use YC rate to infer defensive aggressiveness.
+- Identify specific scorers from the data — name them in key_patterns and how_to_beat_them where relevant.
+- "how_to_beat_them" must be specific, named, and data-driven — NOT generic advice like "press high".
+- If data is limited (few matches), be honest about it — do not extrapolate beyond what the data supports.
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "3-4 sentences covering their season overall, form trajectory, and what kind of team they are",
-  "playing_style": "2-3 sentences describing their likely style based on goals, home/away data, and results patterns",
-  "strengths": ["data-backed strength 1", "strength 2", "strength 3"],
-  "weaknesses": ["exploitable weakness 1", "weakness 2", "weakness 3"],
-  "key_patterns": ["notable pattern from results data 1", "pattern 2", "pattern 3"],
-  "how_to_beat_them": ["specific instruction 1", "instruction 2", "instruction 3"],
-  "pressing_vulnerabilities": ["where/when to press them 1", "vulnerability 2"],
-  "set_piece_tendencies": ["set piece observation 1", "observation 2"],
-  "form_analysis": "2-3 sentences analysing their recent form string and what it reveals about their current momentum"
+  "executive_summary": "3-4 sentences: season overview, form trajectory, what the stats reveal about this team",
+  "playing_style": "2-3 sentences: inferred style from possession, shots, and results — are they dominant or reactive?",
+  "strengths": ["specific data-backed strength with evidence 1", "strength 2", "strength 3"],
+  "weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
+  "key_patterns": ["concrete pattern from data (e.g. scorer, timing, set pieces) 1", "pattern 2", "pattern 3"],
+  "how_to_beat_them": ["specific named instruction based on a weakness 1", "instruction 2", "instruction 3"],
+  "pressing_vulnerabilities": ["specific moment/zone where they can be pressed, with evidence 1", "vulnerability 2"],
+  "set_piece_tendencies": ["corner/free kick insight from data 1", "observation 2"],
+  "form_analysis": "2-3 sentences on recent form string — are they improving, declining, or inconsistent?"
 }}"""
 
     api_key = os.getenv("OPENAI_API_KEY")
