@@ -10,7 +10,10 @@ from Api.services.football_analysis import (
     FootballTeamContext,
     MatchPrepRequest,
     MatchPrepReport,
+    OpponentScoutRequest,
+    OpponentScoutReport,
     generate_match_prep_report,
+    generate_opponent_scout,
     generate_opponent_report,
     list_serie_a_teams,
 )
@@ -37,6 +40,27 @@ def match_prep(payload: MatchPrepRequest):
     except Exception as exc:
         log.error("match-prep failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Match prep failed: {exc}") from exc
+
+
+@router.post("/opponent-scout", response_model=OpponentScoutReport)
+def opponent_scout(payload: OpponentScoutRequest):
+    """
+    Deep single-team scout report — no 'my team' context, just a thorough
+    analysis of the target team with how-to-beat instructions.
+
+    Example:
+        POST /api/football/opponent-scout
+        { "team": "Flamengo", "language": "pt" }
+    """
+    try:
+        return generate_opponent_scout(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        log.error("opponent-scout failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Scout failed: {exc}") from exc
 
 
 @router.get("/serie-a/teams", response_model=list[str])

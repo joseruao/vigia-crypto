@@ -182,10 +182,26 @@ export type MatchPrepReport = {
   raw_stats_used: string;
 };
 
+export type OpponentScoutReport = {
+  team: string;
+  data_source: string;
+  executive_summary: string;
+  playing_style: string;
+  strengths: string[];
+  weaknesses: string[];
+  key_patterns: string[];
+  how_to_beat_them: string[];
+  pressing_vulnerabilities: string[];
+  set_piece_tendencies: string[];
+  form_analysis: string;
+  raw_stats_used: string;
+};
+
 export async function generateMatchPrep(input: {
   my_team: string;
   opponent_team: string;
   extra_notes?: string;
+  language?: string;
 }): Promise<MatchPrepReport> {
   const res = await fetch(`${API_BASE}/api/football/match-prep`, {
     method: "POST",
@@ -198,6 +214,23 @@ export async function generateMatchPrep(input: {
     throw new Error(data?.detail || `HTTP ${res.status}`);
   }
 
+  return res.json();
+}
+
+export async function generateOpponentScout(input: {
+  team: string;
+  extra_notes?: string;
+  language?: string;
+}): Promise<OpponentScoutReport> {
+  const res = await fetch(`${API_BASE}/api/football/opponent-scout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 

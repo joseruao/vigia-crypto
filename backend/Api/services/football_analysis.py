@@ -19,6 +19,13 @@ class MatchPrepRequest(BaseModel):
     my_team: str = Field(..., min_length=1, max_length=120, description="Your team, e.g. 'Cruzeiro'")
     opponent_team: str = Field(..., min_length=1, max_length=120, description="Opponent, e.g. 'Flamengo'")
     extra_notes: str = Field(default="", max_length=5000, description="Optional coach observations")
+    language: str = Field(default="en", pattern="^(en|pt)$", description="Report language: en or pt")
+
+
+class OpponentScoutRequest(BaseModel):
+    team: str = Field(..., min_length=1, max_length=120, description="Team to scout, e.g. 'Flamengo'")
+    extra_notes: str = Field(default="", max_length=5000)
+    language: str = Field(default="en", pattern="^(en|pt)$")
 
 
 class MatchPrepReport(BaseModel):
@@ -34,6 +41,21 @@ class MatchPrepReport(BaseModel):
     attacking_approach: list[str]
     set_piece_plan: list[str]
     risk_assessment: str
+    raw_stats_used: str
+
+
+class OpponentScoutReport(BaseModel):
+    team: str
+    data_source: str
+    executive_summary: str
+    playing_style: str
+    strengths: list[str]
+    weaknesses: list[str]
+    key_patterns: list[str]
+    how_to_beat_them: list[str]
+    pressing_vulnerabilities: list[str]
+    set_piece_tendencies: list[str]
+    form_analysis: str
     raw_stats_used: str
 
 
@@ -337,8 +359,16 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
 
     extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
 
+    lang = getattr(req, "language", "en")
+    lang_instruction = (
+        "Write the entire report in European Portuguese (Portugal). Use football terminology standard in Portugal/Brazil."
+        if lang == "pt"
+        else "Write the entire report in English."
+    )
+
     prompt = f"""You are the lead analyst for a professional football club competing in the Campeonato Brasileiro Série A.
 The head coach needs a match preparation report before the next game.
+{lang_instruction}
 
 MY TEAM: {req.my_team}
 OPPONENT: {req.opponent_team}
@@ -412,6 +442,144 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         attacking_approach=to_list(raw.get("attacking_approach")),
         set_piece_plan=to_list(raw.get("set_piece_plan")),
         risk_assessment=str(raw.get("risk_assessment", "")).strip(),
+        raw_stats_used=raw_stats,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Opponent Scout — deep single-team analysis
+# ---------------------------------------------------------------------------
+
+def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
+    standings = fetch_serie_a_standings()
+    schedule = fetch_serie_a_schedule()
+
+    row = _find_team_row(req.team, standings)
+    recent = _team_recent(req.team, schedule, n=10)
+
+    stats_str = _fmt_standing(row) if row else f"{req.team}: NOT FOUND in current standings"
+    form = _form_string(req.team, recent)
+
+    home_matches = [m for m in recent if _teams_match(req.team, m["home"])]
+    away_matches = [m for m in recent if _teams_match(req.team, m["away"])]
+
+    def goals_for(matches, team):
+        totals = []
+        for m in matches:
+            if not m.get("score"):
+                continue
+            h, a = m["score"].split("-")
+            totals.append(int(h) if _teams_match(team, m["home"]) else int(a))
+        return totals
+
+    def goals_against(matches, team):
+        totals = []
+        for m in matches:
+            if not m.get("score"):
+                continue
+            h, a = m["score"].split("-")
+            totals.append(int(a) if _teams_match(team, m["home"]) else int(h))
+        return totals
+
+    home_gf = goals_for(home_matches, req.team)
+    home_ga = goals_against(home_matches, req.team)
+    away_gf = goals_for(away_matches, req.team)
+    away_ga = goals_against(away_matches, req.team)
+
+    def avg(lst): return round(sum(lst) / len(lst), 2) if lst else 0.0
+
+    home_away_breakdown = (
+        f"HOME ({len(home_matches)} games): avg {avg(home_gf)} scored / {avg(home_ga)} conceded | "
+        f"AWAY ({len(away_matches)} games): avg {avg(away_gf)} scored / {avg(away_ga)} conceded"
+    )
+
+    recent_str = "\n".join(f"  {_fmt_match(m, req.team)}" for m in recent) or "  no data"
+    extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
+
+    raw_stats = "\n".join([
+        f"TEAM: {stats_str}",
+        f"FORM (last {len(recent)}): {form}",
+        f"HOME/AWAY: {home_away_breakdown}",
+        "",
+        f"LAST {len(recent)} MATCHES:",
+        recent_str,
+    ])
+
+    lang = req.language
+    lang_instruction = (
+        "Write the entire report in European Portuguese (Portugal). Use football terminology standard in Portugal/Brazil."
+        if lang == "pt"
+        else "Write the entire report in English."
+    )
+
+    prompt = f"""You are a senior football scout preparing a deep opposition report for a coaching staff in the Campeonato Brasileiro Série A.
+{lang_instruction}
+
+TEAM BEING SCOUTED: {req.team}
+
+=== DATA SOURCE: ESPN (Série A {time.strftime('%Y')}) ===
+
+{raw_stats}{extra}
+
+ANALYSIS INSTRUCTIONS:
+- This is a standalone deep scout — there is no "my team" context. Focus entirely on {req.team}.
+- Calculate home vs away split carefully — teams often have very different profiles at home vs away.
+- Identify concrete patterns: do they score early? concede in the final 15? struggle on the road?
+- "how_to_beat_them" must be specific and data-driven, not generic advice.
+- pressing_vulnerabilities should identify when/where they can be pressed based on their results.
+- If data is limited, say so clearly — do not invent numbers.
+
+Return EXACTLY this JSON (no extra keys, no markdown):
+{{
+  "executive_summary": "3-4 sentences covering their season overall, form trajectory, and what kind of team they are",
+  "playing_style": "2-3 sentences describing their likely style based on goals, home/away data, and results patterns",
+  "strengths": ["data-backed strength 1", "strength 2", "strength 3"],
+  "weaknesses": ["exploitable weakness 1", "weakness 2", "weakness 3"],
+  "key_patterns": ["notable pattern from results data 1", "pattern 2", "pattern 3"],
+  "how_to_beat_them": ["specific instruction 1", "instruction 2", "instruction 3"],
+  "pressing_vulnerabilities": ["where/when to press them 1", "vulnerability 2"],
+  "set_piece_tendencies": ["set piece observation 1", "observation 2"],
+  "form_analysis": "2-3 sentences analysing their recent form string and what it reveals about their current momentum"
+}}"""
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.15,
+    )
+
+    raw = json.loads(resp.choices[0].message.content or "{}")
+
+    def to_list(v):
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str) and v.strip():
+            return [v.strip()]
+        return []
+
+    source = f"ESPN Série A {time.strftime('%Y')} ({len(schedule)} fixtures)"
+    if not row:
+        source += f" | WARNING: '{req.team}' not matched in standings"
+
+    return OpponentScoutReport(
+        team=req.team,
+        data_source=source,
+        executive_summary=str(raw.get("executive_summary", "")).strip(),
+        playing_style=str(raw.get("playing_style", "")).strip(),
+        strengths=to_list(raw.get("strengths")),
+        weaknesses=to_list(raw.get("weaknesses")),
+        key_patterns=to_list(raw.get("key_patterns")),
+        how_to_beat_them=to_list(raw.get("how_to_beat_them")),
+        pressing_vulnerabilities=to_list(raw.get("pressing_vulnerabilities")),
+        set_piece_tendencies=to_list(raw.get("set_piece_tendencies")),
+        form_analysis=str(raw.get("form_analysis", "")).strip(),
         raw_stats_used=raw_stats,
     )
 
