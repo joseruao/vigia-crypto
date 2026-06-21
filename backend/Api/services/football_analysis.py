@@ -16,16 +16,18 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class MatchPrepRequest(BaseModel):
-    my_team: str = Field(..., min_length=1, max_length=120, description="Your team, e.g. 'Cruzeiro'")
-    opponent_team: str = Field(..., min_length=1, max_length=120, description="Opponent, e.g. 'Flamengo'")
-    extra_notes: str = Field(default="", max_length=5000, description="Optional coach observations")
-    language: str = Field(default="en", pattern="^(en|pt)$", description="Report language: en or pt")
+    my_team: str = Field(..., min_length=1, max_length=120)
+    opponent_team: str = Field(..., min_length=1, max_length=120)
+    extra_notes: str = Field(default="", max_length=5000)
+    language: str = Field(default="en", pattern="^(en|pt)$")
+    competition: str = Field(default="serie_a", pattern="^(serie_a|world_cup)$")
 
 
 class OpponentScoutRequest(BaseModel):
-    team: str = Field(..., min_length=1, max_length=120, description="Team to scout, e.g. 'Flamengo'")
+    team: str = Field(..., min_length=1, max_length=120)
     extra_notes: str = Field(default="", max_length=5000)
     language: str = Field(default="en", pattern="^(en|pt)$")
+    competition: str = Field(default="serie_a", pattern="^(serie_a|world_cup)$")
 
 
 class MatchPrepReport(BaseModel):
@@ -93,14 +95,29 @@ class FootballTeamContext(BaseModel):
 # ESPN unofficial API — no key required
 # ---------------------------------------------------------------------------
 
-_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1"
-_ESPN_STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer/bra.1/standings"
 _ESPN_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
+_COMPS: dict[str, dict] = {
+    "serie_a": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/bra.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard",
+        "label": "Campeonato Brasileiro Serie A",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,  # league table, not groups
+    },
+    "world_cup": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard",
+        "label": "FIFA World Cup 2026",
+        "date_range": "20260601-20260801",
+        "grouped": True,  # group stage structure
+    },
+}
+
 _CACHE: dict[str, tuple[float, object]] = {}
-_CACHE_TTL = int(os.getenv("FOOTBALL_CACHE_TTL_SECONDS", "1800"))  # 30 min
+_CACHE_TTL = int(os.getenv("FOOTBALL_CACHE_TTL_SECONDS", "1800"))
 
 
 def _cached(key: str, fn):
@@ -174,23 +191,15 @@ def _teams_match(a: str, b: str) -> bool:
 # ESPN data fetchers
 # ---------------------------------------------------------------------------
 
-def _fetch_standings_raw() -> list[dict]:
-    data = _get(_ESPN_STANDINGS)
-    entries = (
-        data.get("children", [data])[0]
-        .get("standings", data.get("standings", {}))
-        .get("entries", [])
-    )
+def _parse_entries(entries: list[dict], group: str = "") -> list[dict]:
     rows = []
     for entry in entries:
         team = entry.get("team", {})
-        stats_map = {}
-        for s in entry.get("stats", []):
-            if "value" in s:
-                stats_map[s["name"]] = s["value"]
+        stats_map = {s["name"]: s["value"] for s in entry.get("stats", []) if "value" in s}
         rows.append({
             "team": team.get("displayName", ""),
             "abbr": team.get("abbreviation", ""),
+            "group": group,
             "rank": int(stats_map.get("rank", 0)),
             "mp": int(stats_map.get("gamesPlayed", 0)),
             "w": int(stats_map.get("wins", 0)),
@@ -201,15 +210,32 @@ def _fetch_standings_raw() -> list[dict]:
             "gd": int(stats_map.get("pointDifferential", 0)),
             "pts": int(stats_map.get("points", 0)),
         })
-    return sorted(rows, key=lambda r: r["rank"])
+    return rows
 
 
-def _fetch_season_matches_raw() -> list[dict]:
-    year = time.strftime("%Y")
-    data = _get(
-        f"{_ESPN_BASE}/scoreboard",
-        params={"dates": f"{year}0101-{year}1231", "limit": 400},
-    )
+def _fetch_standings_raw(competition: str = "serie_a") -> list[dict]:
+    cfg = _COMPS[competition]
+    data = _get(cfg["standings"])
+    rows: list[dict] = []
+    if cfg["grouped"]:
+        # World Cup: children = groups
+        for group in data.get("children", []):
+            gname = group.get("name", "")
+            entries = group.get("standings", {}).get("entries", [])
+            rows.extend(_parse_entries(entries, group=gname))
+    else:
+        entries = (
+            data.get("children", [data])[0]
+            .get("standings", data.get("standings", {}))
+            .get("entries", [])
+        )
+        rows = _parse_entries(entries)
+    return sorted(rows, key=lambda r: (r.get("group", ""), r["rank"]))
+
+
+def _fetch_matches_raw(competition: str = "serie_a") -> list[dict]:
+    cfg = _COMPS[competition]
+    data = _get(cfg["scoreboard"], params={"dates": cfg["date_range"], "limit": 400})
     matches = []
     for ev in data.get("events", []):
         status = ev.get("status", {}).get("type", {}).get("name", "")
@@ -229,20 +255,35 @@ def _fetch_season_matches_raw() -> list[dict]:
             "score": score,
             "status": status,
             "round": comp.get("series", {}).get("title") or ev.get("season", {}).get("displayName", ""),
+            "venue": ev.get("venue", {}).get("fullName", ""),
         })
     return matches
 
 
-def fetch_serie_a_standings() -> list[dict]:
-    return _cached("standings", _fetch_standings_raw)
+def fetch_standings(competition: str = "serie_a") -> list[dict]:
+    return _cached(f"standings_{competition}", lambda: _fetch_standings_raw(competition))
 
+
+def fetch_schedule(competition: str = "serie_a") -> list[dict]:
+    return _cached(f"schedule_{competition}", lambda: _fetch_matches_raw(competition))
+
+
+# Backwards compat aliases
+def fetch_serie_a_standings() -> list[dict]:
+    return fetch_standings("serie_a")
 
 def fetch_serie_a_schedule() -> list[dict]:
-    return _cached("schedule", _fetch_season_matches_raw)
-
+    return fetch_schedule("serie_a")
 
 def list_serie_a_teams() -> list[str]:
-    return [r["team"] for r in fetch_serie_a_standings()]
+    return [r["team"] for r in fetch_standings("serie_a")]
+
+def list_teams(competition: str = "serie_a") -> list[dict]:
+    rows = fetch_standings(competition)
+    if competition == "world_cup":
+        # Return with group info
+        return [{"team": r["team"], "group": r.get("group", "")} for r in rows]
+    return [{"team": r["team"], "group": ""} for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -319,8 +360,9 @@ def _form_string(team: str, recent: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
-    standings = fetch_serie_a_standings()
-    schedule = fetch_serie_a_schedule()
+    comp = getattr(req, "competition", "serie_a")
+    standings = fetch_standings(comp)
+    schedule = fetch_schedule(comp)
 
     my_row = _find_team_row(req.my_team, standings)
     opp_row = _find_team_row(req.opponent_team, standings)
@@ -428,7 +470,8 @@ Return EXACTLY this JSON (no extra keys, no markdown):
     if not opp_row:
         warnings.append(f"WARNING: '{req.opponent_team}' not matched in standings")
 
-    source = f"ESPN Série A {time.strftime('%Y')} ({len(schedule)} fixtures, {len(standings)} teams)"
+    comp_label = _COMPS.get(comp, _COMPS["serie_a"])["label"]
+    source = f"ESPN {comp_label} ({len(schedule)} fixtures, {len(standings)} teams)"
     if warnings:
         source += " | " + " | ".join(warnings)
 
@@ -454,8 +497,9 @@ Return EXACTLY this JSON (no extra keys, no markdown):
 # ---------------------------------------------------------------------------
 
 def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
-    standings = fetch_serie_a_standings()
-    schedule = fetch_serie_a_schedule()
+    comp = getattr(req, "competition", "serie_a")
+    standings = fetch_standings(comp)
+    schedule = fetch_schedule(comp)
 
     row = _find_team_row(req.team, standings)
     recent = _team_recent(req.team, schedule, n=10)
@@ -570,7 +614,8 @@ Return EXACTLY this JSON (no extra keys, no markdown):
             return [v.strip()]
         return []
 
-    source = f"ESPN Série A {time.strftime('%Y')} ({len(schedule)} fixtures)"
+    comp_label = _COMPS.get(comp, _COMPS["serie_a"])["label"]
+    source = f"ESPN {comp_label} ({len(schedule)} fixtures)"
     if not row:
         source += f" | WARNING: '{req.team}' not matched in standings"
 

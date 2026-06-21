@@ -197,11 +197,37 @@ export type OpponentScoutReport = {
   raw_stats_used: string;
 };
 
+export type TeamEntry = { team: string; group: string };
+
+export async function fetchTeams(competition: string = "serie_a"): Promise<TeamEntry[]> {
+  const res = await fetch(`${API_BASE}/api/football/teams?competition=${competition}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function exportPdf(input: {
+  report_type: "match_prep" | "scout";
+  language: string;
+  report: object;
+}): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/football/export-pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
 export async function generateMatchPrep(input: {
   my_team: string;
   opponent_team: string;
   extra_notes?: string;
   language?: string;
+  competition?: string;
 }): Promise<MatchPrepReport> {
   const res = await fetch(`${API_BASE}/api/football/match-prep`, {
     method: "POST",
@@ -221,6 +247,7 @@ export async function generateOpponentScout(input: {
   team: string;
   extra_notes?: string;
   language?: string;
+  competition?: string;
 }): Promise<OpponentScoutReport> {
   const res = await fetch(`${API_BASE}/api/football/opponent-scout`, {
     method: "POST",
