@@ -361,14 +361,17 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
 
     lang = getattr(req, "language", "en")
     lang_instruction = (
-        "Write the entire report in European Portuguese (Portugal). Use football terminology standard in Portugal/Brazil."
+        "CRITICAL INSTRUCTION: You MUST write every single word of your response in Brazilian Portuguese. "
+        "This includes ALL JSON string values — executive_summary, tactical_approach, every list item, everything. "
+        "Do NOT write any English. Use football terminology standard in Brazil."
         if lang == "pt"
         else "Write the entire report in English."
     )
 
     prompt = f"""You are the lead analyst for a professional football club competing in the Campeonato Brasileiro Série A.
 The head coach needs a match preparation report before the next game.
-{lang_instruction}
+
+LANGUAGE: {lang_instruction}
 
 MY TEAM: {req.my_team}
 OPPONENT: {req.opponent_team}
@@ -507,13 +510,16 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
 
     lang = req.language
     lang_instruction = (
-        "Write the entire report in European Portuguese (Portugal). Use football terminology standard in Portugal/Brazil."
+        "CRITICAL INSTRUCTION: You MUST write every single word of your response in Brazilian Portuguese. "
+        "This includes ALL JSON string values — executive_summary, playing_style, every list item, everything. "
+        "Do NOT write any English. Use football terminology standard in Brazil."
         if lang == "pt"
         else "Write the entire report in English."
     )
 
     prompt = f"""You are a senior football scout preparing a deep opposition report for a coaching staff in the Campeonato Brasileiro Série A.
-{lang_instruction}
+
+LANGUAGE: {lang_instruction}
 
 TEAM BEING SCOUTED: {req.team}
 
