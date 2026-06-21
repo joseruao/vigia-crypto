@@ -174,6 +174,7 @@ export default function FootballAiLabPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
+  const [reportLang, setReportLang] = useState<Lang | null>(null);
 
   const T = t[lang];
 
@@ -201,6 +202,7 @@ export default function FootballAiLabPage() {
         const r = await generateOpponentScout({ team: scoutTeam, extra_notes: extraNotes, language: lang, competition });
         setScoutReport(r);
       }
+      setReportLang(lang);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not generate the report.');
     } finally {
@@ -234,6 +236,7 @@ export default function FootballAiLabPage() {
     : scoutTeam.length > 0;
 
   const hasReport = matchReport !== null || scoutReport !== null;
+  const langMismatch = hasReport && reportLang !== null && reportLang !== lang;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -278,7 +281,7 @@ export default function FootballAiLabPage() {
           {(['match', 'scout'] as Mode[]).map((m) => (
             <button
               key={m}
-              onClick={() => { setMode(m); setMatchReport(null); setScoutReport(null); setError(''); }}
+              onClick={() => { setMode(m); setMatchReport(null); setScoutReport(null); setError(''); setReportLang(null); }}
               className={`flex-1 rounded-lg border p-4 text-left transition ${
                 mode === m
                   ? 'border-emerald-600 bg-emerald-50 text-emerald-900'
@@ -362,6 +365,18 @@ export default function FootballAiLabPage() {
               </div>
             ) : (
               <div className="space-y-5">
+                {/* Lang mismatch warning */}
+                {langMismatch && (
+                  <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                    <span>
+                      {lang === 'pt'
+                        ? 'Este relatório foi gerado em inglês. Clique em "Gerar Relatório" para obter a versão em português.'
+                        : 'This report was generated in Portuguese. Click "Generate Report" to get the English version.'}
+                    </span>
+                  </div>
+                )}
+
                 {/* Cover bar */}
                 <div className="rounded-lg bg-slate-950 p-6 text-white">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
