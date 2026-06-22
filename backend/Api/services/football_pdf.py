@@ -269,6 +269,25 @@ class _ScoutPDF(FPDF):
             self.set_text_color(*_DARK)
         self.ln(2)
 
+    def _priority_box(self, title: str, alerts: list[str]) -> None:
+        """Compact red-flag box for the top of page 1 — a 10-second read."""
+        if not alerts:
+            return
+        self.set_x(_MARGIN)
+        self.set_fill_color(*_RED)
+        self.set_text_color(*_WHITE)
+        self.set_font("U", "B", 8.5)
+        self.cell(_INNER, 6.5, f"  {title.upper()}", fill=True,
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_fill_color(254, 242, 242)
+        for a in alerts[:4]:
+            self.set_x(_MARGIN)
+            self.set_font("U", "B", 9); self.set_text_color(185, 28, 28)
+            self.multi_cell(_INNER, 6.5, f"   •  {a}", fill=True,
+                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_text_color(0, 0, 0)
+        self.ln(3)
+
 
 # ---------------------------------------------------------------------------
 # Match Prep PDF (3 pages)
@@ -288,9 +307,17 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     opp_team = report.get("opponent_team", "")
     source   = report.get("data_source", "")
 
-    # ----- PAGE 1: Cover + Context -----
+    # ----- PAGE 1: Cover + Priority Alerts + Context -----
     pdf.add_page()
     pdf._cover_box(L["match_prep"], f"{my_team}  vs  {opp_team}", source)
+
+    # Priority alerts: matchup edges first, then opponent danger + alerts
+    prio = list(report.get("matchup_insights", []))
+    danger0 = (report.get("opponent_danger_players") or [{}])[0]
+    if danger0.get("player"):
+        prio.append(f"{L['main_danger']}: {danger0['player']} ({opp_team})")
+    prio.extend(report.get("opponent_alerts", []))
+    pdf._priority_box(L["priority_alerts"], prio)
 
     pdf._section_bar(L["exec_summary"])
     pdf._body(report.get("executive_summary", "-"))
@@ -500,9 +527,17 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     except Exception:
         pass  # charts are optional — text report still renders
 
-    # ----- PAGE 1: Cover + Overview + Probable XI -----
+    # ----- PAGE 1: Cover + Priority Alerts + Overview -----
     pdf.add_page()
     pdf._cover_box(L["scout_report"], team, source)
+
+    # Priority alerts: main danger player + top key alerts (10-second read)
+    prio = []
+    danger0 = (report.get("top_danger_players") or [{}])[0]
+    if danger0.get("player"):
+        prio.append(f"{L['main_danger']}: {danger0['player']}")
+    prio.extend(report.get("key_alerts", []))
+    pdf._priority_box(L["priority_alerts"], prio)
 
     pdf._section_bar(L["exec_summary"])
     pdf._body(report.get("executive_summary", "-"))
@@ -718,6 +753,8 @@ def _labels(lang: str) -> dict[str, str]:
             "key_alerts_desc": "Pontos criticos para a equipa tecnica:",
             "sub_notes": "Notas de Substituicao",
             "matchup_edges": "Confronto Directo (ataque deles vs defesa nossa)",
+            "priority_alerts": "Alertas Prioritarios",
+            "main_danger": "Jogador mais perigoso",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -761,4 +798,6 @@ def _labels(lang: str) -> dict[str, str]:
         "key_alerts_desc": "Critical points for the coaching staff:",
         "sub_notes": "Substitution Notes",
         "matchup_edges": "Matchup Edges (their attack vs our defence)",
+        "priority_alerts": "Priority Alerts",
+        "main_danger": "Main danger player",
     }
