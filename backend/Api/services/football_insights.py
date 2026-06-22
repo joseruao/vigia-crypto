@@ -100,6 +100,10 @@ def goal_circumstances(goals: list[dict], is_for: bool = True) -> dict:
     set_piece_types = {"corner", "free_kick", "penalty", "set_piece"}
     set_piece_goals = sum(c for t, c in counter.items() if t in set_piece_types)
 
+    # Small sample: below 3 goals, percentages mislead — flag it so callers can
+    # show absolute counts instead.
+    small_sample = total < 3
+
     breakdown = [
         {"type": _ASSIST_LABELS.get(t, t), "count": c, "pct": round(c / total * 100)}
         for t, c in counter.most_common()
@@ -108,7 +112,27 @@ def goal_circumstances(goals: list[dict], is_for: bool = True) -> dict:
         "total": total,
         "breakdown": breakdown,
         "set_piece_pct": round(set_piece_goals / total * 100),
+        "set_piece_goals": set_piece_goals,
+        "small_sample": small_sample,
     }
+
+
+def fmt_circumstance(circ: dict) -> list[str]:
+    """Render circumstance breakdown as display strings, honouring small sample
+    (counts instead of percentages, with a flag)."""
+    total = circ.get("total", 0)
+    if not total:
+        return []
+    small = circ.get("small_sample")
+    out = []
+    for b in circ["breakdown"]:
+        if small:
+            out.append(f"{b['type']}: {b['count']}/{total} goals")
+        else:
+            out.append(f"{b['type']}: {b['pct']}%")
+    if small:
+        out.append("(small sample — based on few matches)")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -217,12 +241,20 @@ def key_alerts(
                 else f"{max(l, r)}% of shots conceded come from the {side}"
             )
 
-    # 3. Set-piece threat
+    # 3. Set-piece threat — only as a % with a real sample; with few goals,
+    # state it in absolute counts so we never show a misleading "100%".
     sp = circ_for.get("set_piece_pct", 0)
-    if circ_for.get("total", 0) >= 2 and sp >= 33:
+    sp_goals = circ_for.get("set_piece_goals", 0)
+    total_g = circ_for.get("total", 0)
+    if total_g >= 3 and sp >= 33:
         alerts.append(
             f"{sp}% dos golos vêm de bolas paradas — ameaça em lances parados" if pt
             else f"{sp}% of goals come from set pieces — set-piece threat"
+        )
+    elif sp_goals >= 2:
+        alerts.append(
+            f"{sp_goals} dos {total_g} golos de bolas paradas — atenção a lances parados" if pt
+            else f"{sp_goals} of {total_g} goals from set pieces — watch set pieces"
         )
 
     # 4. Highest danger period (goal timing for)

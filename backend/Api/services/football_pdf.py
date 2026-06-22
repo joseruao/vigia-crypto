@@ -92,7 +92,7 @@ class _ScoutPDF(FPDF):
         self.set_font("U", "B", 7.5)
         self.set_text_color(*_WHITE)
         self.set_xy(_MARGIN, 3)
-        self.cell(0, 5, f"FOOTBALL AI LAB  |  {self._competition}  |  CONFIDENTIAL",
+        self.cell(0, 5, f"FOOTBALL AI LAB  |  {self._competition}",
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
         self.set_xy(_MARGIN, 13)

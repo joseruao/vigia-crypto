@@ -144,6 +144,18 @@ def build_shot_map(shots: list[dict], title: str, has_xg: bool = False) -> bytes
         color=_TEXT, fontsize=11, pad=8,
     )
 
+    # Legend
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], marker="o", color=_BG, markerfacecolor=_GOAL,
+               markeredgecolor="white", markersize=10, label="Goal"),
+        Line2D([0], [0], marker="o", color=_BG, markerfacecolor=_SHOT,
+               markeredgecolor="white", markersize=10, label="Shot"),
+    ]
+    leg = ax.legend(handles=handles, loc="lower center", ncol=2,
+                    frameon=False, fontsize=8, labelcolor=_TEXT,
+                    bbox_to_anchor=(0.5, -0.04))
+
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
     plt.close(fig)
@@ -169,18 +181,36 @@ def build_formation_pitch(formation: dict, title: str) -> bytes | None:
     fig, ax = pitch.draw(figsize=(6.5, 9))
     fig.set_facecolor(_BG)
 
+    # Spread players that share the same vertical band so their name labels
+    # don't collide. Group by rounded y (length band) and re-space x evenly.
+    from collections import defaultdict
+    bands: dict = defaultdict(list)
+    for p in players:
+        bands[round(p["y"] / 6)].append(p)
+    for band_players in bands.values():
+        n = len(band_players)
+        if n > 1:
+            band_players.sort(key=lambda q: q["x"])
+            # even spread across the pitch width (8..72)
+            lo, hi = 10, 70
+            step = (hi - lo) / (n - 1)
+            for i, q in enumerate(band_players):
+                q["x"] = lo + step * i
+
     for p in players:
         x, y = p["x"], p["y"]  # x=width(0-80), y=length(0-120)
-        pitch.scatter(y, x, s=620, c=_GOAL, edgecolors="white",
+        pitch.scatter(y, x, s=560, c=_GOAL, edgecolors="white",
                       linewidths=1.0, alpha=0.95, ax=ax, zorder=4)
         # jersey number inside the dot
         pitch.annotate(str(p.get("jersey", "")), (y, x), ax=ax,
-                       color=_BG, fontsize=8.5, fontweight="bold",
+                       color=_BG, fontsize=8, fontweight="bold",
                        ha="center", va="center", zorder=5)
-        # surname under the dot
+        # surname under the dot (truncated to avoid overlap)
         surname = p["name"].split()[-1] if p.get("name") else ""
-        pitch.annotate(surname, (y - 5.5, x), ax=ax, color=_TEXT,
-                       fontsize=7.5, ha="center", va="center", zorder=5)
+        if len(surname) > 11:
+            surname = surname[:10] + "."
+        pitch.annotate(surname, (y - 6.5, x), ax=ax, color=_TEXT,
+                       fontsize=7, ha="center", va="center", zorder=5)
 
     formation_str = formation.get("formation", "")
     ax.set_title(f"{title}" + (f"   ({formation_str})" if formation_str else ""),

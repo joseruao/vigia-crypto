@@ -431,8 +431,8 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         out.update({
             "danger": danger, "alerts": alerts, "circ_for": circ_for,
             "circ_against": circ_against, "tend_for": tend_for, "tend_against": tend_against,
-            "how_score": [f"{b['type']}: {b['pct']}%" for b in circ_for.get("breakdown", [])],
-            "how_concede": [f"{b['type']}: {b['pct']}%" for b in circ_against.get("breakdown", [])],
+            "how_score": fi.fmt_circumstance(circ_for),
+            "how_concede": fi.fmt_circumstance(circ_against),
             "insights_text": insights_text, "viz_payload": viz_payload,
             "lineup": [n for n, _ in lineup], "formation": formation,
             "images": images, "has_xg": provider.has_xg,
@@ -460,15 +460,18 @@ def matchup_layer(my: dict, opp: dict, lang: str = "en") -> list[str]:
                     if pt else
                     f"DANGER: they attack {oa}% via the {side} and we concede {md}% there"
                 )
-    # Set-piece clash
-    opp_sp = opp.get("circ_for", {}).get("set_piece_pct", 0)
-    my_sp_conc = my.get("circ_against", {}).get("set_piece_pct", 0)
-    if opp_sp >= 33 and my_sp_conc >= 33:
-        out.append(
-            f"PERIGO: {opp_sp}% dos golos deles vêm de bolas paradas e nós sofremos {my_sp_conc}% assim"
-            if pt else
-            f"DANGER: {opp_sp}% of their goals come from set pieces and we concede {my_sp_conc}% the same way"
-        )
+    # Set-piece clash — require a real sample on both sides (>= 3 goals each)
+    # so we never produce a misleading "100% vs 100%" off one goal apiece.
+    opp_c = opp.get("circ_for", {})
+    my_c = my.get("circ_against", {})
+    if opp_c.get("total", 0) >= 3 and my_c.get("total", 0) >= 3:
+        opp_sp, my_sp_conc = opp_c.get("set_piece_pct", 0), my_c.get("set_piece_pct", 0)
+        if opp_sp >= 33 and my_sp_conc >= 33:
+            out.append(
+                f"PERIGO: {opp_sp}% dos golos deles vêm de bolas paradas e nós sofremos {my_sp_conc}% assim"
+                if pt else
+                f"DANGER: {opp_sp}% of their goals come from set pieces and we concede {my_sp_conc}% the same way"
+            )
     return out
 
 
@@ -637,12 +640,13 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
 
     my_recent_str = "\n".join(f"  {_fmt_match(m, req.my_team, neutral)}" for m in my_recent) or "  no data"
     opp_recent_str = "\n".join(f"  {_fmt_match(m, req.opponent_team, neutral)}" for m in opp_recent) or "  no data"
+    h2h_played = [m for m in h2h if m.get("score")]
     h2h_str = (
         "\n".join(
-            f"  {m['date']} | {m['home']} {m.get('score','?')} {m['away']}"
-            for m in h2h
+            f"  {m['date']} | {m['home']} {m['score']} {m['away']}"
+            for m in h2h_played
         )
-        or "  no H2H matches found this season"
+        or "  no previous meetings this season"
     )
 
     comp_label = _COMPS[comp]["label"]
@@ -712,9 +716,13 @@ ANALYSIS INSTRUCTIONS:
 - Pin our defensive plan to THEIR attack (their danger players, shot sides, set-piece %).
 - For substitution_notes: ONLY pattern-based, data-grounded suggestions (e.g. "their #9 fades after 70' — our fresh CBs can step up late"; "we concede late — plan a defensive sub around 70'"). Do NOT invent player attributes. If no data supports a suggestion, return an empty list.
 
+SMALL-SAMPLE RULE (critical for credibility):
+- If a team has played fewer than 3 matches OR scored fewer than 3 goals, NEVER use percentages for goal types — use absolute counts and flag the limited sample.
+- NEVER write "100%" off one or two goals.
+
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "3-4 sentences: form of both teams, what the matchup data says, the key tactical context",
+  "executive_summary": "SCOUT SHORTHAND: 5-7 very short telegraphic phrases separated by periods, like a coach's pre-match notes covering both teams and the key matchup. No long sentences, no filler.",
   "opponent_strengths": ["data-backed strength with evidence 1", "strength 2", "strength 3"],
   "opponent_weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
   "key_threats": ["named opponent player or pattern to neutralise, with evidence 1", "threat 2"],
@@ -952,11 +960,15 @@ ANALYSIS INSTRUCTIONS:
 - Infer style from numbers: high possession = ball-dominant; many shots but few on target = wasteful; central shots conceded = soft middle.
 - Name the dangerous players. Pin patterns to evidence (e.g. "scores from the right channel — 3 of last 5 goals from there").
 - "how_to_beat_them" must read like a game-plan a coach hands to players — specific, named, actionable.
-- If data is thin (few matches), say so plainly and don't over-reach.
+
+SMALL-SAMPLE RULE (critical for credibility):
+- If the team has played fewer than 3 matches OR scored fewer than 3 goals, NEVER use percentages for goal types.
+- Use absolute counts instead ("1 of 1 goal came from a corner") and explicitly flag the limited sample.
+- NEVER write "100%" off one or two goals. A coach distrusts a report that says "100% from set pieces" after one match.
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "3-4 sentences: season overview, form trajectory, what the stats reveal about this team",
+  "executive_summary": "SCOUT SHORTHAND: 5-7 very short telegraphic phrases separated by periods, like a coach's notes. Example: 'Reactive team. Low possession (38%). Dangerous from corners. Soft centrally. Limited in open play. Started with a loss.' No long sentences, no filler.",
   "playing_style": "2-3 sentences: inferred style from possession, shots, and results — are they dominant or reactive?",
   "strengths": ["specific data-backed strength with evidence 1", "strength 2", "strength 3"],
   "weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
@@ -994,9 +1006,9 @@ Return EXACTLY this JSON (no extra keys, no markdown):
     if not row:
         source += f" | WARNING: '{req.team}' not matched in standings"
 
-    # Human-readable circumstance lines for the frontend/PDF text sections
-    how_score = [f"{b['type']}: {b['pct']}%" for b in circ_for.get("breakdown", [])]
-    how_concede = [f"{b['type']}: {b['pct']}%" for b in circ_against.get("breakdown", [])]
+    # Human-readable circumstance lines (small-sample aware: counts not %)
+    how_score = fi.fmt_circumstance(circ_for)
+    how_concede = fi.fmt_circumstance(circ_against)
 
     # Render charts as base64 for inline web display (safe, optional)
     images: dict = {}
