@@ -18,6 +18,7 @@ import {
 import {
   MatchPrepReport,
   OpponentScoutReport,
+  TacticalEvolution,
   TeamEntry,
   generateMatchPrep,
   generateOpponentScout,
@@ -75,6 +76,7 @@ const t = {
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
     matchupEdges: 'Matchup Edges', subNotes: 'Match Management',
     goalLog: 'Goals (scorers & minutes)', goalsScored: 'Scored', goalsConceded: 'Conceded',
+    tacticalEvolution: 'Tactical Evolution', unchanged: 'Unchanged', formation: 'Formation',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -112,6 +114,7 @@ const t = {
     shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
     matchupEdges: 'Confronto Directo', subNotes: 'Gestão de Jogo',
     goalLog: 'Golos (marcadores e minutos)', goalsScored: 'Marcados', goalsConceded: 'Sofridos',
+    tacticalEvolution: 'Evolução Táctica', unchanged: 'Inalterado', formation: 'Formação',
   },
 } as const;
 
@@ -172,6 +175,73 @@ function TeamSelect({ label, value, onChange, teams, placeholder, competition }:
         <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
       </div>
     </label>
+  );
+}
+
+function TacticalEvolutionSection({ evo, lang }: { evo: TacticalEvolution; lang: Lang }) {
+  const T = t[lang];
+  if (!evo.matches || evo.matches.length === 0) return null;
+
+  const resultColor = (r: string) =>
+    r === 'W' ? 'bg-emerald-600 text-white' :
+    r === 'D' ? 'bg-amber-500 text-white' :
+    'bg-red-600 text-white';
+
+  return (
+    <SectionCard title={T.tacticalEvolution} icon={<ClipboardList className="h-4 w-4" />}>
+      {/* Summary lines */}
+      {evo.summary && evo.summary.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {evo.summary.map((s, i) => (
+            <span key={i} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{s}</span>
+          ))}
+        </div>
+      )}
+      {/* Match-by-match timeline */}
+      <div className="space-y-2">
+        {evo.matches.map((m, i) => {
+          const hasChanges = m.changes_from_prev && m.changes_from_prev.length > 0;
+          const isFormationChange = m.changes_from_prev?.some(c => c.startsWith('Formation:'));
+          return (
+            <div
+              key={i}
+              className={`rounded-md border px-3 py-2 ${isFormationChange ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-slate-400 w-20 shrink-0">{m.date}</span>
+                <span className="text-xs font-medium text-slate-700">vs {m.opponent}</span>
+                <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${resultColor(m.result)}`}>
+                  {m.result} {m.score}
+                </span>
+                {m.formation_name && (
+                  <span className="rounded bg-slate-900 px-2 py-0.5 text-xs font-semibold text-white">
+                    {m.formation_name}
+                  </span>
+                )}
+              </div>
+              {hasChanges && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {m.changes_from_prev.map((c, j) => (
+                    <span
+                      key={j}
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        c === 'Unchanged XI' || c === 'Inalterado'
+                          ? 'bg-slate-100 text-slate-400'
+                          : c.startsWith('Formation:')
+                          ? 'bg-amber-200 text-amber-900 font-semibold'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -516,6 +586,10 @@ export default function FootballAiLabPage() {
                     </SectionCard>
                   )}
 
+                  {matchReport.opponent_tactical_evolution && (matchReport.opponent_tactical_evolution.matches?.length ?? 0) > 0 && (
+                    <TacticalEvolutionSection evo={matchReport.opponent_tactical_evolution} lang={reportLang ?? lang} />
+                  )}
+
                   {matchReport.opponent_goals_log && matchReport.opponent_goals_log.length > 0 && (
                     <SectionCard title={`${T.goalLog} — ${matchReport.opponent_team}`} icon={<Trophy className="h-4 w-4" />}>
                       <p className="text-sm text-slate-700">{matchReport.opponent_goals_log.join('  ·  ')}</p>
@@ -601,6 +675,10 @@ export default function FootballAiLabPage() {
                         </table>
                       </div>
                     </SectionCard>
+                  )}
+
+                  {scoutReport.tactical_evolution && (scoutReport.tactical_evolution.matches?.length ?? 0) > 0 && (
+                    <TacticalEvolutionSection evo={scoutReport.tactical_evolution} lang={reportLang ?? lang} />
                   )}
 
                   {scoutReport.how_they_score && scoutReport.how_they_score.length > 0 && (

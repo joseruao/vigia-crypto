@@ -284,6 +284,46 @@ class ESPNProvider(DataProvider):
                 return {"formation": roster.get("formation", ""), "players": players}
         return {}
 
+    def get_formation_per_match(self, matches: list[dict], team: str) -> list[dict]:
+        """Per-match formation snapshot for tactical evolution analysis.
+        Returns [{date, opponent, score, result, formation_name, starters}] sorted oldest→newest."""
+        from Api.services.football_analysis import _teams_match
+        result_list = []
+        for m in matches:
+            if not m.get("score"):
+                continue
+            summary = self._summary(m, m.get("_competition", "serie_a"))
+            for roster in summary.get("rosters", []):
+                if not _teams_match(team, roster.get("team", {}).get("displayName", "")):
+                    continue
+                starters = [e for e in roster.get("roster", []) if e.get("starter")]
+                if len(starters) < 11:
+                    continue
+                # Determine result from score
+                h_str, a_str = m["score"].split("-")
+                h, a = int(h_str), int(a_str)
+                is_home = _teams_match(team, m["home"])
+                gf = h if is_home else a
+                ga = a if is_home else h
+                if gf > ga:
+                    result_code = "W"
+                elif gf == ga:
+                    result_code = "D"
+                else:
+                    result_code = "L"
+                opponent = m["away"] if is_home else m["home"]
+                result_list.append({
+                    "date": m.get("date", ""),
+                    "opponent": opponent,
+                    "score": f"{gf}-{ga}",
+                    "result": result_code,
+                    "formation_name": roster.get("formation", ""),
+                    "starters": [e.get("athlete", {}).get("displayName", "")
+                                 for e in starters if e.get("athlete", {}).get("displayName", "")],
+                })
+                break  # found the team, move to next match
+        return sorted(result_list, key=lambda x: x["date"])
+
 
 def _position_to_xy(abbr: str) -> tuple[float, float]:
     """Map an ESPN position abbreviation (e.g. 'CD-L', 'DM', 'RW', 'F') to a

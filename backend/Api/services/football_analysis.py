@@ -52,6 +52,7 @@ class MatchPrepReport(BaseModel):
     matchup_insights: list[str] = Field(default_factory=list)
     substitution_notes: list[str] = Field(default_factory=list)
     opponent_lineup: list[str] = Field(default_factory=list)
+    opponent_tactical_evolution: dict = Field(default_factory=dict)
     viz_payload: dict = Field(default_factory=dict)
     images: dict = Field(default_factory=dict)
 
@@ -78,6 +79,7 @@ class OpponentScoutReport(BaseModel):
     goals_log_against: list[str] = Field(default_factory=list)
     probable_lineup: list[str] = Field(default_factory=list)
     has_xg: bool = False
+    tactical_evolution: dict = Field(default_factory=dict)
     # Raw viz payload for PDF chart rendering (frontend ignores it)
     viz_payload: dict = Field(default_factory=dict)
     # Base64 chart images for inline web display
@@ -401,7 +403,7 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         "danger": [], "alerts": [], "circ_for": {}, "circ_against": {},
         "tend_for": {}, "tend_against": {}, "how_score": [], "how_concede": [],
         "insights_text": "", "viz_payload": {}, "lineup": [], "formation": {},
-        "images": {}, "has_xg": False,
+        "images": {}, "has_xg": False, "tactical_evolution": {},
     }
     try:
         shots = provider.get_shot_events(deep, team)
@@ -415,6 +417,9 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         alerts = fi.key_alerts(shots, goals, danger, circ_for, tend_against, lang=lang)
         lineup = provider.get_lineups(deep, team)
         formation = provider.get_formation(deep, team) if hasattr(provider, "get_formation") else {}
+        per_match_formation = (provider.get_formation_per_match(deep, team)
+                               if hasattr(provider, "get_formation_per_match") else [])
+        tact_evo = fi.tactical_evolution(per_match_formation)
         insights_text = fi.insights_to_text(
             danger, circ_for, circ_against, set_pieces, tend_for, tend_against, provider.has_xg)
         viz_payload = {
@@ -441,6 +446,7 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
             "insights_text": insights_text, "viz_payload": viz_payload,
             "lineup": [n for n, _ in lineup], "formation": formation,
             "images": images, "has_xg": provider.has_xg,
+            "tactical_evolution": tact_evo,
         })
     except Exception as exc:
         out["insights_text"] = f"(Shot-level analytics unavailable: {exc})"
@@ -796,6 +802,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         matchup_insights=matchups,
         substitution_notes=to_list(raw.get("substitution_notes")),
         opponent_lineup=opp_an.get("lineup", []),
+        opponent_tactical_evolution=opp_an.get("tactical_evolution", {}),
         viz_payload=opp_an.get("viz_payload", {}),
         images=images,
     )
@@ -903,6 +910,9 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         formation = {}
         if hasattr(provider, "get_formation"):
             formation = provider.get_formation(deep_matches, req.team)
+        per_match_formation = (provider.get_formation_per_match(deep_matches, req.team)
+                               if hasattr(provider, "get_formation_per_match") else [])
+        tact_evo = fi.tactical_evolution(per_match_formation)
         insights_text = fi.insights_to_text(
             danger, circ_for, circ_against, set_pieces,
             tend_for, tend_against, provider.has_xg,
@@ -919,6 +929,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         }
     except Exception as exc:
         insights_text = f"(Shot-level analytics unavailable: {exc})"
+        tact_evo = {}
 
     recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
@@ -1050,6 +1061,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         how_they_concede=how_concede,
         probable_lineup=viz_payload.get("lineup", []),
         has_xg=bool(viz_payload.get("has_xg", False)),
+        tactical_evolution=tact_evo,
         viz_payload=viz_payload,
         images=images,
     )

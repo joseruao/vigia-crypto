@@ -311,6 +311,122 @@ def key_alerts(
 
 
 # ---------------------------------------------------------------------------
+# Tactical evolution — match-by-match formation/XI changes
+# ---------------------------------------------------------------------------
+
+def tactical_evolution(per_match: list[dict]) -> dict:
+    """Analyse how a team's formation and XI changed across recent matches.
+
+    per_match: output of ESPNProvider.get_formation_per_match() — list of
+    {date, opponent, score, result, formation_name, starters} sorted oldest→newest.
+
+    Returns:
+        matches:               same list with 'changes_from_prev' added
+        most_common_formation: most-used formation string
+        formation_changes:     how many times formation changed
+        avg_xi_changes:        average starters swapped match-to-match
+        summary:               2-4 coaching-friendly summary lines
+    """
+    if not per_match:
+        return {}
+
+    from collections import Counter as _Counter
+    enriched = []
+    xi_change_counts: list[int] = []
+    formation_seq: list[str] = []
+
+    for i, m in enumerate(per_match):
+        starters_now = set(m.get("starters", []))
+        formation_now = m.get("formation_name", "")
+        changes: list[str] = []
+
+        if i == 0:
+            changes = []
+        else:
+            prev = per_match[i - 1]
+            starters_prev = set(prev.get("starters", []))
+            formation_prev = prev.get("formation_name", "")
+            # Formation change
+            if formation_now and formation_prev and formation_now != formation_prev:
+                changes.append(f"Formation: {formation_prev} → {formation_now}")
+            # XI changes
+            out = starters_prev - starters_now
+            into = starters_now - starters_prev
+            n_changes = max(len(out), len(into))
+            xi_change_counts.append(n_changes)
+            if n_changes == 0:
+                changes.append("Unchanged XI")
+            else:
+                for o, inn in zip(sorted(out)[:4], sorted(into)[:4]):
+                    changes.append(f"{inn.split()[-1]} in for {o.split()[-1]}")
+                remaining = n_changes - 4
+                if remaining > 0:
+                    changes.append(f"+{remaining} more change{'s' if remaining > 1 else ''}")
+
+        enriched.append({**m, "changes_from_prev": changes})
+        if formation_now:
+            formation_seq.append(formation_now)
+
+    formation_counter = _Counter(formation_seq)
+    most_common = formation_counter.most_common(1)[0][0] if formation_counter else ""
+
+    # Count formation changes
+    f_changes = sum(
+        1 for i in range(1, len(formation_seq))
+        if formation_seq[i] and formation_seq[i - 1] and formation_seq[i] != formation_seq[i - 1]
+    )
+
+    avg_changes = round(sum(xi_change_counts) / len(xi_change_counts), 1) if xi_change_counts else 0.0
+
+    # Summary lines for coaching staff
+    summary: list[str] = []
+    n = len(per_match)
+    mc_count = formation_counter.get(most_common, 0) if most_common else 0
+    if most_common:
+        summary.append(
+            f"{'Consistent' if mc_count >= n - 1 else 'Primarily'} {most_common} "
+            f"({mc_count} of {n} matches)"
+        )
+    if f_changes == 0 and most_common:
+        summary.append("No formation changes — tactically predictable")
+    elif f_changes == 1:
+        # Find where it changed
+        for i in range(1, len(enriched)):
+            c = enriched[i].get("changes_from_prev", [])
+            if any("Formation:" in x for x in c):
+                summary.append(
+                    f"Formation changed once (vs {enriched[i]['opponent']}, {enriched[i]['date']})"
+                )
+                break
+    elif f_changes >= 2:
+        summary.append(f"Rotated formations {f_changes} times — tactically flexible")
+
+    if avg_changes > 0:
+        summary.append(f"Avg {avg_changes} lineup changes per game")
+
+    # Results per formation
+    form_results: dict[str, list[str]] = {}
+    for m in per_match:
+        fn = m.get("formation_name", "")
+        if fn:
+            form_results.setdefault(fn, []).append(m.get("result", "?"))
+    for fn, results in form_results.items():
+        w = results.count("W")
+        d = results.count("D")
+        l = results.count("L")
+        if len(results) >= 2:
+            summary.append(f"In {fn}: {w}W {d}D {l}L")
+
+    return {
+        "matches": enriched,
+        "most_common_formation": most_common,
+        "formation_changes": f_changes,
+        "avg_xi_changes": avg_changes,
+        "summary": summary[:4],  # cap at 4 lines
+    }
+
+
+# ---------------------------------------------------------------------------
 # Build a compact text block for the LLM prompt
 # ---------------------------------------------------------------------------
 

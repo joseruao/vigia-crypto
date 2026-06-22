@@ -585,6 +585,69 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
         pdf.ln(3)
         pdf._image(formation_png, w=120)
 
+    # ----- PAGE: Tactical Evolution -----
+    tact_evo = report.get("tactical_evolution", {}) or {}
+    evo_matches = tact_evo.get("matches", [])
+    if evo_matches:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        tact_evo_title = "Evolucao Tactica" if lang == "pt" else "Tactical Evolution"
+        pdf.cell(0, 8, f"{tact_evo_title}: {team}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_BLUE); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(3)
+
+        # Summary chips
+        for line in tact_evo.get("summary", []):
+            pdf.set_x(_MARGIN)
+            pdf.set_fill_color(*_GRAY_LT)
+            pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+            pdf.cell(_INNER, 5.5, f"  {line}", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(0.5)
+        pdf.ln(3)
+
+        # Per-match rows: Date | vs Opponent | W/D/L Score | Formation | Changes
+        _R_COLORS = {"W": _GREEN, "D": _AMBER, "L": _RED}
+        col_date = 22; col_opp = 52; col_res = 22; col_form = 24; col_changes = _INNER - col_date - col_opp - col_res - col_form
+
+        # Header
+        pdf.set_x(_MARGIN)
+        pdf.set_font("U", "B", 7.5); pdf.set_text_color(*_GRAY)
+        for w, h in [(col_date, "DATE"), (col_opp, "OPPONENT"), (col_res, "RESULT"),
+                     (col_form, L["formation"]), (col_changes, "CHANGES")]:
+            pdf.cell(w, 6, h, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.ln(6)
+        pdf.set_draw_color(*_GRAY_LT); pdf.set_line_width(0.3)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(1)
+
+        for m in evo_matches:
+            rc = _R_COLORS.get(m.get("result", ""), _GRAY)
+            changes = m.get("changes_from_prev", [])
+            change_txt = " / ".join(changes[:3]) if changes else "—"
+            has_form_change = any(c.startswith("Formation:") for c in changes)
+
+            if has_form_change:
+                pdf.set_fill_color(255, 251, 235)  # amber-50
+            else:
+                pdf.set_fill_color(*_WHITE)
+
+            y0 = pdf.get_y()
+            pdf.set_x(_MARGIN)
+            pdf.set_font("U", "", 7.5); pdf.set_text_color(*_GRAY)
+            pdf.cell(col_date, 6, m.get("date", ""), fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.set_text_color(*_DARK)
+            pdf.cell(col_opp, 6, m.get("opponent", ""), fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.set_font("U", "B", 7.5); pdf.set_text_color(*rc)
+            pdf.cell(col_res, 6, f"{m.get('result','')} {m.get('score','')}", fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.set_text_color(*_WHITE); pdf.set_fill_color(*_DARK)
+            pdf.cell(col_form, 6, m.get("formation_name", ""), fill=True, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.set_fill_color(255, 251, 235) if has_form_change else pdf.set_fill_color(*_GRAY_LT)
+            pdf.set_font("U", "", 7); pdf.set_text_color(*_DARK)
+            pdf.multi_cell(col_changes, 6, change_txt, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(0.5)
+
     # ----- PAGE 2: Shot Maps (attack + defence) -----
     if shotmap_for or shotmap_against:
         pdf.add_page()
@@ -794,6 +857,7 @@ def _labels(lang: str) -> dict[str, str]:
             "goal_log": "Golos (marcadores e minutos)",
             "goals_scored": "Marcados",
             "goals_conceded": "Sofridos",
+            "formation": "FORMACAO",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -842,4 +906,5 @@ def _labels(lang: str) -> dict[str, str]:
         "goal_log": "Goals (scorers & minutes)",
         "goals_scored": "Scored",
         "goals_conceded": "Conceded",
+        "formation": "FORMATION",
     }

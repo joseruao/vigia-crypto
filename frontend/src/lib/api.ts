@@ -187,12 +187,31 @@ export type MatchPrepReport = {
   matchup_insights?: string[];
   substitution_notes?: string[];
   opponent_lineup?: string[];
+  opponent_tactical_evolution?: TacticalEvolution;
   images?: {
     shotmap_for?: string;
     shotmap_against?: string;
     timing?: string;
     formation?: string;
   };
+};
+
+export type TacticalEvolutionMatch = {
+  date: string;
+  opponent: string;
+  score: string;
+  result: string;
+  formation_name: string;
+  starters: string[];
+  changes_from_prev: string[];
+};
+
+export type TacticalEvolution = {
+  matches: TacticalEvolutionMatch[];
+  most_common_formation: string;
+  formation_changes: number;
+  avg_xi_changes: number;
+  summary: string[];
 };
 
 export type DangerPlayer = {
@@ -226,6 +245,7 @@ export type OpponentScoutReport = {
   how_they_concede?: string[];
   probable_lineup?: string[];
   has_xg?: boolean;
+  tactical_evolution?: TacticalEvolution;
   viz_payload?: Record<string, unknown>;
   images?: {
     shotmap_for?: string;
