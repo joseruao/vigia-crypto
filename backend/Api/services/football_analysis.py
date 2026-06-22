@@ -61,6 +61,7 @@ class OpponentScoutReport(BaseModel):
     raw_stats_used: str
     # Deep analytics (provider-derived) — optional so older clients still work
     top_danger_players: list[dict] = Field(default_factory=list)
+    key_alerts: list[str] = Field(default_factory=list)
     how_they_score: list[str] = Field(default_factory=list)
     how_they_concede: list[str] = Field(default_factory=list)
     probable_lineup: list[str] = Field(default_factory=list)
@@ -740,6 +741,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     deep_matches = recent[-5:]  # last 5 for shot-level detail
     insights_text = ""
     danger = []
+    alerts: list[str] = []
     circ_for = circ_against = {}
     viz_payload: dict = {}
     try:
@@ -751,6 +753,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         set_pieces = fi.set_piece_breakdown(goals)
         tend_for = fi.shot_tendencies(shots, is_for=True)
         tend_against = fi.shot_tendencies(shots, is_for=False)
+        alerts = fi.key_alerts(shots, goals, danger, circ_for, tend_against, lang=req.language)
         lineup = provider.get_lineups(deep_matches, req.team)
         formation = {}
         if hasattr(provider, "get_formation"):
@@ -798,7 +801,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         else "Write the entire report in English."
     )
 
-    prompt = f"""You are a senior football scout preparing a deep opposition report for a professional coaching staff.
+    prompt = f"""You are an experienced assistant coach briefing your head coach and staff on the next opponent.
 
 LANGUAGE: {lang_instruction}
 
@@ -810,15 +813,19 @@ TEAM BEING SCOUTED: {req.team}
 
 {raw_stats}{extra}
 
+VOICE & STYLE — write like a coach, not an AI:
+- Direct, concrete, confident. Short sentences. Imperative where it fits ("Double up on their left-back", "Don't let #6 turn").
+- BANNED phrasing: "exhibits", "showcases", "boasts a balanced style", "demonstrates", "it is worth noting", "overall".
+  Never describe a team as "balanced" or "solid" without a number behind it.
+- Every claim cites evidence from the data — a name, a %, a count, a scoreline. No generic filler.
+- Talk about players by name. Talk about specific zones, minutes, and situations.
+
 ANALYSIS INSTRUCTIONS:
-- Focus entirely on {req.team}. No "my team" context needed here.
-- The data includes: match results, goal scorers with times (use to identify top scorers and goal timing patterns),
-  per-match possession %, shots on target/total (use to infer style), corners (set piece volume), yellow cards (aggression).
-- Use aggregated stats to infer playing style: high possession = ball-dominant; high shots off target = wasteful finishing.
-- Use corner count to infer set piece danger. Use YC rate to infer defensive aggressiveness.
-- Identify specific scorers from the data — name them in key_patterns and how_to_beat_them where relevant.
-- "how_to_beat_them" must be specific, named, and data-driven — NOT generic advice like "press high".
-- If data is limited (few matches), be honest about it — do not extrapolate beyond what the data supports.
+- The data includes: results, goal scorers with times, possession %, shots on target/total, corners, yellow cards, shot sides.
+- Infer style from numbers: high possession = ball-dominant; many shots but few on target = wasteful; central shots conceded = soft middle.
+- Name the dangerous players. Pin patterns to evidence (e.g. "scores from the right channel — 3 of last 5 goals from there").
+- "how_to_beat_them" must read like a game-plan a coach hands to players — specific, named, actionable.
+- If data is thin (few matches), say so plainly and don't over-reach.
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
@@ -887,6 +894,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         form_analysis=str(raw.get("form_analysis", "")).strip(),
         raw_stats_used=raw_stats,
         top_danger_players=danger,
+        key_alerts=alerts,
         how_they_score=how_score,
         how_they_concede=how_concede,
         probable_lineup=viz_payload.get("lineup", []),

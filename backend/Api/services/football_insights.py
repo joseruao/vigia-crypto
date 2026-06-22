@@ -170,6 +170,99 @@ def shot_tendencies(shots: list[dict], is_for: bool = True) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Key alerts — punchy, data-driven flags for coaching staff
+# ---------------------------------------------------------------------------
+
+_TIMING_LABELS = {0: "0-15'", 1: "16-30'", 2: "31-45'", 3: "46-60'", 4: "61-75'", 5: "76-90'+"}
+
+
+def key_alerts(
+    shots: list[dict],
+    goals: list[dict],
+    danger: list[dict],
+    circ_for: dict,
+    tend_against: dict,
+    lang: str = "en",
+) -> list[str]:
+    """Generate short, high-signal alerts a coach reads first. Each is only
+    emitted when the data crosses a meaningful threshold — no filler."""
+    pt = lang == "pt"
+    alerts: list[str] = []
+
+    # 1. Single player carrying the attack (share of team shots on target)
+    team_on_target = sum(1 for s in shots if s.get("is_for") and s["result"] in ("goal", "on_target"))
+    if danger and team_on_target >= 4:
+        top = danger[0]
+        share = round((top["on_target"] / team_on_target) * 100) if team_on_target else 0
+        if share >= 35:
+            alerts.append(
+                f"{top['player']} responsável por {share}% dos remates ao alvo da equipa"
+                if pt else
+                f"{top['player']} responsible for {share}% of the team's shots on target"
+            )
+
+    # 2. Where they concede (central vulnerability)
+    if tend_against.get("total", 0) >= 5:
+        c = tend_against.get("central_pct", 0)
+        l, r = tend_against.get("left_pct", 0), tend_against.get("right_pct", 0)
+        if c >= 50:
+            alerts.append(
+                f"{c}% dos remates sofridos vêm pelo centro" if pt
+                else f"{c}% of shots conceded come centrally"
+            )
+        elif max(l, r) >= 45:
+            side = ("esquerda" if l > r else "direita") if pt else ("left" if l > r else "right")
+            alerts.append(
+                f"{max(l, r)}% dos remates sofridos vêm pela {side}" if pt
+                else f"{max(l, r)}% of shots conceded come from the {side}"
+            )
+
+    # 3. Set-piece threat
+    sp = circ_for.get("set_piece_pct", 0)
+    if circ_for.get("total", 0) >= 2 and sp >= 33:
+        alerts.append(
+            f"{sp}% dos golos vêm de bolas paradas — ameaça em lances parados" if pt
+            else f"{sp}% of goals come from set pieces — set-piece threat"
+        )
+
+    # 4. Highest danger period (goal timing for)
+    minutes = [g.get("minute_num", 0) for g in goals if g.get("is_for") and g.get("minute_num")]
+    if len(minutes) >= 2:
+        buckets = [0] * 6
+        bands = [(0, 15), (16, 30), (31, 45), (46, 60), (61, 75), (76, 200)]
+        for mn in minutes:
+            for i, (lo, hi) in enumerate(bands):
+                if lo <= mn <= hi:
+                    buckets[i] += 1
+                    break
+        peak = max(range(6), key=lambda i: buckets[i])
+        if buckets[peak] >= 2:
+            alerts.append(
+                f"Período mais perigoso: {_TIMING_LABELS[peak]}" if pt
+                else f"Highest danger period: {_TIMING_LABELS[peak]}"
+            )
+
+    # 5. Conceding pattern timing (vulnerability window)
+    minutes_against = [g.get("minute_num", 0) for g in goals if not g.get("is_for") and g.get("minute_num")]
+    if len(minutes_against) >= 2:
+        buckets = [0] * 6
+        bands = [(0, 15), (16, 30), (31, 45), (46, 60), (61, 75), (76, 200)]
+        for mn in minutes_against:
+            for i, (lo, hi) in enumerate(bands):
+                if lo <= mn <= hi:
+                    buckets[i] += 1
+                    break
+        peak = max(range(6), key=lambda i: buckets[i])
+        if buckets[peak] >= 2:
+            alerts.append(
+                f"Vulneráveis a sofrer golos no período {_TIMING_LABELS[peak]}" if pt
+                else f"Vulnerable to conceding in the {_TIMING_LABELS[peak]} window"
+            )
+
+    return alerts
+
+
+# ---------------------------------------------------------------------------
 # Build a compact text block for the LLM prompt
 # ---------------------------------------------------------------------------
 

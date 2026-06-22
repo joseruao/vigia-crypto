@@ -562,6 +562,36 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
 
+    # ----- FINAL PAGE: Key Alerts for coaching staff -----
+    alerts = report.get("key_alerts", [])
+    if alerts:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, L["key_alerts"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_RED); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_font("U", "I", 8.5); pdf.set_text_color(*_GRAY)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 5, L["key_alerts_desc"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+
+        for alert in alerts:
+            y = pdf.get_y()
+            pdf.set_fill_color(254, 242, 242)  # red-50
+            pdf.set_draw_color(*_RED)
+            pdf.set_x(_MARGIN)
+            # red left bar
+            pdf.set_fill_color(*_RED)
+            pdf.rect(_MARGIN, y, 2, 11, "F")
+            pdf.set_fill_color(254, 242, 242)
+            pdf.set_xy(_MARGIN + 2, y)
+            pdf.set_font("U", "B", 10); pdf.set_text_color(185, 28, 28)
+            pdf.multi_cell(_INNER - 2, 11, f"   {alert}", fill=True,
+                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(2)
+
     pdf._data_footer(source)
 
     buf = BytesIO()
@@ -613,6 +643,8 @@ def _labels(lang: str) -> dict[str, str]:
             "player": "Jogador",
             "on_target": "Ao alvo",
             "danger": "Perigo",
+            "key_alerts": "Alertas Chave",
+            "key_alerts_desc": "Pontos criticos para a equipa tecnica:",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -652,4 +684,6 @@ def _labels(lang: str) -> dict[str, str]:
         "player": "Player",
         "on_target": "On target",
         "danger": "Danger",
+        "key_alerts": "Key Alerts",
+        "key_alerts_desc": "Critical points for the coaching staff:",
     }

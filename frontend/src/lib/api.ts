@@ -206,6 +206,7 @@ export type OpponentScoutReport = {
   form_analysis: string;
   raw_stats_used: string;
   top_danger_players?: DangerPlayer[];
+  key_alerts?: string[];
   how_they_score?: string[];
   how_they_concede?: string[];
   probable_lineup?: string[];

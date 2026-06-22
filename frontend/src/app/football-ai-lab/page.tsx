@@ -36,7 +36,12 @@ const COMP_LABELS: Record<Competition, string> = {
 
 const t = {
   en: {
-    subtitle: 'Match preparation reports powered by live ESPN data.',
+    tagline: 'Automated Pre-Match Reports for Professional Football Clubs',
+    subtitle: 'AI-powered opponent scouting, tactical analysis and executive reports.',
+    keyAlerts: 'Key Alerts',
+    feat1: 'Opponent Analysis', feat2: 'Probable XI', feat3: 'Shot Maps & Heatmaps',
+    feat4: 'Set Piece Analysis', feat5: 'AI Tactical Insights',
+    pdfNote: 'Professional PDF report generated in seconds.',
     modeMatch: 'Match Prep', modeMatchDesc: 'Game plan for an upcoming fixture.',
     modeScout: 'Opponent Scout', modeScoutDesc: 'Deep analysis of a single team.',
     myTeam: 'My team', opponent: 'Opponent', teamToScout: 'Team to scout',
@@ -44,7 +49,7 @@ const t = {
     extraNotes: 'Extra coach notes', optional: 'optional',
     matchPlaceholder: 'Injuries, tactical adjustments, last training notes...',
     scoutPlaceholder: 'Context — known injuries, recent transfers, rivalry history...',
-    loadingTeams: 'Loading teams…', generate: 'Generate Report', generating: 'Generating…',
+    loadingTeams: 'Loading teams…', generate: 'Generate Professional Report', generating: 'Generating…',
     differentTeams: 'Select two different teams.',
     emptyState: 'Select teams and generate a report.',
     emptyStateSub: 'Live data, no manual entry needed.',
@@ -66,7 +71,12 @@ const t = {
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
   },
   pt: {
-    subtitle: 'Relatórios de preparação com dados ESPN em tempo real.',
+    tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
+    subtitle: 'Scouting de adversários, análise táctica e relatórios executivos com IA.',
+    keyAlerts: 'Alertas Chave',
+    feat1: 'Análise do Adversário', feat2: 'Onze Provável', feat3: 'Mapas de Remates & Heatmaps',
+    feat4: 'Análise de Bolas Paradas', feat5: 'Insights Tácticos com IA',
+    pdfNote: 'Relatório PDF profissional gerado em segundos.',
     modeMatch: 'Preparação de Jogo', modeMatchDesc: 'Plano de jogo para o próximo confronto.',
     modeScout: 'Scout Adversário', modeScoutDesc: 'Análise aprofundada de uma única equipa.',
     myTeam: 'A minha equipa', opponent: 'Adversário', teamToScout: 'Equipa a analisar',
@@ -74,7 +84,7 @@ const t = {
     extraNotes: 'Notas extra do treinador', optional: 'opcional',
     matchPlaceholder: 'Lesões, ajustes tácticos, observações do treino...',
     scoutPlaceholder: 'Contexto — lesões conhecidas, transferências recentes...',
-    loadingTeams: 'A carregar equipas…', generate: 'Gerar Relatório', generating: 'A gerar…',
+    loadingTeams: 'A carregar equipas…', generate: 'Gerar Relatório Profissional', generating: 'A gerar…',
     differentTeams: 'Selecione duas equipas diferentes.',
     emptyState: 'Selecione as equipas e gere um relatório.',
     emptyStateSub: 'Dados em tempo real, sem entrada manual.',
@@ -253,8 +263,8 @@ export default function FootballAiLabPage() {
         {/* Header */}
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Experimental module</p>
-            <h1 className="mt-1 text-3xl font-semibold">Football AI Lab</h1>
+            <h1 className="text-3xl font-semibold">Football AI Lab</h1>
+            <p className="mt-1 text-sm font-medium text-emerald-700">{T.tagline}</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{T.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -353,11 +363,12 @@ export default function FootballAiLabPage() {
                 type="button"
                 onClick={handleGenerate}
                 disabled={!canSubmit || loading}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-base font-bold text-white shadow-md transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
                 {loading ? T.generating : T.generate}
               </button>
+              <p className="text-center text-xs text-slate-400">{T.pdfNote}</p>
             </div>
           </section>
 
@@ -370,6 +381,24 @@ export default function FootballAiLabPage() {
                 </div>
                 <h2 className="mt-4 text-xl font-semibold">{T.emptyState}</h2>
                 <p className="mt-2 max-w-sm text-sm text-slate-400">{T.emptyStateSub}</p>
+
+                <div className="mt-8 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
+                  {[
+                    { icon: <ShieldAlert className="h-5 w-5" />, label: T.feat1 },
+                    { icon: <Users className="h-5 w-5" />, label: T.feat2 },
+                    { icon: <Target className="h-5 w-5" />, label: T.feat3 },
+                    { icon: <Trophy className="h-5 w-5" />, label: T.feat4 },
+                    { icon: <Sparkles className="h-5 w-5" />, label: T.feat5 },
+                  ].map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
+                        {f.icon}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">{f.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-5 text-xs text-slate-400">{T.pdfNote}</p>
               </div>
             ) : (
               <div className="space-y-5">
@@ -402,6 +431,22 @@ export default function FootballAiLabPage() {
                     {T.source}: {matchReport?.data_source ?? scoutReport?.data_source}
                   </p>
                 </div>
+
+                {/* Key Alerts — prominent, top of scout report */}
+                {scoutReport?.key_alerts && scoutReport.key_alerts.length > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-red-700">
+                      <AlertTriangle className="h-4 w-4" /> {T.keyAlerts}
+                    </h3>
+                    <ul className="space-y-2">
+                      {scoutReport.key_alerts.map((a, i) => (
+                        <li key={i} className="flex gap-2 border-l-2 border-red-500 pl-3 text-sm font-medium text-red-900">
+                          {a}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {/* Match Prep sections */}
                 {matchReport && <>
