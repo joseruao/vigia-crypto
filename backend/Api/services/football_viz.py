@@ -181,21 +181,31 @@ def build_formation_pitch(formation: dict, title: str) -> bytes | None:
     fig, ax = pitch.draw(figsize=(6.5, 9))
     fig.set_facecolor(_BG)
 
-    # Spread players that share the same vertical band so their name labels
-    # don't collide. Group by rounded y (length band) and re-space x evenly.
-    from collections import defaultdict
-    bands: dict = defaultdict(list)
-    for p in players:
-        bands[round(p["y"] / 6)].append(p)
-    for band_players in bands.values():
-        n = len(band_players)
-        if n > 1:
-            band_players.sort(key=lambda q: q["x"])
-            # even spread across the pitch width (8..72)
-            lo, hi = 10, 70
+    # Cluster players into horizontal lines by proximity in y (NOT fixed
+    # rounding — that splits a back four whose y values straddle a boundary,
+    # putting two defenders on the same x). Then spread each line evenly so
+    # dots and name labels never overlap.
+    ordered = sorted(players, key=lambda q: q["y"])
+    lines: list[list] = []
+    for p in ordered:
+        if lines and abs(p["y"] - lines[-1][-1]["y"]) <= 10:
+            lines[-1].append(p)
+        else:
+            lines.append([p])
+    for line in lines:
+        n = len(line)
+        line.sort(key=lambda q: q["x"])
+        if n == 1:
+            line[0]["x"] = 40  # lone player (GK / lone striker) centred
+        else:
+            lo, hi = 12, 68
             step = (hi - lo) / (n - 1)
-            for i, q in enumerate(band_players):
+            for i, q in enumerate(line):
                 q["x"] = lo + step * i
+        # align the whole line to one y so it reads as a flat line
+        avg_y = sum(q["y"] for q in line) / n
+        for q in line:
+            q["y"] = avg_y
 
     for p in players:
         x, y = p["x"], p["y"]  # x=width(0-80), y=length(0-120)
