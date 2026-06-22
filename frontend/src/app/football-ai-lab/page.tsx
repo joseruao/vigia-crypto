@@ -63,6 +63,7 @@ const t = {
     dangerPlayers: 'Top Danger Players', howTheyScore: 'How They Score',
     probableLineup: 'Probable XI', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'On target', dangerLabel: 'Danger',
+    shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
   },
   pt: {
     subtitle: 'Relatórios de preparação com dados ESPN em tempo real.',
@@ -92,6 +93,7 @@ const t = {
     dangerPlayers: 'Jogadores Mais Perigosos', howTheyScore: 'Como Marcam',
     probableLineup: 'Onze Provável', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
+    shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
   },
 } as const;
 
@@ -478,7 +480,13 @@ export default function FootballAiLabPage() {
                     </SectionCard>
                   )}
 
-                  {scoutReport.probable_lineup && scoutReport.probable_lineup.length > 0 && (
+                  {scoutReport.images?.formation ? (
+                    <SectionCard title={T.probableLineup} icon={<Users className="h-4 w-4" />}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={scoutReport.images.formation} alt="Formation"
+                        className="mx-auto max-h-[520px] rounded-md" />
+                    </SectionCard>
+                  ) : scoutReport.probable_lineup && scoutReport.probable_lineup.length > 0 && (
                     <SectionCard title={T.probableLineup} icon={<Users className="h-4 w-4" />}>
                       <div className="flex flex-wrap gap-2">
                         {scoutReport.probable_lineup.map((name, i) => (
@@ -487,6 +495,28 @@ export default function FootballAiLabPage() {
                           </span>
                         ))}
                       </div>
+                    </SectionCard>
+                  )}
+
+                  {(scoutReport.images?.shotmap_for || scoutReport.images?.shotmap_against) && (
+                    <SectionCard title={T.shotAnalysis} icon={<Target className="h-4 w-4" />}>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {scoutReport.images?.shotmap_for && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={scoutReport.images.shotmap_for} alt="Shots taken" className="rounded-md" />
+                        )}
+                        {scoutReport.images?.shotmap_against && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={scoutReport.images.shotmap_against} alt="Shots conceded" className="rounded-md" />
+                        )}
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {scoutReport.images?.timing && (
+                    <SectionCard title={T.goalTiming} icon={<Zap className="h-4 w-4" />}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={scoutReport.images.timing} alt="Goal timing" className="w-full rounded-md" />
                     </SectionCard>
                   )}
                   <div className="grid gap-5 lg:grid-cols-2">

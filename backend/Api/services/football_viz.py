@@ -10,6 +10,7 @@ from __future__ import annotations
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402  — must precede pyplot import
 
+import base64  # noqa: E402
 from io import BytesIO  # noqa: E402
 
 import matplotlib.pyplot as plt  # noqa: E402
@@ -33,6 +34,41 @@ _TEXT = "#e2e8f0"      # slate-200
 
 def viz_available() -> bool:
     return _MPL_SOCCER
+
+
+def _b64(png: bytes | None) -> str | None:
+    if not png:
+        return None
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
+def render_scout_images(viz: dict, team: str, labels: dict | None = None) -> dict:
+    """Render all scout charts as base64 data URIs for inline web display.
+    Returns {} if mplsoccer is unavailable. Never raises."""
+    if not _MPL_SOCCER or not viz:
+        return {}
+    L = labels or {
+        "shots_taken": "Shots Taken", "shots_conceded": "Shots Conceded",
+        "goal_timing": "Goal Timing", "probable_lineup": "Probable XI",
+    }
+    out: dict = {}
+    try:
+        shots = viz.get("shots", [])
+        if shots:
+            has_xg = bool(viz.get("has_xg"))
+            sf = [s for s in shots if s.get("is_for")]
+            sa = [s for s in shots if not s.get("is_for")]
+            out["shotmap_for"] = _b64(build_shot_map(sf, f"{team} — {L['shots_taken']}", has_xg))
+            out["shotmap_against"] = _b64(build_shot_map(sa, f"{team} — {L['shots_conceded']}", has_xg))
+            out["timing"] = _b64(build_timing_chart(
+                viz.get("goal_minutes_for", []), viz.get("goal_minutes_against", []),
+                f"{team} — {L['goal_timing']}"))
+        if viz.get("formation", {}).get("players"):
+            out["formation"] = _b64(build_formation_pitch(
+                viz["formation"], f"{team} — {L['probable_lineup']}"))
+    except Exception:
+        return {k: v for k, v in out.items() if v}
+    return {k: v for k, v in out.items() if v}
 
 
 # ---------------------------------------------------------------------------

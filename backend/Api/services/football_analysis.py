@@ -67,6 +67,8 @@ class OpponentScoutReport(BaseModel):
     has_xg: bool = False
     # Raw viz payload for PDF chart rendering (frontend ignores it)
     viz_payload: dict = Field(default_factory=dict)
+    # Base64 chart images for inline web display
+    images: dict = Field(default_factory=dict)
 
 
 # Legacy models kept for backward compat
@@ -862,6 +864,15 @@ Return EXACTLY this JSON (no extra keys, no markdown):
     how_score = [f"{b['type']}: {b['pct']}%" for b in circ_for.get("breakdown", [])]
     how_concede = [f"{b['type']}: {b['pct']}%" for b in circ_against.get("breakdown", [])]
 
+    # Render charts as base64 for inline web display (safe, optional)
+    images: dict = {}
+    if viz_payload:
+        try:
+            from Api.services import football_viz as fv
+            images = fv.render_scout_images(viz_payload, req.team)
+        except Exception:
+            images = {}
+
     return OpponentScoutReport(
         team=req.team,
         data_source=source,
@@ -881,6 +892,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         probable_lineup=viz_payload.get("lineup", []),
         has_xg=bool(viz_payload.get("has_xg", False)),
         viz_payload=viz_payload,
+        images=images,
     )
 
 

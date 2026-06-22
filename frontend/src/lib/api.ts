@@ -211,6 +211,12 @@ export type OpponentScoutReport = {
   probable_lineup?: string[];
   has_xg?: boolean;
   viz_payload?: Record<string, unknown>;
+  images?: {
+    shotmap_for?: string;
+    shotmap_against?: string;
+    timing?: string;
+    formation?: string;
+  };
 };
 
 export type TeamEntry = { team: string; group: string };
