@@ -59,6 +59,14 @@ class OpponentScoutReport(BaseModel):
     set_piece_tendencies: list[str]
     form_analysis: str
     raw_stats_used: str
+    # Deep analytics (provider-derived) — optional so older clients still work
+    top_danger_players: list[dict] = Field(default_factory=list)
+    how_they_score: list[str] = Field(default_factory=list)
+    how_they_concede: list[str] = Field(default_factory=list)
+    probable_lineup: list[str] = Field(default_factory=list)
+    has_xg: bool = False
+    # Raw viz payload for PDF chart rendering (frontend ignores it)
+    viz_payload: dict = Field(default_factory=dict)
 
 
 # Legacy models kept for backward compat
@@ -254,6 +262,7 @@ def _fetch_matches_raw(competition: str = "serie_a") -> list[dict]:
             score = f"{home.get('score', '?')}-{away.get('score', '?')}"
         matches.append({
             "event_id": str(ev.get("id", "")),
+            "_competition": competition,
             "date": ev.get("date", "")[:10],
             "home": home.get("team", {}).get("displayName", ""),
             "away": away.get("team", {}).get("displayName", ""),
@@ -721,6 +730,42 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         agg_stats_parts.append(f"avg yellow cards/game: {avg(total_yc):.1f}")
     agg_stats_str = " | ".join(agg_stats_parts) if agg_stats_parts else "match stats not yet available"
 
+    # ---- Deep shot-level analytics via DataProvider ----
+    from Api.services.football_providers import get_provider
+    from Api.services import football_insights as fi
+
+    provider = get_provider()
+    deep_matches = recent[-5:]  # last 5 for shot-level detail
+    insights_text = ""
+    danger = []
+    circ_for = circ_against = {}
+    viz_payload: dict = {}
+    try:
+        shots = provider.get_shot_events(deep_matches, req.team)
+        goals = provider.get_goal_events(deep_matches, req.team)
+        danger = fi.player_danger_scores(shots, goals, top=3)
+        circ_for = fi.goal_circumstances(goals, is_for=True)
+        circ_against = fi.goal_circumstances(goals, is_for=False)
+        set_pieces = fi.set_piece_breakdown(goals)
+        tend_for = fi.shot_tendencies(shots, is_for=True)
+        tend_against = fi.shot_tendencies(shots, is_for=False)
+        lineup = provider.get_lineups(deep_matches, req.team)
+        insights_text = fi.insights_to_text(
+            danger, circ_for, circ_against, set_pieces,
+            tend_for, tend_against, provider.has_xg,
+        )
+        # Persist raw data so the PDF endpoint can render shot maps / timing.
+        viz_payload = {
+            "shots": shots,
+            "goal_minutes_for": fi.goal_minutes(goals, is_for=True),
+            "goal_minutes_against": fi.goal_minutes(goals, is_for=False),
+            "has_xg": provider.has_xg,
+            "provider": provider.name,
+            "lineup": [name for name, _ in lineup],
+        }
+    except Exception as exc:
+        insights_text = f"(Shot-level analytics unavailable: {exc})"
+
     recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
 
@@ -730,6 +775,9 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         f"FORM (last {len(recent)}): {form}",
         f"LOCATION SPLIT: {location_breakdown}",
         f"AGGREGATED MATCH STATS: {agg_stats_str}",
+        "",
+        "=== SHOT-LEVEL ANALYTICS (last 5 matches) ===",
+        insights_text,
         "",
         f"LAST {len(recent)} MATCHES (scorers + per-match stats where available):",
         recent_str,
@@ -806,6 +854,10 @@ Return EXACTLY this JSON (no extra keys, no markdown):
     if not row:
         source += f" | WARNING: '{req.team}' not matched in standings"
 
+    # Human-readable circumstance lines for the frontend/PDF text sections
+    how_score = [f"{b['type']}: {b['pct']}%" for b in circ_for.get("breakdown", [])]
+    how_concede = [f"{b['type']}: {b['pct']}%" for b in circ_against.get("breakdown", [])]
+
     return OpponentScoutReport(
         team=req.team,
         data_source=source,
@@ -819,6 +871,12 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         set_piece_tendencies=to_list(raw.get("set_piece_tendencies")),
         form_analysis=str(raw.get("form_analysis", "")).strip(),
         raw_stats_used=raw_stats,
+        top_danger_players=danger,
+        how_they_score=how_score,
+        how_they_concede=how_concede,
+        probable_lineup=viz_payload.get("lineup", []),
+        has_xg=bool(viz_payload.get("has_xg", False)),
+        viz_payload=viz_payload,
     )
 
 

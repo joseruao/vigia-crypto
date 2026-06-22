@@ -1,0 +1,192 @@
+"""
+Visualisations for football scout reports — shot heatmaps, goal-timing charts.
+
+IMPORTANT: matplotlib must use the headless 'Agg' backend. On Railway there is
+no display server; importing pyplot without this line crashes the worker.
+The line MUST run before pyplot is imported anywhere.
+"""
+from __future__ import annotations
+
+import matplotlib
+matplotlib.use("Agg")  # noqa: E402  — must precede pyplot import
+
+from io import BytesIO  # noqa: E402
+
+import matplotlib.pyplot as plt  # noqa: E402
+
+# mplsoccer is optional at import time so the rest of the app still boots if the
+# dependency is missing; callers check viz_available().
+try:
+    from mplsoccer import VerticalPitch
+    _MPL_SOCCER = True
+except Exception:  # pragma: no cover
+    _MPL_SOCCER = False
+
+
+_BG = "#0f172a"        # slate-950 (matches PDF cover)
+_LINE = "#94a3b8"      # slate-400
+_GOAL = "#22c55e"      # green-500
+_SHOT = "#60a5fa"      # blue-400
+_MISS = "#64748b"      # slate-500
+_TEXT = "#e2e8f0"      # slate-200
+
+
+def viz_available() -> bool:
+    return _MPL_SOCCER
+
+
+# ---------------------------------------------------------------------------
+# Coordinate mapping
+# ---------------------------------------------------------------------------
+# ESPN gives x,y in 0-100. x grows toward the attacking goal, y is width.
+# mplsoccer statsbomb pitch is 120 (length) x 80 (width).
+# We use a VerticalPitch (attacking upward) showing only the attacking half.
+
+def _to_pitch(x: float, y: float) -> tuple[float, float]:
+    px = x / 100.0 * 120.0
+    py = y / 100.0 * 80.0
+    return px, py
+
+
+def _shot_size(shot: dict) -> float:
+    xg = shot.get("xg")
+    if xg:
+        return max(60.0, min(float(xg) * 900.0, 600.0))
+    # No xG: size by zone proximity as a danger proxy
+    zone = shot.get("zone", "box")
+    return {"six_yard": 280, "box": 200, "outside_box": 130, "long_range": 90}.get(zone, 150)
+
+
+# ---------------------------------------------------------------------------
+# Shot map (real coordinates)
+# ---------------------------------------------------------------------------
+
+def build_shot_map(shots: list[dict], title: str, has_xg: bool = False) -> bytes | None:
+    """Render a vertical half-pitch shot map. Returns PNG bytes, or None if
+    mplsoccer is unavailable or there are no shots with coordinates."""
+    if not _MPL_SOCCER:
+        return None
+    coord_shots = [s for s in shots if s.get("x") is not None and s.get("y") is not None]
+    if not coord_shots:
+        return None
+
+    pitch = VerticalPitch(
+        pitch_type="statsbomb", half=True,
+        pitch_color=_BG, line_color=_LINE, linewidth=1.2, line_zorder=2,
+    )
+    fig, ax = pitch.draw(figsize=(7, 5.2))
+    fig.set_facecolor(_BG)
+
+    # Non-goal shots first (so goals render on top)
+    for s in coord_shots:
+        if s["result"] == "goal":
+            continue
+        px, py = _to_pitch(s["x"], s["y"])
+        color = _MISS if has_xg else _SHOT
+        pitch.scatter(
+            px, py, s=_shot_size(s),
+            c=color, edgecolors="white", linewidths=0.3, alpha=0.6,
+            marker="o", ax=ax, zorder=3,
+        )
+
+    # Goals on top with the football marker (no linewidth kwarg — mplsoccer
+    # sets its own for this marker)
+    for s in coord_shots:
+        if s["result"] != "goal":
+            continue
+        px, py = _to_pitch(s["x"], s["y"])
+        pitch.scatter(
+            px, py, s=_shot_size(s) * 1.3,
+            c=_GOAL, edgecolors="white", alpha=0.95,
+            marker="football", ax=ax, zorder=5,
+        )
+
+    goals = sum(1 for s in coord_shots if s["result"] == "goal")
+    on_t = sum(1 for s in coord_shots if s["result"] in ("goal", "on_target"))
+    ax.set_title(
+        f"{title}\n{len(coord_shots)} shots  |  {on_t} on target  |  {goals} goals",
+        color=_TEXT, fontsize=11, pad=8,
+    )
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Goal timing distribution (works with or without coordinates)
+# ---------------------------------------------------------------------------
+
+_INTERVALS = [(0, 15), (16, 30), (31, 45), (46, 60), (61, 75), (76, 120)]
+_LABELS = ["0-15", "16-30", "31-45", "46-60", "61-75", "76+"]
+
+
+def build_timing_chart(goals_for: list[int], goals_against: list[int], title: str) -> bytes | None:
+    """Bar chart of goal minute distribution. Always available (no pitch)."""
+    def bucket(minutes: list[int]) -> list[int]:
+        out = [0] * len(_INTERVALS)
+        for mn in minutes:
+            for i, (lo, hi) in enumerate(_INTERVALS):
+                if lo <= mn <= hi:
+                    out[i] += 1
+                    break
+        return out
+
+    gf = bucket(goals_for)
+    ga = bucket(goals_against)
+    if sum(gf) + sum(ga) == 0:
+        return None
+
+    fig, ax = plt.subplots(figsize=(7, 3.4))
+    fig.set_facecolor(_BG)
+    ax.set_facecolor(_BG)
+
+    x = range(len(_LABELS))
+    w = 0.4
+    ax.bar([i - w / 2 for i in x], gf, w, label="Scored", color=_GOAL, alpha=0.9)
+    ax.bar([i + w / 2 for i in x], ga, w, label="Conceded", color="#ef4444", alpha=0.9)
+
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(_LABELS, color=_TEXT, fontsize=9)
+    ax.set_ylabel("Goals", color=_TEXT, fontsize=9)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=6)
+    ax.tick_params(colors=_TEXT)
+    for spine in ax.spines.values():
+        spine.set_color(_LINE)
+    ax.legend(facecolor=_BG, edgecolor=_LINE, labelcolor=_TEXT, fontsize=8)
+    ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Zone fallback chart (when there are no coordinates at all)
+# ---------------------------------------------------------------------------
+
+def build_zone_chart(shots: list[dict], title: str) -> bytes | None:
+    """Horizontal bar chart of shots by zone — graceful fallback when a future
+    provider lacks coordinates. Not used by ESPN (which has coordinates)."""
+    zones = ["six_yard", "box", "outside_box", "long_range"]
+    labels = ["Six-yard", "Penalty box", "Outside box", "Long range"]
+    counts = [sum(1 for s in shots if s.get("zone") == z) for z in zones]
+    if sum(counts) == 0:
+        return None
+
+    fig, ax = plt.subplots(figsize=(7, 3))
+    fig.set_facecolor(_BG)
+    ax.set_facecolor(_BG)
+    ax.barh(labels, counts, color=_SHOT, alpha=0.85)
+    ax.set_title(title, color=_TEXT, fontsize=11)
+    ax.tick_params(colors=_TEXT)
+    for spine in ax.spines.values():
+        spine.set_color(_LINE)
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()

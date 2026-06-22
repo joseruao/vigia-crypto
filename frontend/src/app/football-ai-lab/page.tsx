@@ -60,6 +60,9 @@ const t = {
     howToBeat: 'How to Beat Them', pressingVuln: 'Pressing Vulnerabilities',
     setPieceTend: 'Set Piece Tendencies', formAnalysis: 'Form Analysis', vs: 'vs',
     group: 'Group',
+    dangerPlayers: 'Top Danger Players', howTheyScore: 'How They Score',
+    probableLineup: 'Probable XI', goalsLabel: 'G', assistsLabel: 'A',
+    onTargetLabel: 'On target', dangerLabel: 'Danger',
   },
   pt: {
     subtitle: 'Relatórios de preparação com dados ESPN em tempo real.',
@@ -86,6 +89,9 @@ const t = {
     howToBeat: 'Como Bater Esta Equipa', pressingVuln: 'Vulnerabilidades à Pressão',
     setPieceTend: 'Tendências em Bolas Paradas', formAnalysis: 'Análise de Forma', vs: 'vs',
     group: 'Grupo',
+    dangerPlayers: 'Jogadores Mais Perigosos', howTheyScore: 'Como Marcam',
+    probableLineup: 'Onze Provável', goalsLabel: 'G', assistsLabel: 'A',
+    onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
   },
 } as const;
 
@@ -434,6 +440,55 @@ export default function FootballAiLabPage() {
                   <SectionCard title={T.playingStyle} icon={<ClipboardList className="h-4 w-4" />}>
                     <p className="text-sm leading-6 text-slate-700">{scoutReport.playing_style}</p>
                   </SectionCard>
+
+                  {scoutReport.top_danger_players && scoutReport.top_danger_players.length > 0 && (
+                    <SectionCard title={T.dangerPlayers} icon={<Zap className="h-4 w-4" />}>
+                      <div className="overflow-hidden rounded-md border border-slate-200">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">#</th>
+                              <th className="px-3 py-2 text-left font-semibold">{T.teamToScout.split(' ')[0]}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.goalsLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.assistsLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.onTargetLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.dangerLabel}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {scoutReport.top_danger_players.map((p, i) => (
+                              <tr key={i} className={i === 0 ? 'bg-emerald-50' : 'bg-white'}>
+                                <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                                <td className="px-3 py-2 font-medium text-slate-900">{p.player}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.goals}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.assists}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.on_target}/{p.shots}</td>
+                                <td className="px-2 py-2 text-center font-semibold text-emerald-700">{p.score}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {scoutReport.how_they_score && scoutReport.how_they_score.length > 0 && (
+                    <SectionCard title={T.howTheyScore} icon={<Target className="h-4 w-4" />}>
+                      <BulletList items={scoutReport.how_they_score} />
+                    </SectionCard>
+                  )}
+
+                  {scoutReport.probable_lineup && scoutReport.probable_lineup.length > 0 && (
+                    <SectionCard title={T.probableLineup} icon={<Users className="h-4 w-4" />}>
+                      <div className="flex flex-wrap gap-2">
+                        {scoutReport.probable_lineup.map((name, i) => (
+                          <span key={i} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </SectionCard>
+                  )}
                   <div className="grid gap-5 lg:grid-cols-2">
                     <SectionCard title={T.strengths} icon={<Zap className="h-4 w-4" />}>
                       <BulletList items={scoutReport.strengths} />

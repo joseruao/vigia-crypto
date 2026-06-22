@@ -182,6 +182,16 @@ export type MatchPrepReport = {
   raw_stats_used: string;
 };
 
+export type DangerPlayer = {
+  player: string;
+  score: number;
+  goals: number;
+  assists: number;
+  shots: number;
+  on_target: number;
+  xg?: number | null;
+};
+
 export type OpponentScoutReport = {
   team: string;
   data_source: string;
@@ -195,6 +205,12 @@ export type OpponentScoutReport = {
   set_piece_tendencies: string[];
   form_analysis: string;
   raw_stats_used: string;
+  top_danger_players?: DangerPlayer[];
+  how_they_score?: string[];
+  how_they_concede?: string[];
+  probable_lineup?: string[];
+  has_xg?: boolean;
+  viz_payload?: Record<string, unknown>;
 };
 
 export type TeamEntry = { team: string; group: string };

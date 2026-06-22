@@ -257,6 +257,38 @@ class _ScoutPDF(FPDF):
                         f"Data source: {source}  |  Football AI Lab - joseruao.com",
                         fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
+    def _image(self, png: bytes, w: float, x: float | None = None) -> None:
+        """Embed a PNG (bytes) at width w mm, centred unless x given."""
+        if not png:
+            return
+        if x is None:
+            x = (_PAGE_W - w) / 2
+        self.image(BytesIO(png), x=x, w=w)
+
+    def _danger_table(self, players: list[dict], labels: dict) -> None:
+        if not players:
+            return
+        self.set_x(_MARGIN)
+        self.set_font("U", "B", 8); self.set_text_color(*_GRAY)
+        cols = [(70, labels["player"]), (22, "G"), (22, "A"),
+                (38, labels["on_target"]), (28, labels["danger"])]
+        for w, h in cols:
+            self.cell(w, 6, h, new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.ln(6)
+        for i, p in enumerate(players):
+            self.set_x(_MARGIN)
+            self.set_fill_color(*( _GREEN_LT if i == 0 else _WHITE))
+            self.set_font("U", "B" if i == 0 else "", 9)
+            self.set_text_color(*_DARK)
+            self.cell(70, 6, f"{i+1}. {p.get('player','')}", fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.cell(22, 6, str(p.get("goals", 0)), fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.cell(22, 6, str(p.get("assists", 0)), fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.cell(38, 6, f"{p.get('on_target',0)}/{p.get('shots',0)}", fill=True, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_text_color(*_GREEN); self.set_font("U", "B", 9)
+            self.cell(28, 6, str(p.get("score", 0)), fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_text_color(*_DARK)
+        self.ln(2)
+
 
 # ---------------------------------------------------------------------------
 # Match Prep PDF (3 pages)
@@ -266,7 +298,7 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     L = _labels(lang)
     pdf = _ScoutPDF(orientation="P", unit="mm", format="A4")
     pdf._competition = ("FIFA World Cup 2026"
-                        if "world_cup" in report.get("data_source", "").lower()
+                        if "world cup" in report.get("data_source", "").lower()
                         else "Campeonato Brasileiro Serie A")
     pdf._setup_fonts()
     pdf.set_margins(_MARGIN, 14, _MARGIN)
@@ -385,7 +417,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     L = _labels(lang)
     pdf = _ScoutPDF(orientation="P", unit="mm", format="A4")
     pdf._competition = ("FIFA World Cup 2026"
-                        if "world_cup" in report.get("data_source", "").lower()
+                        if "world cup" in report.get("data_source", "").lower()
                         else "Campeonato Brasileiro Serie A")
     pdf._setup_fonts()
     pdf.set_margins(_MARGIN, 14, _MARGIN)
@@ -393,35 +425,67 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
 
     team   = report.get("team", "")
     source = report.get("data_source", "")
+    viz    = report.get("viz_payload", {}) or {}
 
-    # ----- PAGE 1: Cover + Overview -----
+    # Pre-render charts (graceful: returns None if mplsoccer missing / no data)
+    shotmap_for = shotmap_against = timing_png = None
+    try:
+        from Api.services import football_viz as fv
+        if fv.viz_available() and viz.get("shots"):
+            shots = viz["shots"]
+            has_xg = bool(viz.get("has_xg"))
+            shots_for = [s for s in shots if s.get("is_for")]
+            shots_against = [s for s in shots if not s.get("is_for")]
+            shotmap_for = fv.build_shot_map(shots_for, f"{team} — {L['shots_taken']}", has_xg)
+            shotmap_against = fv.build_shot_map(shots_against, f"{team} — {L['shots_conceded']}", has_xg)
+            timing_png = fv.build_timing_chart(
+                viz.get("goal_minutes_for", []), viz.get("goal_minutes_against", []),
+                f"{team} — {L['goal_timing']}",
+            )
+    except Exception:
+        pass  # charts are optional — text report still renders
+
+    # ----- PAGE 1: Cover + Overview + Probable XI -----
     pdf.add_page()
     pdf._cover_box(L["scout_report"], team, source)
 
     pdf._section_bar(L["exec_summary"])
     pdf._body(report.get("executive_summary", "-"))
-    pdf.ln(2)
+    pdf.ln(1)
 
     pdf._section_bar(L["form_analysis"], color=_BLUE)
     pdf._body(report.get("form_analysis", "-"))
-    pdf.ln(2)
+    pdf.ln(1)
 
     pdf._section_bar(L["playing_style"], color=_PURPLE)
     pdf._body(report.get("playing_style", "-"))
-    pdf.ln(2)
+    pdf.ln(1)
 
-    # Raw data snippet
-    raw_lines = [l.strip() for l in report.get("raw_stats_used", "").split("\n") if l.strip()]
-    if raw_lines:
-        pdf.set_fill_color(*_GRAY_LT)
-        pdf.set_font("U", "", 7.5)
-        pdf.set_text_color(*_GRAY)
-        for line in raw_lines[:8]:
-            pdf.set_x(_MARGIN)
-            pdf.cell(_INNER, 4.5, line[:105], fill=True,
-                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    lineup = report.get("probable_lineup", [])
+    if lineup:
+        pdf._section_bar(L["probable_lineup"], color=_DARK)
+        pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.multi_cell(_INNER, 5.5, "  •  ".join(lineup),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(1)
 
-    # ----- PAGE 2: Tactical Profile -----
+    # ----- PAGE 2: Shot Maps (attack + defence) -----
+    if shotmap_for or shotmap_against:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, f"{L['shot_analysis']}: {team}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_GREEN); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(3)
+        if shotmap_for:
+            pdf._image(shotmap_for, w=110)
+            pdf.ln(1)
+        if shotmap_against:
+            pdf._image(shotmap_against, w=110)
+
+    # ----- PAGE 3: Tactical Profile -----
     pdf.add_page()
     pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
     pdf.set_x(_MARGIN)
@@ -446,7 +510,37 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     pdf._section_bar(L["set_piece_tend"], color=_PURPLE)
     pdf._bullets(report.get("set_piece_tendencies", []))
 
-    # ----- PAGE 3: How to Beat Them -----
+    # ----- PAGE 4: Danger Players + Timing + Circumstances -----
+    danger = report.get("top_danger_players", [])
+    how_score = report.get("how_they_score", [])
+    how_concede = report.get("how_they_concede", [])
+    if danger or timing_png or how_score:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, f"{L['danger_analysis']}: {team}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_RED); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(4)
+
+        if danger:
+            pdf._section_bar(L["danger_players"], color=_RED)
+            pdf._danger_table(danger, L)
+            pdf.ln(2)
+
+        if how_score:
+            pdf._section_bar(L["how_they_score"], color=_GREEN)
+            pdf._bullets(how_score)
+            pdf.ln(1)
+        if how_concede:
+            pdf._section_bar(L["how_they_concede"], color=_AMBER)
+            pdf._bullets(how_concede)
+            pdf.ln(1)
+
+        if timing_png:
+            pdf._image(timing_png, w=150)
+
+    # ----- PAGE 5: How to Beat Them -----
     pdf.add_page()
     pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
     pdf.set_x(_MARGIN)
@@ -511,6 +605,18 @@ def _labels(lang: str) -> dict[str, str]:
             "set_piece_tend": "Tendencias em Bolas Paradas",
             "how_to_beat": "Como Bater Esta Equipa",
             "how_to_beat_desc": "Instrucoes tacticas especificas com base nos dados analisados:",
+            "probable_lineup": "Onze Provavel",
+            "shot_analysis": "Analise de Remates",
+            "shots_taken": "Remates Efectuados",
+            "shots_conceded": "Remates Sofridos",
+            "goal_timing": "Distribuicao de Golos por Minuto",
+            "danger_analysis": "Jogadores Perigosos e Padroes",
+            "danger_players": "Top 3 Jogadores Mais Perigosos",
+            "how_they_score": "Como Marcam",
+            "how_they_concede": "Como Sofrem",
+            "player": "Jogador",
+            "on_target": "Ao alvo",
+            "danger": "Perigo",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -538,4 +644,16 @@ def _labels(lang: str) -> dict[str, str]:
         "set_piece_tend": "Set Piece Tendencies",
         "how_to_beat": "How to Beat Them",
         "how_to_beat_desc": "Specific tactical instructions based on analysed data:",
+        "probable_lineup": "Probable XI",
+        "shot_analysis": "Shot Analysis",
+        "shots_taken": "Shots Taken",
+        "shots_conceded": "Shots Conceded",
+        "goal_timing": "Goal Timing Distribution",
+        "danger_analysis": "Danger Players & Patterns",
+        "danger_players": "Top 3 Most Dangerous Players",
+        "how_they_score": "How They Score",
+        "how_they_concede": "How They Concede",
+        "player": "Player",
+        "on_target": "On target",
+        "danger": "Danger",
     }
