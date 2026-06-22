@@ -750,6 +750,9 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         tend_for = fi.shot_tendencies(shots, is_for=True)
         tend_against = fi.shot_tendencies(shots, is_for=False)
         lineup = provider.get_lineups(deep_matches, req.team)
+        formation = {}
+        if hasattr(provider, "get_formation"):
+            formation = provider.get_formation(deep_matches, req.team)
         insights_text = fi.insights_to_text(
             danger, circ_for, circ_against, set_pieces,
             tend_for, tend_against, provider.has_xg,
@@ -762,6 +765,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
             "has_xg": provider.has_xg,
             "provider": provider.name,
             "lineup": [name for name, _ in lineup],
+            "formation": formation,
         }
     except Exception as exc:
         insights_text = f"(Shot-level analytics unavailable: {exc})"

@@ -259,6 +259,71 @@ class ESPNProvider(DataProvider):
                         counter[nm] += 1
         return counter.most_common(11)
 
+    def get_formation(self, matches: list[dict], team: str) -> dict:
+        """Most-recent-match starting XI with positions, for a formation pitch.
+        Returns {formation, players:[{name, jersey, position, x, y}]} or {}."""
+        from Api.services.football_analysis import _teams_match
+        for m in reversed(matches):  # most recent first
+            summary = self._summary(m, m.get("_competition", "serie_a"))
+            for roster in summary.get("rosters", []):
+                if not _teams_match(team, roster.get("team", {}).get("displayName", "")):
+                    continue
+                starters = [e for e in roster.get("roster", []) if e.get("starter")]
+                if len(starters) < 11:
+                    continue
+                players = []
+                for e in starters:
+                    pos = (e.get("position") or {}).get("abbreviation", "")
+                    x, y = _position_to_xy(pos)
+                    players.append({
+                        "name": e.get("athlete", {}).get("displayName", ""),
+                        "jersey": e.get("jersey", ""),
+                        "position": pos,
+                        "x": x, "y": y,
+                    })
+                return {"formation": roster.get("formation", ""), "players": players}
+        return {}
+
+
+def _position_to_xy(abbr: str) -> tuple[float, float]:
+    """Map an ESPN position abbreviation (e.g. 'CD-L', 'DM', 'RW', 'F') to a
+    point on a vertical statsbomb pitch (x: 0-80 width, y: 0-120 length, own
+    goal at y=0 / attack upward). Side suffix -L/-R shifts width."""
+    a = abbr.upper().strip()
+    base = a.split("-")[0]
+    side = a.split("-")[1] if "-" in a else ""
+
+    # length (y) by role band
+    length_map = {
+        "G": 8, "GK": 8,
+        "CD": 26, "CB": 26, "LB": 28, "RB": 28, "WB": 32, "LWB": 32, "RWB": 32, "D": 26,
+        "DM": 44, "CDM": 44,
+        "CM": 60, "M": 60, "LM": 62, "RM": 62, "MF": 60,
+        "AM": 78, "CAM": 78, "LAM": 80, "RAM": 80,
+        "LW": 96, "RW": 96, "W": 96,
+        "F": 104, "CF": 104, "ST": 104, "FW": 104, "SS": 92,
+        "LF": 100, "RF": 100, "LS": 100, "RS": 100, "LCF": 100, "RCF": 100,
+    }
+    y = length_map.get(base, 60)
+
+    # width (x): wide positions hug the touchline; a centre role with an -L/-R
+    # suffix (or LCF/RCF-style prefix) sits just inside of centre.
+    wide_left = base in ("LB", "LM", "LW", "LWB", "LF", "LAM")
+    wide_right = base in ("RB", "RM", "RW", "RWB", "RF", "RAM")
+    inner_left = side == "L" or base in ("LS", "LCF")
+    inner_right = side == "R" or base in ("RS", "RCF")
+    if wide_left:
+        x = 14
+    elif wide_right:
+        x = 66
+    elif inner_left:
+        x = 32
+    elif inner_right:
+        x = 48
+    else:
+        x = 40
+    return x, y
+
 
 def _minute_to_int(clock: str) -> int:
     """'45'+2'' -> 47, '67'' -> 67."""

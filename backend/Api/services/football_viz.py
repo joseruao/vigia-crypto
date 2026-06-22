@@ -115,6 +115,48 @@ def build_shot_map(shots: list[dict], title: str, has_xg: bool = False) -> bytes
 
 
 # ---------------------------------------------------------------------------
+# Formation pitch (probable XI laid out by position)
+# ---------------------------------------------------------------------------
+
+def build_formation_pitch(formation: dict, title: str) -> bytes | None:
+    """Render the starting XI on a full vertical pitch at their positions."""
+    if not _MPL_SOCCER:
+        return None
+    players = formation.get("players", [])
+    if len(players) < 11:
+        return None
+
+    pitch = VerticalPitch(
+        pitch_type="statsbomb", half=False,
+        pitch_color=_BG, line_color=_LINE, linewidth=1.2, line_zorder=2,
+    )
+    fig, ax = pitch.draw(figsize=(6.5, 9))
+    fig.set_facecolor(_BG)
+
+    for p in players:
+        x, y = p["x"], p["y"]  # x=width(0-80), y=length(0-120)
+        pitch.scatter(y, x, s=620, c=_GOAL, edgecolors="white",
+                      linewidths=1.0, alpha=0.95, ax=ax, zorder=4)
+        # jersey number inside the dot
+        pitch.annotate(str(p.get("jersey", "")), (y, x), ax=ax,
+                       color=_BG, fontsize=8.5, fontweight="bold",
+                       ha="center", va="center", zorder=5)
+        # surname under the dot
+        surname = p["name"].split()[-1] if p.get("name") else ""
+        pitch.annotate(surname, (y - 5.5, x), ax=ax, color=_TEXT,
+                       fontsize=7.5, ha="center", va="center", zorder=5)
+
+    formation_str = formation.get("formation", "")
+    ax.set_title(f"{title}" + (f"   ({formation_str})" if formation_str else ""),
+                 color=_TEXT, fontsize=12, pad=8)
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Goal timing distribution (works with or without coordinates)
 # ---------------------------------------------------------------------------
 

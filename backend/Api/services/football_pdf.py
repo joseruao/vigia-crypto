@@ -408,20 +408,24 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     viz    = report.get("viz_payload", {}) or {}
 
     # Pre-render charts (graceful: returns None if mplsoccer missing / no data)
-    shotmap_for = shotmap_against = timing_png = None
+    shotmap_for = shotmap_against = timing_png = formation_png = None
     try:
         from Api.services import football_viz as fv
-        if fv.viz_available() and viz.get("shots"):
-            shots = viz["shots"]
-            has_xg = bool(viz.get("has_xg"))
-            shots_for = [s for s in shots if s.get("is_for")]
-            shots_against = [s for s in shots if not s.get("is_for")]
-            shotmap_for = fv.build_shot_map(shots_for, f"{team} — {L['shots_taken']}", has_xg)
-            shotmap_against = fv.build_shot_map(shots_against, f"{team} — {L['shots_conceded']}", has_xg)
-            timing_png = fv.build_timing_chart(
-                viz.get("goal_minutes_for", []), viz.get("goal_minutes_against", []),
-                f"{team} — {L['goal_timing']}",
-            )
+        if fv.viz_available():
+            if viz.get("shots"):
+                shots = viz["shots"]
+                has_xg = bool(viz.get("has_xg"))
+                shots_for = [s for s in shots if s.get("is_for")]
+                shots_against = [s for s in shots if not s.get("is_for")]
+                shotmap_for = fv.build_shot_map(shots_for, f"{team} — {L['shots_taken']}", has_xg)
+                shotmap_against = fv.build_shot_map(shots_against, f"{team} — {L['shots_conceded']}", has_xg)
+                timing_png = fv.build_timing_chart(
+                    viz.get("goal_minutes_for", []), viz.get("goal_minutes_against", []),
+                    f"{team} — {L['goal_timing']}",
+                )
+            if viz.get("formation", {}).get("players"):
+                formation_png = fv.build_formation_pitch(
+                    viz["formation"], f"{team} — {L['probable_lineup']}")
     except Exception:
         pass  # charts are optional — text report still renders
 
@@ -442,13 +446,25 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     pdf.ln(1)
 
     lineup = report.get("probable_lineup", [])
-    if lineup:
+    if lineup and not formation_png:
+        # Text fallback only when we couldn't draw the formation pitch
         pdf._section_bar(L["probable_lineup"], color=_DARK)
         pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
         pdf.set_x(_MARGIN)
         pdf.multi_cell(_INNER, 5.5, "  •  ".join(lineup),
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
+
+    # ----- PAGE: Formation pitch -----
+    if formation_png:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, f"{L['probable_lineup']}: {team}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_GREEN); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(3)
+        pdf._image(formation_png, w=120)
 
     # ----- PAGE 2: Shot Maps (attack + defence) -----
     if shotmap_for or shotmap_against:
