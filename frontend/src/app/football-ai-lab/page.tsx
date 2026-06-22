@@ -64,7 +64,7 @@ const t = {
     oppWeaknesses: 'Opponent Weaknesses', keyThreats: 'Key Threats to Neutralise',
     tacticalApproach: 'Tactical Approach', pressingTriggers: 'Pressing Triggers',
     attackingApproach: 'Attacking Approach', setPieces: 'Set Pieces',
-    riskAssessment: 'Risk Assessment', playingStyle: 'Playing Style',
+    riskAssessment: 'Main Risks', playingStyle: 'Playing Style',
     strengths: 'Strengths', weaknesses: 'Weaknesses', keyPatterns: 'Key Patterns',
     howToBeat: 'How to Beat Them', pressingVuln: 'Pressing Vulnerabilities',
     setPieceTend: 'Set Piece Tendencies', formAnalysis: 'Form Analysis', vs: 'vs',
@@ -73,7 +73,7 @@ const t = {
     probableLineup: 'Probable XI', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'On target', dangerLabel: 'Danger',
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
-    matchupEdges: 'Matchup Edges', subNotes: 'Substitution Notes',
+    matchupEdges: 'Matchup Edges', subNotes: 'Match Management',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -100,7 +100,7 @@ const t = {
     oppWeaknesses: 'Pontos Fracos do Adversário', keyThreats: 'Ameaças a Neutralizar',
     tacticalApproach: 'Abordagem Táctica', pressingTriggers: 'Gatilhos de Pressão',
     attackingApproach: 'Abordagem Ofensiva', setPieces: 'Bolas Paradas',
-    riskAssessment: 'Avaliação de Risco', playingStyle: 'Estilo de Jogo',
+    riskAssessment: 'Riscos Principais', playingStyle: 'Estilo de Jogo',
     strengths: 'Pontos Fortes', weaknesses: 'Pontos Fracos', keyPatterns: 'Padrões Identificados',
     howToBeat: 'Como Bater Esta Equipa', pressingVuln: 'Vulnerabilidades à Pressão',
     setPieceTend: 'Tendências em Bolas Paradas', formAnalysis: 'Análise de Forma', vs: 'vs',
@@ -109,7 +109,7 @@ const t = {
     probableLineup: 'Onze Provável', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
     shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
-    matchupEdges: 'Confronto Directo', subNotes: 'Notas de Substituição',
+    matchupEdges: 'Confronto Directo', subNotes: 'Gestão de Jogo',
   },
 } as const;
 
@@ -436,7 +436,7 @@ export default function FootballAiLabPage() {
                       ? `${matchReport.my_team} ${T.vs} ${matchReport.opponent_team}`
                       : scoutReport?.team}
                   </h2>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-200">
+                  <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-6 text-slate-200">
                     {matchReport?.executive_summary ?? scoutReport?.executive_summary}
                   </p>
                   <p className="mt-3 text-xs text-slate-500">
@@ -532,7 +532,7 @@ export default function FootballAiLabPage() {
                     <BulletList items={matchReport.key_threats} />
                   </SectionCard>
                   <SectionCard title={T.tacticalApproach} icon={<ClipboardList className="h-4 w-4" />}>
-                    <p className="text-sm leading-6 text-slate-700">{matchReport.tactical_approach}</p>
+                    <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{matchReport.tactical_approach}</p>
                   </SectionCard>
                   <div className="grid gap-5 lg:grid-cols-2">
                     <SectionCard title={T.pressingTriggers} icon={<Target className="h-4 w-4" />}>

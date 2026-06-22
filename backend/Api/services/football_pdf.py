@@ -65,12 +65,16 @@ def _matplotlib_font(key: str) -> str | None:
 
 
 def _find_font(key: str) -> str:
-    for path in _FONT_PATHS[key]:
-        if os.path.exists(path):
-            return path
+    # Prefer matplotlib's bundled DejaVu — it has the full glyph set we use
+    # (✓, em dash, accents) and is identical on every platform, so PDFs render
+    # the same locally and on Railway. System fonts (e.g. Windows Arial) are a
+    # fallback only and may miss glyphs like U+2713.
     mpl = _matplotlib_font(key)
     if mpl:
         return mpl
+    for path in _FONT_PATHS[key]:
+        if os.path.exists(path):
+            return path
     raise FileNotFoundError(f"No DejaVu/Arial font found for '{key}'")
 
 
@@ -728,7 +732,7 @@ def _labels(lang: str) -> dict[str, str]:
             "pressing_triggers": "Gatilhos de Pressao",
             "attacking_approach": "Abordagem Ofensiva",
             "set_pieces": "Bolas Paradas",
-            "risk": "Avaliacao de Risco",
+            "risk": "Riscos Principais",
             "my_team": "A minha equipa",
             "opponent": "Adversario",
             "form_analysis": "Analise de Forma",
@@ -751,7 +755,7 @@ def _labels(lang: str) -> dict[str, str]:
             "danger": "Perigo",
             "key_alerts": "Alertas Chave",
             "key_alerts_desc": "Pontos criticos para a equipa tecnica:",
-            "sub_notes": "Notas de Substituicao",
+            "sub_notes": "Gestao de Jogo",
             "matchup_edges": "Confronto Directo (ataque deles vs defesa nossa)",
             "priority_alerts": "Alertas Prioritarios",
             "main_danger": "Jogador mais perigoso",
@@ -773,7 +777,7 @@ def _labels(lang: str) -> dict[str, str]:
         "pressing_triggers": "Pressing Triggers",
         "attacking_approach": "Attacking Approach",
         "set_pieces": "Set Pieces",
-        "risk": "Risk Assessment",
+        "risk": "Main Risks",
         "my_team": "My team",
         "opponent": "Opponent",
         "form_analysis": "Form Analysis",
@@ -796,7 +800,7 @@ def _labels(lang: str) -> dict[str, str]:
         "danger": "Danger",
         "key_alerts": "Key Alerts",
         "key_alerts_desc": "Critical points for the coaching staff:",
-        "sub_notes": "Substitution Notes",
+        "sub_notes": "Match Management",
         "matchup_edges": "Matchup Edges (their attack vs our defence)",
         "priority_alerts": "Priority Alerts",
         "main_danger": "Main danger player",

@@ -722,11 +722,11 @@ SMALL-SAMPLE RULE (critical for credibility):
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "SCOUT SHORTHAND: 5-7 very short telegraphic phrases separated by periods, like a coach's pre-match notes covering both teams and the key matchup. No long sentences, no filler.",
+  "executive_summary": "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS + colon + short value, separated by newline characters (\\n). Use these labels: POSSESSION ADVANTAGE, MAIN THREAT, OPPONENT WEAKNESS, KEY OPPORTUNITY (and optionally KEY RISK). Example: 'POSSESSION ADVANTAGE: Spain\\nMAIN THREAT: Maxi Araujo (Uruguay)\\nOPPONENT WEAKNESS: Central defence + set pieces\\nKEY OPPORTUNITY: Attack their right side'. Each value short and concrete. No prose sentences.",
   "opponent_strengths": ["data-backed strength with evidence 1", "strength 2", "strength 3"],
   "opponent_weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
   "key_threats": ["named opponent player or pattern to neutralise, with evidence 1", "threat 2"],
-  "tactical_approach": "2-3 sentences: concrete game plan built on the matchup edges",
+  "tactical_approach": "CHECKLIST: 4-6 short imperative instructions, one per line, each starting with '✓ ', separated by newline characters (\\n). Example: '✓ Defend centrally\\n✓ Exploit their set pieces\\n✓ Mark Maxi Araujo aggressively\\n✓ Attack the right side\\n✓ Avoid open transitions'. Each line max 6 words. No prose.",
   "pressing_triggers": ["specific moment/situation to press 1", "trigger 2"],
   "attacking_approach": ["instruction tied to THEIR defensive weakness 1", "instruction 2", "instruction 3"],
   "set_piece_plan": ["set piece insight from the data 1", "consideration 2"],
@@ -968,7 +968,7 @@ SMALL-SAMPLE RULE (critical for credibility):
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "SCOUT SHORTHAND: 5-7 very short telegraphic phrases separated by periods, like a coach's notes. Example: 'Reactive team. Low possession (38%). Dangerous from corners. Soft centrally. Limited in open play. Started with a loss.' No long sentences, no filler.",
+  "executive_summary": "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS followed by a colon and a short value, separated by newline characters (\\n). Use these labels: STYLE, MAIN THREAT, KEY WEAKNESS, DANGER PERIOD (and optionally SET PIECES). Example: 'STYLE: Ball-dominant (55% possession)\\nMAIN THREAT: Cody Gakpo (2G 1A)\\nKEY WEAKNESS: Concedes from corners\\nDANGER PERIOD: 46-60''. Each value short and concrete. No prose sentences.",
   "playing_style": "2-3 sentences: inferred style from possession, shots, and results — are they dominant or reactive?",
   "strengths": ["specific data-backed strength with evidence 1", "strength 2", "strength 3"],
   "weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
