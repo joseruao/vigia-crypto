@@ -27,71 +27,51 @@ _INNER  = _PAGE_W - _MARGIN * 2
 _COL    = _INNER / 2 - 2
 
 # ---------------------------------------------------------------------------
-# Font paths — fallback chain (Linux Debian/Nix/Windows)
+# Font discovery
 # ---------------------------------------------------------------------------
-_FONT_PATHS = {
-    "regular": [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-    ],
-    "bold": [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ],
-    "italic": [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans-Oblique.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
-        "C:/Windows/Fonts/ariali.ttf",
-    ],
-}
-
-_FONT_CACHE_DIR = os.path.join(os.path.dirname(__file__), "_font_cache")
-
-_DEJAVU_URLS = {
-    "regular": "https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans.ttf",
-    "bold":    "https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans-Bold.ttf",
-    "italic":  "https://github.com/dejavu-fonts/dejavu-fonts/raw/version_2_37/ttf/DejaVuSans-Oblique.ttf",
-}
+# matplotlib bundles the DejaVu TTF family (it is a hard dependency now for the
+# shot maps), so we use those — guaranteed present on any platform, no system
+# packages and no network download required. System paths are kept as a cheap
+# first check in case a faster local copy exists.
 _DEJAVU_NAMES = {
     "regular": "DejaVuSans.ttf",
     "bold":    "DejaVuSans-Bold.ttf",
     "italic":  "DejaVuSans-Oblique.ttf",
 }
 
+_FONT_PATHS = {
+    "regular": [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ],
+    "bold": [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+    ],
+    "italic": [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+        "C:/Windows/Fonts/ariali.ttf",
+    ],
+}
 
-def _download_font(key: str) -> str:
-    import urllib.request
-    os.makedirs(_FONT_CACHE_DIR, exist_ok=True)
-    dest = os.path.join(_FONT_CACHE_DIR, _DEJAVU_NAMES[key])
-    if not os.path.exists(dest):
-        urllib.request.urlretrieve(_DEJAVU_URLS[key], dest)
-    return dest
+
+def _matplotlib_font(key: str) -> str | None:
+    try:
+        import matplotlib
+        path = os.path.join(matplotlib.get_data_path(), "fonts", "ttf", _DEJAVU_NAMES[key])
+        return path if os.path.exists(path) else None
+    except Exception:
+        return None
 
 
 def _find_font(key: str) -> str:
     for path in _FONT_PATHS[key]:
         if os.path.exists(path):
             return path
-    # Search Nix store (path changes per generation)
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["find", "/nix", "-name", _DEJAVU_NAMES[key], "-type", "f"],
-            capture_output=True, text=True, timeout=6,
-        )
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line and os.path.exists(line):
-                return line
-    except Exception:
-        pass
-    # Last resort: download from GitHub (SIL OFL — free to distribute)
-    return _download_font(key)
+    mpl = _matplotlib_font(key)
+    if mpl:
+        return mpl
+    raise FileNotFoundError(f"No DejaVu/Arial font found for '{key}'")
 
 
 # ---------------------------------------------------------------------------
