@@ -763,7 +763,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         warnings.append(f"WARNING: '{req.opponent_team}' not matched in standings")
 
     comp_label = _COMPS.get(comp, _COMPS["serie_a"])["label"]
-    source = f"ESPN {comp_label} ({len(schedule)} fixtures, {len(standings)} teams)"
+    source = f"{comp_label} Dataset ({len(schedule)} fixtures, {len(standings)} teams)"
     if warnings:
         source += " | " + " | ".join(warnings)
 
@@ -1002,7 +1002,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         return []
 
     comp_label = _COMPS.get(comp, _COMPS["serie_a"])["label"]
-    source = f"ESPN {comp_label} ({len(schedule)} fixtures)"
+    source = f"{comp_label} Dataset ({len(schedule)} fixtures)"
     if not row:
         source += f" | WARNING: '{req.team}' not matched in standings"
 
