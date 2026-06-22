@@ -180,6 +180,18 @@ export type MatchPrepReport = {
   set_piece_plan: string[];
   risk_assessment: string;
   raw_stats_used: string;
+  opponent_danger_players?: DangerPlayer[];
+  opponent_alerts?: string[];
+  my_team_alerts?: string[];
+  matchup_insights?: string[];
+  substitution_notes?: string[];
+  opponent_lineup?: string[];
+  images?: {
+    shotmap_for?: string;
+    shotmap_against?: string;
+    timing?: string;
+    formation?: string;
+  };
 };
 
 export type DangerPlayer = {

@@ -34,6 +34,10 @@ const COMP_LABELS: Record<Competition, string> = {
   world_cup: '🌍 World Cup 2026',
 };
 
+// Competitions shown in the toggle. Série A is hidden during World Cup testing —
+// add 'serie_a' back here to re-enable it.
+const ACTIVE_COMPETITIONS: Competition[] = ['world_cup'];
+
 const t = {
   en: {
     tagline: 'Automated Pre-Match Reports for Professional Football Clubs',
@@ -69,6 +73,7 @@ const t = {
     probableLineup: 'Probable XI', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'On target', dangerLabel: 'Danger',
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
+    matchupEdges: 'Matchup Edges', subNotes: 'Substitution Notes',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -104,6 +109,7 @@ const t = {
     probableLineup: 'Onze Provável', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
     shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
+    matchupEdges: 'Confronto Directo', subNotes: 'Notas de Substituição',
   },
 } as const;
 
@@ -180,7 +186,7 @@ export default function FootballAiLabPage() {
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [mode, setMode] = useState<Mode>('match');
   const [lang, setLang] = useState<Lang>('en');
-  const [competition, setCompetition] = useState<Competition>('serie_a');
+  const [competition, setCompetition] = useState<Competition>(ACTIVE_COMPETITIONS[0]);
   const [myTeam, setMyTeam] = useState('');
   const [opponentTeam, setOpponentTeam] = useState('');
   const [scoutTeam, setScoutTeam] = useState('');
@@ -268,22 +274,28 @@ export default function FootballAiLabPage() {
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{T.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Competition toggle */}
-            <div className="flex rounded-md border border-slate-200 bg-white overflow-hidden shadow-sm">
-              {(Object.keys(COMP_LABELS) as Competition[]).map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCompetition(c)}
-                  className={`px-3 py-1.5 text-xs font-semibold transition ${
-                    competition === c
-                      ? 'bg-slate-950 text-white'
-                      : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {COMP_LABELS[c]}
-                </button>
-              ))}
-            </div>
+            {/* Competition toggle — hidden when only one competition is active */}
+            {ACTIVE_COMPETITIONS.length > 1 ? (
+              <div className="flex rounded-md border border-slate-200 bg-white overflow-hidden shadow-sm">
+                {ACTIVE_COMPETITIONS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCompetition(c)}
+                    className={`px-3 py-1.5 text-xs font-semibold transition ${
+                      competition === c
+                        ? 'bg-slate-950 text-white'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {COMP_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+                {COMP_LABELS[ACTIVE_COMPETITIONS[0]]}
+              </span>
+            )}
             {/* Language toggle */}
             <button
               onClick={() => setLang(l => l === 'en' ? 'pt' : 'en')}
@@ -450,6 +462,20 @@ export default function FootballAiLabPage() {
 
                 {/* Match Prep sections */}
                 {matchReport && <>
+                  {/* Matchup edges — the cross-data differentiator */}
+                  {matchReport.matchup_insights && matchReport.matchup_insights.length > 0 && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <h3 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-red-700">
+                        <AlertTriangle className="h-4 w-4" /> {T.matchupEdges}
+                      </h3>
+                      <ul className="space-y-2">
+                        {matchReport.matchup_insights.map((m, i) => (
+                          <li key={i} className="border-l-2 border-red-500 pl-3 text-sm font-medium text-red-900">{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="grid gap-5 lg:grid-cols-2">
                     <SectionCard title={T.oppStrengths} icon={<Zap className="h-4 w-4" />}>
                       <BulletList items={matchReport.opponent_strengths} />
@@ -458,6 +484,50 @@ export default function FootballAiLabPage() {
                       <BulletList items={matchReport.opponent_weaknesses} />
                     </SectionCard>
                   </div>
+
+                  {matchReport.opponent_danger_players && matchReport.opponent_danger_players.length > 0 && (
+                    <SectionCard title={`${T.dangerPlayers} — ${matchReport.opponent_team}`} icon={<Zap className="h-4 w-4" />}>
+                      <div className="overflow-hidden rounded-md border border-slate-200">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">#</th>
+                              <th className="px-3 py-2 text-left font-semibold">{T.dangerLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.goalsLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.assistsLabel}</th>
+                              <th className="px-2 py-2 text-center font-semibold">{T.onTargetLabel}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {matchReport.opponent_danger_players.map((p, i) => (
+                              <tr key={i} className={i === 0 ? 'bg-emerald-50' : 'bg-white'}>
+                                <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                                <td className="px-3 py-2 font-medium text-slate-900">{p.player}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.goals}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.assists}</td>
+                                <td className="px-2 py-2 text-center text-slate-700">{p.on_target}/{p.shots}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </SectionCard>
+                  )}
+
+                  {(matchReport.images?.shotmap_for || matchReport.images?.shotmap_against) && (
+                    <SectionCard title={`${T.shotAnalysis} — ${matchReport.opponent_team}`} icon={<Target className="h-4 w-4" />}>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {matchReport.images?.shotmap_for && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={matchReport.images.shotmap_for} alt="Opponent shots" className="rounded-md" />
+                        )}
+                        {matchReport.images?.shotmap_against && (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={matchReport.images.shotmap_against} alt="Opponent shots conceded" className="rounded-md" />
+                        )}
+                      </div>
+                    </SectionCard>
+                  )}
                   <SectionCard title={T.keyThreats} icon={<Users className="h-4 w-4" />}>
                     <BulletList items={matchReport.key_threats} />
                   </SectionCard>
@@ -480,6 +550,12 @@ export default function FootballAiLabPage() {
                       <p className="text-sm leading-6 text-slate-700">{matchReport.risk_assessment}</p>
                     </SectionCard>
                   </div>
+
+                  {matchReport.substitution_notes && matchReport.substitution_notes.length > 0 && (
+                    <SectionCard title={T.subNotes} icon={<Users className="h-4 w-4" />}>
+                      <BulletList items={matchReport.substitution_notes} />
+                    </SectionCard>
+                  )}
                 </>}
 
                 {/* Scout sections */}

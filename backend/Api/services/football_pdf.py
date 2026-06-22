@@ -361,6 +361,34 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     pdf._section_bar(L["tactical_approach"], color=_BLUE)
     pdf._body(report.get("tactical_approach", "-"))
 
+    # Opponent danger players
+    opp_danger = report.get("opponent_danger_players", [])
+    if opp_danger:
+        pdf.ln(2)
+        pdf._section_bar(L["danger_players"], color=_RED)
+        pdf._danger_table(opp_danger, L)
+
+    # ----- PAGE: Opponent shot maps -----
+    imgs = report.get("images", {})
+    if imgs.get("shotmap_for") or imgs.get("shotmap_against"):
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, f"{L['shot_analysis']}: {opp_team}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_GREEN); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(3)
+        import base64 as _b64mod
+        def _decode(uri):
+            if not uri: return None
+            return _b64mod.b64decode(uri.split(",", 1)[1]) if "," in uri else None
+        sf = _decode(imgs.get("shotmap_for"))
+        sa = _decode(imgs.get("shotmap_against"))
+        if sf:
+            pdf._image(sf, w=110); pdf.ln(1)
+        if sa:
+            pdf._image(sa, w=110)
+
     # ----- PAGE 3: Game Plan -----
     pdf.add_page()
     pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
@@ -381,6 +409,49 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
 
     pdf._section_bar(L["risk"], color=_RED)
     pdf._body(report.get("risk_assessment", "-"))
+
+    subs = report.get("substitution_notes", [])
+    if subs:
+        pdf.ln(2)
+        pdf._section_bar(L["sub_notes"], color=_PURPLE)
+        pdf._bullets(subs)
+
+    # ----- FINAL PAGE: Matchup edges + Key Alerts -----
+    matchups = report.get("matchup_insights", [])
+    opp_alerts = report.get("opponent_alerts", [])
+    my_alerts = report.get("my_team_alerts", [])
+    if matchups or opp_alerts or my_alerts:
+        pdf.add_page()
+        pdf.set_font("U", "B", 13); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.cell(0, 8, L["key_alerts"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_draw_color(*_RED); pdf.set_line_width(0.5)
+        pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
+        pdf.ln(3)
+
+        def _alert_rows(items, color):
+            for a in items:
+                y = pdf.get_y()
+                pdf.set_fill_color(*color)
+                pdf.rect(_MARGIN, y, 2, 11, "F")
+                pdf.set_fill_color(254, 242, 242)
+                pdf.set_xy(_MARGIN + 2, y)
+                pdf.set_font("U", "B", 9.5); pdf.set_text_color(150, 30, 30)
+                pdf.multi_cell(_INNER - 2, 11, f"   {a}", fill=True,
+                               new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.ln(1.5)
+
+        if matchups:
+            pdf._section_bar(L["matchup_edges"], color=_RED)
+            _alert_rows(matchups, _RED)
+            pdf.ln(1)
+        if opp_alerts:
+            pdf._section_bar(f"{opp_team} — {L['key_alerts']}", color=_AMBER)
+            _alert_rows(opp_alerts, _AMBER)
+            pdf.ln(1)
+        if my_alerts:
+            pdf._section_bar(f"{my_team} — {L['key_alerts']}", color=_BLUE)
+            _alert_rows(my_alerts, _BLUE)
 
     pdf._data_footer(source)
 
@@ -645,6 +716,8 @@ def _labels(lang: str) -> dict[str, str]:
             "danger": "Perigo",
             "key_alerts": "Alertas Chave",
             "key_alerts_desc": "Pontos criticos para a equipa tecnica:",
+            "sub_notes": "Notas de Substituicao",
+            "matchup_edges": "Confronto Directo (ataque deles vs defesa nossa)",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -686,4 +759,6 @@ def _labels(lang: str) -> dict[str, str]:
         "danger": "Danger",
         "key_alerts": "Key Alerts",
         "key_alerts_desc": "Critical points for the coaching staff:",
+        "sub_notes": "Substitution Notes",
+        "matchup_edges": "Matchup Edges (their attack vs our defence)",
     }

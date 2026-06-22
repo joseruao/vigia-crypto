@@ -44,6 +44,15 @@ class MatchPrepReport(BaseModel):
     set_piece_plan: list[str]
     risk_assessment: str
     raw_stats_used: str
+    # Deep analytics (optional — older clients ignore)
+    opponent_danger_players: list[dict] = Field(default_factory=list)
+    opponent_alerts: list[str] = Field(default_factory=list)
+    my_team_alerts: list[str] = Field(default_factory=list)
+    matchup_insights: list[str] = Field(default_factory=list)
+    substitution_notes: list[str] = Field(default_factory=list)
+    opponent_lineup: list[str] = Field(default_factory=list)
+    viz_payload: dict = Field(default_factory=dict)
+    images: dict = Field(default_factory=dict)
 
 
 class OpponentScoutReport(BaseModel):
@@ -375,6 +384,94 @@ def fetch_rich_schedule(competition: str = "serie_a") -> list[dict]:
                    lambda: _enrich_matches(base, competition))
 
 
+def compute_team_analytics(team: str, competition: str, recent: list[dict],
+                           lang: str = "en", render_images: bool = True) -> dict:
+    """Shot-level analytics for a single team, reusable by Scout and Match Prep.
+    Returns a dict with danger players, alerts, circumstances, insights text,
+    viz payload, formation and (optionally) base64 chart images. Never raises."""
+    from Api.services.football_providers import get_provider
+    from Api.services import football_insights as fi
+
+    provider = get_provider()
+    deep = recent[-5:]
+    out: dict = {
+        "danger": [], "alerts": [], "circ_for": {}, "circ_against": {},
+        "tend_for": {}, "tend_against": {}, "how_score": [], "how_concede": [],
+        "insights_text": "", "viz_payload": {}, "lineup": [], "formation": {},
+        "images": {}, "has_xg": False,
+    }
+    try:
+        shots = provider.get_shot_events(deep, team)
+        goals = provider.get_goal_events(deep, team)
+        danger = fi.player_danger_scores(shots, goals, top=3)
+        circ_for = fi.goal_circumstances(goals, is_for=True)
+        circ_against = fi.goal_circumstances(goals, is_for=False)
+        set_pieces = fi.set_piece_breakdown(goals)
+        tend_for = fi.shot_tendencies(shots, is_for=True)
+        tend_against = fi.shot_tendencies(shots, is_for=False)
+        alerts = fi.key_alerts(shots, goals, danger, circ_for, tend_against, lang=lang)
+        lineup = provider.get_lineups(deep, team)
+        formation = provider.get_formation(deep, team) if hasattr(provider, "get_formation") else {}
+        insights_text = fi.insights_to_text(
+            danger, circ_for, circ_against, set_pieces, tend_for, tend_against, provider.has_xg)
+        viz_payload = {
+            "shots": shots,
+            "goal_minutes_for": fi.goal_minutes(goals, is_for=True),
+            "goal_minutes_against": fi.goal_minutes(goals, is_for=False),
+            "has_xg": provider.has_xg, "provider": provider.name,
+            "lineup": [n for n, _ in lineup], "formation": formation,
+        }
+        images = {}
+        if render_images:
+            try:
+                from Api.services import football_viz as fv
+                images = fv.render_scout_images(viz_payload, team)
+            except Exception:
+                images = {}
+        out.update({
+            "danger": danger, "alerts": alerts, "circ_for": circ_for,
+            "circ_against": circ_against, "tend_for": tend_for, "tend_against": tend_against,
+            "how_score": [f"{b['type']}: {b['pct']}%" for b in circ_for.get("breakdown", [])],
+            "how_concede": [f"{b['type']}: {b['pct']}%" for b in circ_against.get("breakdown", [])],
+            "insights_text": insights_text, "viz_payload": viz_payload,
+            "lineup": [n for n, _ in lineup], "formation": formation,
+            "images": images, "has_xg": provider.has_xg,
+        })
+    except Exception as exc:
+        out["insights_text"] = f"(Shot-level analytics unavailable: {exc})"
+    return out
+
+
+def matchup_layer(my: dict, opp: dict, lang: str = "en") -> list[str]:
+    """Cross their attacking tendencies with our defensive weaknesses (and vice
+    versa) to surface concrete matchup edges. Pure data, no LLM."""
+    pt = lang == "pt"
+    out: list[str] = []
+    opp_att = opp.get("tend_for", {})
+    my_def = my.get("tend_against", {})
+    if opp_att.get("total", 0) >= 4 and my_def.get("total", 0) >= 4:
+        for side, key in (("centro" if pt else "centre", "central_pct"),
+                          ("esquerda" if pt else "left", "left_pct"),
+                          ("direita" if pt else "right", "right_pct")):
+            oa, md = opp_att.get(key, 0), my_def.get(key, 0)
+            if oa >= 40 and md >= 40:
+                out.append(
+                    f"PERIGO: eles atacam {oa}% pelo {side} e nós concedemos {md}% pelo mesmo lado"
+                    if pt else
+                    f"DANGER: they attack {oa}% via the {side} and we concede {md}% there"
+                )
+    # Set-piece clash
+    opp_sp = opp.get("circ_for", {}).get("set_piece_pct", 0)
+    my_sp_conc = my.get("circ_against", {}).get("set_piece_pct", 0)
+    if opp_sp >= 33 and my_sp_conc >= 33:
+        out.append(
+            f"PERIGO: {opp_sp}% dos golos deles vêm de bolas paradas e nós sofremos {my_sp_conc}% assim"
+            if pt else
+            f"DANGER: {opp_sp}% of their goals come from set pieces and we concede {my_sp_conc}% the same way"
+        )
+    return out
+
+
 # Backwards compat aliases
 def fetch_serie_a_standings() -> list[dict]:
     return fetch_standings("serie_a")
@@ -563,6 +660,23 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
         h2h_str,
     ])
 
+    # ---- Deep analytics for BOTH teams + matchup layer ----
+    opp_an = compute_team_analytics(req.opponent_team, comp, opp_recent, lang=req.language, render_images=True)
+    my_an = compute_team_analytics(req.my_team, comp, my_recent, lang=req.language, render_images=False)
+    matchups = matchup_layer(my_an, opp_an, lang=req.language)
+
+    analytics_block = "\n".join([
+        "=== OPPONENT SHOT-LEVEL ANALYTICS ===",
+        opp_an["insights_text"],
+        "",
+        "=== OUR TEAM SHOT-LEVEL ANALYTICS (self-scout) ===",
+        my_an["insights_text"],
+        "",
+        "=== MATCHUP EDGES (their attack vs our defence) ===",
+        ("\n".join(f"  - {m}" for m in matchups) if matchups else "  (no strong matchup pattern detected)"),
+    ])
+    raw_stats = raw_stats + "\n\n" + analytics_block
+
     extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
     lang = getattr(req, "language", "en")
     lang_instruction = (
@@ -587,27 +701,29 @@ OPPONENT: {req.opponent_team}
 
 {raw_stats}{extra}
 
+VOICE & STYLE — write like an assistant coach, not an AI:
+- Direct, concrete, imperative. Short sentences. BANNED: "exhibits", "showcases", "balanced", "demonstrates", "overall".
+- Every claim cites evidence — a name, %, count or scoreline. No filler.
+
 ANALYSIS INSTRUCTIONS:
-- Work ONLY from the data above. Do not invent stats or players.
-- The match data includes: result, goal scorers with times, possession %, shots on target/total, corners, yellow cards.
-- Use goal scorers to identify key threats by name.
-- Use possession and shots data to infer playing style (high possession = controlled play, low shots = defensive).
-- Use corners data for set piece analysis.
-- Calculate patterns from results: goals scored/conceded per game, winning/losing streaks, form trajectory.
-- Be concrete and coaching-practical — name patterns with evidence (e.g. "conceded in 3 of last 4 matches from set pieces").
-- If match stats are not available for some games, note it and work with what you have.
+- Work ONLY from the data above. Do not invent stats, players, or physical attributes (you do NOT know who is "faster" — never claim it).
+- You have shot-level analytics for BOTH teams plus a MATCHUP EDGES block. Build the game plan around those edges.
+- Name the opponent's dangerous players. Pin our attacking plan to THEIR defensive weakness (use their "how they concede" / shot sides).
+- Pin our defensive plan to THEIR attack (their danger players, shot sides, set-piece %).
+- For substitution_notes: ONLY pattern-based, data-grounded suggestions (e.g. "their #9 fades after 70' — our fresh CBs can step up late"; "we concede late — plan a defensive sub around 70'"). Do NOT invent player attributes. If no data supports a suggestion, return an empty list.
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "3-4 sentences: current form of both teams, what the stats say about this matchup, key tactical context",
+  "executive_summary": "3-4 sentences: form of both teams, what the matchup data says, the key tactical context",
   "opponent_strengths": ["data-backed strength with evidence 1", "strength 2", "strength 3"],
   "opponent_weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
-  "key_threats": ["named player or pattern to neutralise, with evidence 1", "threat 2"],
-  "tactical_approach": "2-3 sentences: concrete game plan based on the data — how to set up, what to exploit",
+  "key_threats": ["named opponent player or pattern to neutralise, with evidence 1", "threat 2"],
+  "tactical_approach": "2-3 sentences: concrete game plan built on the matchup edges",
   "pressing_triggers": ["specific moment/situation to press 1", "trigger 2"],
-  "attacking_approach": ["specific attacking instruction based on opponent weakness 1", "instruction 2", "instruction 3"],
-  "set_piece_plan": ["set piece insight from corners/free kicks data 1", "consideration 2"],
-  "risk_assessment": "main risks in this specific matchup and how to mitigate them"
+  "attacking_approach": ["instruction tied to THEIR defensive weakness 1", "instruction 2", "instruction 3"],
+  "set_piece_plan": ["set piece insight from the data 1", "consideration 2"],
+  "risk_assessment": "main risks in this matchup and how to mitigate them",
+  "substitution_notes": ["pattern-based substitution/rotation suggestion 1", "..."]
 }}"""
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -643,6 +759,9 @@ Return EXACTLY this JSON (no extra keys, no markdown):
     if warnings:
         source += " | " + " | ".join(warnings)
 
+    # Opponent dossier images + my-team shot maps for the matchup view
+    images = dict(opp_an.get("images", {}))
+    # Prefix opponent images so they don't clash, keep simple keys the PDF/web expect
     return MatchPrepReport(
         my_team=req.my_team,
         opponent_team=req.opponent_team,
@@ -657,6 +776,14 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         set_piece_plan=to_list(raw.get("set_piece_plan")),
         risk_assessment=str(raw.get("risk_assessment", "")).strip(),
         raw_stats_used=raw_stats,
+        opponent_danger_players=opp_an.get("danger", []),
+        opponent_alerts=opp_an.get("alerts", []),
+        my_team_alerts=my_an.get("alerts", []),
+        matchup_insights=matchups,
+        substitution_notes=to_list(raw.get("substitution_notes")),
+        opponent_lineup=opp_an.get("lineup", []),
+        viz_payload=opp_an.get("viz_payload", {}),
+        images=images,
     )
 
 
