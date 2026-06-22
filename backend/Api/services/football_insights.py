@@ -164,6 +164,22 @@ def goal_minutes(goals: list[dict], is_for: bool = True) -> list[int]:
             if g.get("is_for") == is_for and g.get("minute_num")]
 
 
+def goal_log(goals: list[dict], is_for: bool = True) -> list[str]:
+    """Chronological list of 'Scorer MIN'' strings (e.g. 'Gakpo 47'')."""
+    rel = [g for g in goals if g.get("is_for") == is_for]
+    rel.sort(key=lambda g: g.get("minute_num", 0))
+    out = []
+    for g in rel:
+        scorer = g.get("scorer") or "?"
+        # surname only to keep it compact
+        scorer = scorer.split()[-1] if scorer != "?" else scorer
+        minute = g.get("minute", "")
+        if minute and not minute.endswith("'"):
+            minute += "'"
+        out.append(f"{scorer} {minute}".strip())
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Shot side / zone tendencies
 # ---------------------------------------------------------------------------

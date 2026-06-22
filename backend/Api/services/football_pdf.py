@@ -399,6 +399,15 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
         pdf._section_bar(L["danger_players"], color=_RED)
         pdf._danger_table(opp_danger, L)
 
+    # Opponent goal log (scorers + minutes)
+    opp_glog = report.get("opponent_goals_log", [])
+    if opp_glog:
+        pdf.ln(1)
+        pdf._section_bar(L["goal_log"], color=_DARK)
+        pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+        pdf.set_x(_MARGIN)
+        pdf.multi_cell(_INNER, 5.5, "  ·  ".join(opp_glog), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
     # ----- PAGE: Opponent shot maps -----
     imgs = report.get("images", {})
     if imgs.get("shotmap_for") or imgs.get("shotmap_against"):
@@ -643,6 +652,29 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
             pdf._bullets(how_concede)
             pdf.ln(1)
 
+        # Goal log — scorers with minutes
+        glog_for = report.get("goals_log_for", [])
+        glog_against = report.get("goals_log_against", [])
+        if glog_for or glog_against:
+            pdf._section_bar(L["goal_log"], color=_DARK)
+            pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+            if glog_for:
+                pdf.set_x(_MARGIN)
+                pdf.set_font("U", "B", 8); pdf.set_text_color(*_GRAY)
+                pdf.cell(0, 5, L["goals_scored"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+                pdf.set_x(_MARGIN)
+                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_for), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if glog_against:
+                pdf.ln(1)
+                pdf.set_x(_MARGIN)
+                pdf.set_font("U", "B", 8); pdf.set_text_color(*_GRAY)
+                pdf.cell(0, 5, L["goals_conceded"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
+                pdf.set_x(_MARGIN)
+                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_against), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(2)
+
         if timing_png:
             pdf._image(timing_png, w=150)
 
@@ -759,6 +791,9 @@ def _labels(lang: str) -> dict[str, str]:
             "matchup_edges": "Confronto Directo (ataque deles vs defesa nossa)",
             "priority_alerts": "Alertas Prioritarios",
             "main_danger": "Jogador mais perigoso",
+            "goal_log": "Golos (marcadores e minutos)",
+            "goals_scored": "Marcados",
+            "goals_conceded": "Sofridos",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -804,4 +839,7 @@ def _labels(lang: str) -> dict[str, str]:
         "matchup_edges": "Matchup Edges (their attack vs our defence)",
         "priority_alerts": "Priority Alerts",
         "main_danger": "Main danger player",
+        "goal_log": "Goals (scorers & minutes)",
+        "goals_scored": "Scored",
+        "goals_conceded": "Conceded",
     }

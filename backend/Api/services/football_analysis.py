@@ -47,6 +47,7 @@ class MatchPrepReport(BaseModel):
     # Deep analytics (optional — older clients ignore)
     opponent_danger_players: list[dict] = Field(default_factory=list)
     opponent_alerts: list[str] = Field(default_factory=list)
+    opponent_goals_log: list[str] = Field(default_factory=list)
     my_team_alerts: list[str] = Field(default_factory=list)
     matchup_insights: list[str] = Field(default_factory=list)
     substitution_notes: list[str] = Field(default_factory=list)
@@ -73,6 +74,8 @@ class OpponentScoutReport(BaseModel):
     key_alerts: list[str] = Field(default_factory=list)
     how_they_score: list[str] = Field(default_factory=list)
     how_they_concede: list[str] = Field(default_factory=list)
+    goals_log_for: list[str] = Field(default_factory=list)
+    goals_log_against: list[str] = Field(default_factory=list)
     probable_lineup: list[str] = Field(default_factory=list)
     has_xg: bool = False
     # Raw viz payload for PDF chart rendering (frontend ignores it)
@@ -433,6 +436,8 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
             "circ_against": circ_against, "tend_for": tend_for, "tend_against": tend_against,
             "how_score": fi.fmt_circumstance(circ_for),
             "how_concede": fi.fmt_circumstance(circ_against),
+            "goals_log_for": fi.goal_log(goals, is_for=True),
+            "goals_log_against": fi.goal_log(goals, is_for=False),
             "insights_text": insights_text, "viz_payload": viz_payload,
             "lineup": [n for n, _ in lineup], "formation": formation,
             "images": images, "has_xg": provider.has_xg,
@@ -786,6 +791,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         raw_stats_used=raw_stats,
         opponent_danger_players=opp_an.get("danger", []),
         opponent_alerts=opp_an.get("alerts", []),
+        opponent_goals_log=opp_an.get("goals_log_for", []),
         my_team_alerts=my_an.get("alerts", []),
         matchup_insights=matchups,
         substitution_notes=to_list(raw.get("substitution_notes")),
@@ -877,11 +883,15 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     insights_text = ""
     danger = []
     alerts: list[str] = []
+    goals_log_for: list[str] = []
+    goals_log_against: list[str] = []
     circ_for = circ_against = {}
     viz_payload: dict = {}
     try:
         shots = provider.get_shot_events(deep_matches, req.team)
         goals = provider.get_goal_events(deep_matches, req.team)
+        goals_log_for = fi.goal_log(goals, is_for=True)
+        goals_log_against = fi.goal_log(goals, is_for=False)
         danger = fi.player_danger_scores(shots, goals, top=3)
         circ_for = fi.goal_circumstances(goals, is_for=True)
         circ_against = fi.goal_circumstances(goals, is_for=False)
@@ -1034,6 +1044,8 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         raw_stats_used=raw_stats,
         top_danger_players=danger,
         key_alerts=alerts,
+        goals_log_for=goals_log_for,
+        goals_log_against=goals_log_against,
         how_they_score=how_score,
         how_they_concede=how_concede,
         probable_lineup=viz_payload.get("lineup", []),

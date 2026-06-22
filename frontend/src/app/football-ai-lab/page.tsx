@@ -74,6 +74,7 @@ const t = {
     onTargetLabel: 'On target', dangerLabel: 'Danger',
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
     matchupEdges: 'Matchup Edges', subNotes: 'Match Management',
+    goalLog: 'Goals (scorers & minutes)', goalsScored: 'Scored', goalsConceded: 'Conceded',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -110,6 +111,7 @@ const t = {
     onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
     shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
     matchupEdges: 'Confronto Directo', subNotes: 'Gestão de Jogo',
+    goalLog: 'Golos (marcadores e minutos)', goalsScored: 'Marcados', goalsConceded: 'Sofridos',
   },
 } as const;
 
@@ -514,6 +516,12 @@ export default function FootballAiLabPage() {
                     </SectionCard>
                   )}
 
+                  {matchReport.opponent_goals_log && matchReport.opponent_goals_log.length > 0 && (
+                    <SectionCard title={`${T.goalLog} — ${matchReport.opponent_team}`} icon={<Trophy className="h-4 w-4" />}>
+                      <p className="text-sm text-slate-700">{matchReport.opponent_goals_log.join('  ·  ')}</p>
+                    </SectionCard>
+                  )}
+
                   {(matchReport.images?.shotmap_for || matchReport.images?.shotmap_against) && (
                     <SectionCard title={`${T.shotAnalysis} — ${matchReport.opponent_team}`} icon={<Target className="h-4 w-4" />}>
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -598,6 +606,23 @@ export default function FootballAiLabPage() {
                   {scoutReport.how_they_score && scoutReport.how_they_score.length > 0 && (
                     <SectionCard title={T.howTheyScore} icon={<Target className="h-4 w-4" />}>
                       <BulletList items={scoutReport.how_they_score} />
+                    </SectionCard>
+                  )}
+
+                  {((scoutReport.goals_log_for?.length ?? 0) > 0 || (scoutReport.goals_log_against?.length ?? 0) > 0) && (
+                    <SectionCard title={T.goalLog} icon={<Trophy className="h-4 w-4" />}>
+                      {scoutReport.goals_log_for && scoutReport.goals_log_for.length > 0 && (
+                        <p className="text-sm text-slate-700">
+                          <span className="font-semibold text-emerald-700">{T.goalsScored}: </span>
+                          {scoutReport.goals_log_for.join('  ·  ')}
+                        </p>
+                      )}
+                      {scoutReport.goals_log_against && scoutReport.goals_log_against.length > 0 && (
+                        <p className="mt-1.5 text-sm text-slate-700">
+                          <span className="font-semibold text-red-700">{T.goalsConceded}: </span>
+                          {scoutReport.goals_log_against.join('  ·  ')}
+                        </p>
+                      )}
                     </SectionCard>
                   )}
 

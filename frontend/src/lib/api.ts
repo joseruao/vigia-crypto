@@ -182,6 +182,7 @@ export type MatchPrepReport = {
   raw_stats_used: string;
   opponent_danger_players?: DangerPlayer[];
   opponent_alerts?: string[];
+  opponent_goals_log?: string[];
   my_team_alerts?: string[];
   matchup_insights?: string[];
   substitution_notes?: string[];
@@ -219,6 +220,8 @@ export type OpponentScoutReport = {
   raw_stats_used: string;
   top_danger_players?: DangerPlayer[];
   key_alerts?: string[];
+  goals_log_for?: string[];
+  goals_log_against?: string[];
   how_they_score?: string[];
   how_they_concede?: string[];
   probable_lineup?: string[];
