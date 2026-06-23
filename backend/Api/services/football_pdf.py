@@ -273,6 +273,42 @@ class _ScoutPDF(FPDF):
             self.set_text_color(*_DARK)
         self.ln(2)
 
+    def _rank_cards(self, ranks: list[dict]) -> None:
+        """Three competition-rank cards in a row (green=strength, red=weakness)."""
+        if not ranks:
+            return
+        n = min(len(ranks), 3)
+        gap = 4.0
+        w = (_INNER - gap * (n - 1)) / n
+        h = 24.0
+        y0 = self.get_y()
+        for i, r in enumerate(ranks[:n]):
+            x = _MARGIN + i * (w + gap)
+            if r.get("good"):
+                fill, txt, border = _GREEN_LT, _GREEN, _GREEN
+            elif r.get("bad"):
+                fill, txt, border = (254, 242, 242), _RED, _RED
+            else:
+                fill, txt, border = _GRAY_LT, _DARK, _GRAY
+            self.set_fill_color(*fill)
+            self.set_draw_color(*border)
+            self.set_line_width(0.3)
+            self.rect(x, y0, w, h, "DF")
+            self.set_xy(x, y0 + 2.5)
+            self.set_font("U", "B", 16); self.set_text_color(*txt)
+            self.cell(w, 7, f"#{r.get('rank','')}", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_x(x)
+            self.set_font("U", "", 6.5); self.set_text_color(*_GRAY)
+            self.cell(w, 3.5, f"/ {r.get('total','')}", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_x(x)
+            self.set_font("U", "B", 8); self.set_text_color(*_DARK)
+            self.cell(w, 4.5, str(r.get("label", "")), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_x(x)
+            self.set_font("U", "", 7); self.set_text_color(*_GRAY)
+            self.cell(w, 4, f"{r.get('value','')}/game", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_y(y0 + h + 3)
+        self.set_text_color(0, 0, 0)
+
     def _priority_box(self, title: str, alerts: list[str]) -> None:
         """Compact red-flag box for the top of page 1 — a 10-second read."""
         if not alerts:
@@ -380,6 +416,13 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     pdf.set_draw_color(*_GREEN); pdf.set_line_width(0.5)
     pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
     pdf.ln(4)
+
+    # Opponent competition rankings
+    opp_ranks = report.get("opponent_ranks", [])
+    if opp_ranks:
+        pdf._section_bar(L["competition_context"], color=_DARK)
+        pdf._rank_cards(opp_ranks)
+        pdf.ln(1)
 
     # Head-to-head comparison chart (per-game, both teams)
     comp_uri = report.get("images", {}).get("comparison")
@@ -575,6 +618,12 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     pdf._section_bar(L["playing_style"], color=_PURPLE)
     pdf._body(report.get("playing_style", "-"))
     pdf.ln(1)
+
+    ranks = report.get("competition_ranks", [])
+    if ranks:
+        pdf._section_bar(L["competition_context"], color=_DARK)
+        pdf._rank_cards(ranks)
+        pdf.ln(1)
 
     lineup = report.get("probable_lineup", [])
     if lineup and not formation_png:
@@ -871,6 +920,7 @@ def _labels(lang: str) -> dict[str, str]:
             "goals_conceded": "Sofridos",
             "formation": "FORMACAO",
             "head_to_head": "Comparacao Directa (por jogo)",
+            "competition_context": "Contexto na Competicao",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -921,4 +971,5 @@ def _labels(lang: str) -> dict[str, str]:
         "goals_conceded": "Conceded",
         "formation": "FORMATION",
         "head_to_head": "Head-to-Head (per game)",
+        "competition_context": "Competition Context",
     }

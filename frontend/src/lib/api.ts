@@ -188,6 +188,7 @@ export type MatchPrepReport = {
   substitution_notes?: string[];
   opponent_lineup?: string[];
   opponent_tactical_evolution?: TacticalEvolution;
+  opponent_ranks?: CompetitionRank[];
   comparison?: ComparisonMetric[];
   images?: {
     shotmap_for?: string;
@@ -196,6 +197,17 @@ export type MatchPrepReport = {
     formation?: string;
     comparison?: string;
   };
+};
+
+export type CompetitionRank = {
+  metric: string;
+  label: string;
+  value: string;
+  rank: number;
+  total: number;
+  good: boolean;
+  bad: boolean;
+  text: string;
 };
 
 export type ComparisonMetric = {
@@ -256,6 +268,7 @@ export type OpponentScoutReport = {
   probable_lineup?: string[];
   has_xg?: boolean;
   tactical_evolution?: TacticalEvolution;
+  competition_ranks?: CompetitionRank[];
   viz_payload?: Record<string, unknown>;
   images?: {
     shotmap_for?: string;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   ComparisonMetric,
+  CompetitionRank,
   MatchPrepReport,
   OpponentScoutReport,
   TacticalEvolution,
@@ -79,6 +80,7 @@ const t = {
     goalLog: 'Goals (scorers & minutes)', goalsScored: 'Scored', goalsConceded: 'Conceded',
     tacticalEvolution: 'Tactical Evolution', unchanged: 'Unchanged', formation: 'Formation',
     headToHead: 'Head-to-Head Comparison',
+    competitionContext: 'Competition Context',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -118,6 +120,7 @@ const t = {
     goalLog: 'Golos (marcadores e minutos)', goalsScored: 'Marcados', goalsConceded: 'Sofridos',
     tacticalEvolution: 'Evolução Táctica', unchanged: 'Inalterado', formation: 'Formação',
     headToHead: 'Comparação Directa',
+    competitionContext: 'Contexto na Competição',
   },
 } as const;
 
@@ -178,6 +181,31 @@ function TeamSelect({ label, value, onChange, teams, placeholder, competition }:
         <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
       </div>
     </label>
+  );
+}
+
+function RankingsSection({ ranks, title, lang }: {
+  ranks: CompetitionRank[]; title: string; lang: Lang;
+}) {
+  const T = t[lang];
+  if (!ranks.length) return null;
+  const tone = (r: CompetitionRank) =>
+    r.good ? 'border-emerald-300 bg-emerald-50 text-emerald-800' :
+    r.bad ? 'border-red-300 bg-red-50 text-red-800' :
+    'border-slate-200 bg-slate-50 text-slate-700';
+  return (
+    <SectionCard title={title || T.competitionContext} icon={<Trophy className="h-4 w-4" />}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {ranks.map((r, i) => (
+          <div key={i} className={`rounded-lg border px-3 py-3 text-center ${tone(r)}`}>
+            <p className="text-2xl font-bold leading-none">#{r.rank}</p>
+            <p className="mt-1 text-xs font-medium opacity-70">/ {r.total}</p>
+            <p className="mt-1.5 text-sm font-semibold">{r.label}</p>
+            <p className="text-xs opacity-80">{r.value} / {lang === 'pt' ? 'jogo' : 'game'}</p>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -589,6 +617,14 @@ export default function FootballAiLabPage() {
                     </div>
                   )}
 
+                  {matchReport.opponent_ranks && matchReport.opponent_ranks.length > 0 && (
+                    <RankingsSection
+                      ranks={matchReport.opponent_ranks}
+                      title={`${T.competitionContext} — ${matchReport.opponent_team}`}
+                      lang={reportLang ?? lang}
+                    />
+                  )}
+
                   {matchReport.comparison && matchReport.comparison.length > 0 && (
                     <ComparisonSection
                       metrics={matchReport.comparison}
@@ -692,6 +728,10 @@ export default function FootballAiLabPage() {
 
                 {/* Scout sections */}
                 {scoutReport && <>
+                  {scoutReport.competition_ranks && scoutReport.competition_ranks.length > 0 && (
+                    <RankingsSection ranks={scoutReport.competition_ranks} title={T.competitionContext} lang={reportLang ?? lang} />
+                  )}
+
                   <SectionCard title={T.playingStyle} icon={<ClipboardList className="h-4 w-4" />}>
                     <p className="text-sm leading-6 text-slate-700">{scoutReport.playing_style}</p>
                   </SectionCard>

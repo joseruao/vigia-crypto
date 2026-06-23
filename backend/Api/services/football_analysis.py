@@ -53,6 +53,7 @@ class MatchPrepReport(BaseModel):
     substitution_notes: list[str] = Field(default_factory=list)
     opponent_lineup: list[str] = Field(default_factory=list)
     opponent_tactical_evolution: dict = Field(default_factory=dict)
+    opponent_ranks: list[dict] = Field(default_factory=list)
     comparison: list[dict] = Field(default_factory=list)
     viz_payload: dict = Field(default_factory=dict)
     images: dict = Field(default_factory=dict)
@@ -81,6 +82,7 @@ class OpponentScoutReport(BaseModel):
     probable_lineup: list[str] = Field(default_factory=list)
     has_xg: bool = False
     tactical_evolution: dict = Field(default_factory=dict)
+    competition_ranks: list[dict] = Field(default_factory=list)
     # Raw viz payload for PDF chart rendering (frontend ignores it)
     viz_payload: dict = Field(default_factory=dict)
     # Base64 chart images for inline web display
@@ -454,6 +456,84 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
     return out
 
 
+def _ordinal(n: int, lang: str = "en") -> str:
+    if lang == "pt":
+        return f"{n}º"
+    if 10 <= (n % 100) <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def team_rankings(team: str, standings: list[dict], lang: str = "en") -> list[dict]:
+    """Rank a team against every team in the competition, per game (fair when
+    match counts differ). Returns a list of
+    {metric, label, value, rank, total, good, bad, text}. Empty if not enough
+    teams or the team is not found. Pure data — the single biggest credibility
+    win: turns a loose number into 'worst defence in the competition'."""
+    rows = [r for r in standings if r.get("mp", 0) >= 1]
+    if len(rows) < 4:
+        return []
+    me = next((r for r in rows if _teams_match(team, r["team"])), None)
+    if not me:
+        return []
+    pt = lang == "pt"
+    total = len(rows)
+
+    def pg(r: dict, key: str) -> float:
+        return r.get(key, 0) / max(r.get("mp", 0), 1)
+
+    # (metric, stat key, higher_is_better, phrase)
+    specs = [
+        ("attack",  "gf",  True,  "melhor ataque" if pt else "best attack"),
+        ("defence", "ga",  False, "melhor defesa" if pt else "best defence"),
+        ("points",  "pts", True,  "em pontos/jogo" if pt else "on points/game"),
+    ]
+    labels = {
+        "attack":  "Ataque" if pt else "Attack",
+        "defence": "Defesa" if pt else "Defence",
+        "points":  "Pontos/jogo" if pt else "Points/game",
+    }
+    out: list[dict] = []
+    for metric, key, higher, phrase in specs:
+        myval = pg(me, key)
+        if higher:
+            rank = 1 + sum(1 for r in rows if pg(r, key) > myval)
+        else:
+            rank = 1 + sum(1 for r in rows if pg(r, key) < myval)
+        good = rank <= total / 3
+        bad = rank > 2 * total / 3
+        of = "de" if pt else "of"
+        out.append({
+            "metric": metric,
+            "label": labels[metric],
+            "value": f"{round(myval, 2):g}",
+            "rank": rank,
+            "total": total,
+            "good": good,
+            "bad": bad,
+            "text": f"{_ordinal(rank, lang)} {phrase} ({of} {total})",
+        })
+    return out
+
+
+def _rankings_text(ranks: list[dict], team: str, lang: str = "en") -> str:
+    """Compact block for the LLM prompt so the narrative can cite standing."""
+    if not ranks:
+        return ""
+    pt = lang == "pt"
+    head = (f"RANKINGS NA COMPETIÇÃO ({team}, vs todas as {ranks[0]['total']} equipas):"
+            if pt else
+            f"COMPETITION RANKINGS ({team}, vs all {ranks[0]['total']} teams):")
+    lines = [head]
+    for r in ranks:
+        flag = ("  <- ponto fraco" if pt else "  <- weakness") if r["bad"] else (
+               ("  <- ponto forte" if pt else "  <- strength") if r["good"] else "")
+        lines.append(f"  - {r['label']}: {r['value']}/game — {r['text']}{flag}")
+    return "\n".join(lines)
+
+
 def team_comparison(my_name: str, opp_name: str, my_row: dict | None, opp_row: dict | None,
                     my_an: dict, opp_an: dict, my_matches: list[dict], opp_matches: list[dict],
                     lang: str = "en") -> list[dict]:
@@ -702,10 +782,20 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
         or "  no previous meetings this season"
     )
 
+    # Competition rankings for both teams (per game, vs all teams)
+    my_ranks = team_rankings(req.my_team, standings, lang=req.language)
+    opp_ranks = team_rankings(req.opponent_team, standings, lang=req.language)
+    my_ranks_block = _rankings_text(my_ranks, req.my_team, lang=req.language)
+    opp_ranks_block = _rankings_text(opp_ranks, req.opponent_team, lang=req.language)
+
     comp_label = _COMPS[comp]["label"]
     raw_stats = "\n".join([
         f"MY TEAM [{my_form}]:  {my_stats_str}",
         f"OPPONENT [{opp_form}]: {opp_stats_str}",
+        "",
+        my_ranks_block,
+        "",
+        opp_ranks_block,
         "",
         f"MY TEAM — LAST {len(my_recent)} MATCHES (with match stats where available):",
         my_recent_str,
@@ -863,6 +953,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         substitution_notes=to_list(raw.get("substitution_notes")),
         opponent_lineup=opp_an.get("lineup", []),
         opponent_tactical_evolution=opp_an.get("tactical_evolution", {}),
+        opponent_ranks=opp_ranks,
         comparison=comparison,
         viz_payload=opp_an.get("viz_payload", {}),
         images=images,
@@ -995,12 +1086,18 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
 
+    # Competition rankings — turns loose numbers into standing ("worst defence")
+    ranks = team_rankings(req.team, standings, lang=req.language)
+    ranks_block = _rankings_text(ranks, req.team, lang=req.language)
+
     comp_label = _COMPS[comp]["label"]
     raw_stats = "\n".join([
         f"TEAM: {stats_str}",
         f"FORM (last {len(recent)}): {form}",
         f"LOCATION SPLIT: {location_breakdown}",
         f"AGGREGATED MATCH STATS: {agg_stats_str}",
+        "",
+        ranks_block,
         "",
         "=== SHOT-LEVEL ANALYTICS (last 5 matches) ===",
         insights_text,
@@ -1123,6 +1220,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         probable_lineup=viz_payload.get("lineup", []),
         has_xg=bool(viz_payload.get("has_xg", False)),
         tactical_evolution=tact_evo,
+        competition_ranks=ranks,
         viz_payload=viz_payload,
         images=images,
     )
