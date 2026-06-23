@@ -381,6 +381,18 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     pdf.line(_MARGIN, pdf.get_y(), _PAGE_W - _MARGIN, pdf.get_y())
     pdf.ln(4)
 
+    # Head-to-head comparison chart (per-game, both teams)
+    comp_uri = report.get("images", {}).get("comparison")
+    if comp_uri and "," in comp_uri:
+        import base64 as _b64c
+        try:
+            comp_png = _b64c.b64decode(comp_uri.split(",", 1)[1])
+            pdf._section_bar(L["head_to_head"], color=_DARK)
+            pdf._image(comp_png, w=150)
+            pdf.ln(3)
+        except Exception:
+            pass
+
     pdf._two_col(L["strengths"], report.get("opponent_strengths", []),
                  L["weaknesses"], report.get("opponent_weaknesses", []))
     pdf.ln(3)
@@ -858,6 +870,7 @@ def _labels(lang: str) -> dict[str, str]:
             "goals_scored": "Marcados",
             "goals_conceded": "Sofridos",
             "formation": "FORMACAO",
+            "head_to_head": "Comparacao Directa (por jogo)",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -907,4 +920,5 @@ def _labels(lang: str) -> dict[str, str]:
         "goals_scored": "Scored",
         "goals_conceded": "Conceded",
         "formation": "FORMATION",
+        "head_to_head": "Head-to-Head (per game)",
     }

@@ -188,12 +188,22 @@ export type MatchPrepReport = {
   substitution_notes?: string[];
   opponent_lineup?: string[];
   opponent_tactical_evolution?: TacticalEvolution;
+  comparison?: ComparisonMetric[];
   images?: {
     shotmap_for?: string;
     shotmap_against?: string;
     timing?: string;
     formation?: string;
+    comparison?: string;
   };
+};
+
+export type ComparisonMetric = {
+  label: string;
+  my: number;
+  opp: number;
+  my_disp: string;
+  opp_disp: string;
 };
 
 export type TacticalEvolutionMatch = {

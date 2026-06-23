@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  ComparisonMetric,
   MatchPrepReport,
   OpponentScoutReport,
   TacticalEvolution,
@@ -77,6 +78,7 @@ const t = {
     matchupEdges: 'Matchup Edges', subNotes: 'Match Management',
     goalLog: 'Goals (scorers & minutes)', goalsScored: 'Scored', goalsConceded: 'Conceded',
     tacticalEvolution: 'Tactical Evolution', unchanged: 'Unchanged', formation: 'Formation',
+    headToHead: 'Head-to-Head Comparison',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -115,6 +117,7 @@ const t = {
     matchupEdges: 'Confronto Directo', subNotes: 'Gestão de Jogo',
     goalLog: 'Golos (marcadores e minutos)', goalsScored: 'Marcados', goalsConceded: 'Sofridos',
     tacticalEvolution: 'Evolução Táctica', unchanged: 'Inalterado', formation: 'Formação',
+    headToHead: 'Comparação Directa',
   },
 } as const;
 
@@ -175,6 +178,44 @@ function TeamSelect({ label, value, onChange, teams, placeholder, competition }:
         <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
       </div>
     </label>
+  );
+}
+
+function ComparisonSection({ metrics, myName, oppName, lang }: {
+  metrics: ComparisonMetric[]; myName: string; oppName: string; lang: Lang;
+}) {
+  const T = t[lang];
+  if (!metrics.length) return null;
+  return (
+    <SectionCard title={T.headToHead} icon={<Target className="h-4 w-4" />}>
+      <div className="mb-3 flex items-center justify-between text-sm font-bold">
+        <span className="text-emerald-700">{myName}</span>
+        <span className="text-red-600">{oppName}</span>
+      </div>
+      <div className="space-y-3">
+        {metrics.map((m, i) => {
+          const max = Math.max(m.my, m.opp, 0.0001);
+          const myPct = (m.my / max) * 100;
+          const oppPct = (m.opp / max) * 100;
+          return (
+            <div key={i}>
+              <p className="mb-1 text-center text-xs font-medium text-slate-400">{m.label}</p>
+              <div className="flex items-center gap-2">
+                <span className="w-10 shrink-0 text-right text-xs font-bold text-emerald-700">{m.my_disp}</span>
+                <div className="flex flex-1 items-center justify-end">
+                  <div className="h-3 rounded-l bg-emerald-600" style={{ width: `${myPct}%` }} />
+                </div>
+                <div className="h-3 w-px shrink-0 bg-slate-300" />
+                <div className="flex flex-1 items-center justify-start">
+                  <div className="h-3 rounded-r bg-red-500" style={{ width: `${oppPct}%` }} />
+                </div>
+                <span className="w-10 shrink-0 text-left text-xs font-bold text-red-600">{m.opp_disp}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -546,6 +587,15 @@ export default function FootballAiLabPage() {
                         ))}
                       </ul>
                     </div>
+                  )}
+
+                  {matchReport.comparison && matchReport.comparison.length > 0 && (
+                    <ComparisonSection
+                      metrics={matchReport.comparison}
+                      myName={matchReport.my_team}
+                      oppName={matchReport.opponent_team}
+                      lang={reportLang ?? lang}
+                    />
                   )}
 
                   <div className="grid gap-5 lg:grid-cols-2">

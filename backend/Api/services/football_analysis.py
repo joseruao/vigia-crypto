@@ -53,6 +53,7 @@ class MatchPrepReport(BaseModel):
     substitution_notes: list[str] = Field(default_factory=list)
     opponent_lineup: list[str] = Field(default_factory=list)
     opponent_tactical_evolution: dict = Field(default_factory=dict)
+    comparison: list[dict] = Field(default_factory=list)
     viz_payload: dict = Field(default_factory=dict)
     images: dict = Field(default_factory=dict)
 
@@ -439,8 +440,8 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         out.update({
             "danger": danger, "alerts": alerts, "circ_for": circ_for,
             "circ_against": circ_against, "tend_for": tend_for, "tend_against": tend_against,
-            "how_score": fi.fmt_circumstance(circ_for),
-            "how_concede": fi.fmt_circumstance(circ_against),
+            "how_score": fi.fmt_circumstance(circ_for, lang=lang, matches_analysed=len(deep)),
+            "how_concede": fi.fmt_circumstance(circ_against, lang=lang, matches_analysed=len(deep)),
             "goals_log_for": fi.goal_log(goals, is_for=True),
             "goals_log_against": fi.goal_log(goals, is_for=False),
             "insights_text": insights_text, "viz_payload": viz_payload,
@@ -451,6 +452,47 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
     except Exception as exc:
         out["insights_text"] = f"(Shot-level analytics unavailable: {exc})"
     return out
+
+
+def team_comparison(my_name: str, opp_name: str, my_row: dict | None, opp_row: dict | None,
+                    my_an: dict, opp_an: dict, my_matches: list[dict], opp_matches: list[dict],
+                    lang: str = "en") -> list[dict]:
+    """Per-game, side-by-side metrics for a head-to-head comparison chart.
+    Normalised per game so teams with different match counts compare fairly.
+    Returns a list of {label, my, opp, my_disp, opp_disp}. Empty if no standings."""
+    if not my_row or not opp_row:
+        return []
+    pt = lang == "pt"
+    L = {
+        "pts": "Pontos / jogo" if pt else "Points / game",
+        "gf": "Golos marcados / jogo" if pt else "Goals scored / game",
+        "ga": "Golos sofridos / jogo" if pt else "Goals conceded / game",
+        "shots": "Remates / jogo" if pt else "Shots / game",
+        "sot": "Remates ao alvo / jogo" if pt else "Shots on target / game",
+    }
+
+    def per_game(row: dict, key: str) -> float:
+        mp = max(row.get("mp", 0), 1)
+        return round(row.get(key, 0) / mp, 2)
+
+    metrics: list[dict] = []
+    for key, mkey in (("pts", "pts"), ("gf", "gf"), ("ga", "ga")):
+        mv, ov = per_game(my_row, mkey), per_game(opp_row, mkey)
+        metrics.append({"label": L[key], "my": mv, "opp": ov,
+                        "my_disp": f"{mv:g}", "opp_disp": f"{ov:g}"})
+
+    # Shot volume from last-5 analytics (graceful: only added if present)
+    def shots_pg(an: dict, n: int) -> float:
+        total = an.get("tend_for", {}).get("total", 0)
+        return round(total / max(n, 1), 1)
+
+    my_n, opp_n = len(my_matches[-5:]), len(opp_matches[-5:])
+    my_sh, opp_sh = shots_pg(my_an, my_n), shots_pg(opp_an, opp_n)
+    if my_sh or opp_sh:
+        metrics.append({"label": L["shots"], "my": my_sh, "opp": opp_sh,
+                        "my_disp": f"{my_sh:g}", "opp_disp": f"{opp_sh:g}"})
+
+    return metrics
 
 
 def matchup_layer(my: dict, opp: dict, lang: str = "en") -> list[str]:
@@ -780,6 +822,24 @@ Return EXACTLY this JSON (no extra keys, no markdown):
 
     # Opponent dossier images + my-team shot maps for the matchup view
     images = dict(opp_an.get("images", {}))
+
+    # Head-to-head comparison (data for web bars + rendered chart for PDF)
+    comparison = team_comparison(
+        req.my_team, req.opponent_team, my_row, opp_row,
+        my_an, opp_an, my_recent, opp_recent, lang=req.language,
+    )
+    if comparison:
+        try:
+            from Api.services import football_viz as fv
+            comp_title = ("Comparação directa (por jogo)" if req.language == "pt"
+                          else "Head-to-Head (per game)")
+            comp_uri = fv.render_comparison_image(
+                req.my_team, req.opponent_team, comparison, comp_title)
+            if comp_uri:
+                images["comparison"] = comp_uri
+        except Exception:
+            pass
+
     # Prefix opponent images so they don't clash, keep simple keys the PDF/web expect
     return MatchPrepReport(
         my_team=req.my_team,
@@ -803,6 +863,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         substitution_notes=to_list(raw.get("substitution_notes")),
         opponent_lineup=opp_an.get("lineup", []),
         opponent_tactical_evolution=opp_an.get("tactical_evolution", {}),
+        comparison=comparison,
         viz_payload=opp_an.get("viz_payload", {}),
         images=images,
     )
@@ -1028,8 +1089,8 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         source += f" | WARNING: '{req.team}' not matched in standings"
 
     # Human-readable circumstance lines (small-sample aware: counts not %)
-    how_score = fi.fmt_circumstance(circ_for)
-    how_concede = fi.fmt_circumstance(circ_against)
+    how_score = fi.fmt_circumstance(circ_for, lang=req.language, matches_analysed=len(deep_matches))
+    how_concede = fi.fmt_circumstance(circ_against, lang=req.language, matches_analysed=len(deep_matches))
 
     # Render charts as base64 for inline web display (safe, optional)
     images: dict = {}

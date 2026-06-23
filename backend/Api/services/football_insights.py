@@ -117,21 +117,29 @@ def goal_circumstances(goals: list[dict], is_for: bool = True) -> dict:
     }
 
 
-def fmt_circumstance(circ: dict) -> list[str]:
+def fmt_circumstance(circ: dict, lang: str = "en", matches_analysed: int | None = None) -> list[str]:
     """Render circumstance breakdown as display strings, honouring small sample
-    (counts instead of percentages, with a flag)."""
+    (counts instead of percentages, with an explicit count of matches analysed)."""
     total = circ.get("total", 0)
     if not total:
         return []
+    pt = lang == "pt"
     small = circ.get("small_sample")
+    goals_word = "golos" if pt else "goals"
     out = []
     for b in circ["breakdown"]:
         if small:
-            out.append(f"{b['type']}: {b['count']}/{total} goals")
+            out.append(f"{b['type']}: {b['count']}/{total} {goals_word}")
         else:
             out.append(f"{b['type']}: {b['pct']}%")
     if small:
-        out.append("(small sample — based on few matches)")
+        if matches_analysed:
+            out.append(
+                f"(apenas {matches_analysed} jogos analisados)" if pt
+                else f"(only {matches_analysed} matches analysed)"
+            )
+        else:
+            out.append("(amostra pequena)" if pt else "(small sample)")
     return out
 
 

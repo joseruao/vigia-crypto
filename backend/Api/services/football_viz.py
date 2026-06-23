@@ -282,6 +282,70 @@ def build_timing_chart(goals_for: list[int], goals_against: list[int], title: st
 
 
 # ---------------------------------------------------------------------------
+# Head-to-head comparison (diverging horizontal bars)
+# ---------------------------------------------------------------------------
+
+def render_comparison_image(my_name: str, opp_name: str,
+                            metrics: list[dict], title: str) -> str | None:
+    """Base64 data URI of the comparison chart, or None. Does NOT need
+    mplsoccer (plain matplotlib), so it works even where the pitch libs don't."""
+    png = build_comparison_chart(my_name, opp_name, metrics, title)
+    return _b64(png)
+
+
+def build_comparison_chart(my_name: str, opp_name: str,
+                           metrics: list[dict], title: str) -> bytes | None:
+    """Diverging horizontal bars: my team to the left (green), opponent to the
+    right (red). Each row is normalised to the larger of the two values so the
+    bars are visually comparable. `metrics` is a list of
+    {label, my, opp, my_disp, opp_disp}. Returns PNG bytes or None."""
+    if not metrics:
+        return None
+
+    n = len(metrics)
+    fig, ax = plt.subplots(figsize=(8, 0.85 * n + 1.4))
+    fig.set_facecolor(_BG)
+    ax.set_facecolor(_BG)
+    opp_color = "#ef4444"
+
+    for i, m in enumerate(metrics):
+        my_v = float(m.get("my", 0) or 0)
+        opp_v = float(m.get("opp", 0) or 0)
+        mx = max(my_v, opp_v, 0.0001)
+        my_norm = my_v / mx
+        opp_norm = opp_v / mx
+        ax.barh(i, -my_norm, color=_GOAL, alpha=0.9, height=0.55, zorder=3)
+        ax.barh(i, opp_norm, color=opp_color, alpha=0.9, height=0.55, zorder=3)
+        ax.text(-my_norm - 0.04, i, str(m.get("my_disp", my_v)),
+                ha="right", va="center", color=_TEXT, fontsize=10, fontweight="bold")
+        ax.text(opp_norm + 0.04, i, str(m.get("opp_disp", opp_v)),
+                ha="left", va="center", color=_TEXT, fontsize=10, fontweight="bold")
+        ax.text(0, i + 0.4, m.get("label", ""), ha="center", va="center",
+                color=_LINE, fontsize=8.5)
+
+    ax.axvline(0, color=_LINE, linewidth=0.8, zorder=2)
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.set_xlim(-1.6, 1.6)
+    ax.set_ylim(-0.7, n - 0.2)
+    ax.invert_yaxis()
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Team name headers
+    ax.text(-0.8, -0.75, my_name, ha="center", va="center",
+            color=_GOAL, fontsize=12, fontweight="bold")
+    ax.text(0.8, -0.75, opp_name, ha="center", va="center",
+            color=opp_color, fontsize=12, fontweight="bold")
+    ax.set_title(title, color=_TEXT, fontsize=12, pad=26)
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, facecolor=_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Zone fallback chart (when there are no coordinates at all)
 # ---------------------------------------------------------------------------
 
