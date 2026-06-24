@@ -10,28 +10,23 @@
 > Projecto novo: value betting reaproveitando o motor do Football Lab. Ver memória
 > project_football_bet.
 
-### NEEDS_DECISION — chave grátis da The Odds API
-Para correr o teste empírico real preciso de uma key (tier grátis, 500 créditos/mês).
-O signup é de ~30s em https://the-odds-api.com/#get-access — a key chega ao teu email
-(Outlook). Não a posso gerar por ti (cria conta + verificação de email = acção tua).
-**Quando a tiveres:** mete `ODDS_API_KEY=...` no `.env` e corre:
-```
-cd backend && python -m worker._probe_odds_api
-```
-Isso responde, com chamadas reais, à pergunta que decide o projecto: **o tier grátis
-devolve odds de cantos e cartões para Série A / 5 grandes ligas, e de que casas?**
+### ✅ RESOLVIDO — key recebida, probes corridos (key no .env: ODDS_API_KEY)
+Resultado empírico real (tier grátis, 500 créditos/mês; gastámos ~11):
+- **Golos O/U, BTTS, h2h:** cobertura larga (golos = 7+ casas), mesmo semanas antes. Mercado mais explorável.
+- **Cantos & cartões O/U:** EXISTEM mas quase só de **Pinnacle** (casa afiada), e só no endpoint
+  **por-evento** e **perto do kickoff**. → ferramenta corre em **dia de jogo**, não dias antes.
+- 5 grandes ligas fora de época até **~21 Ago 2026**; em Junho só o Mundial está a decorrer.
 
-### Estado (feito sem a key)
-- `bet_odds.py` — cliente da Odds API (contabiliza créditos, mercados certos).
-- `_probe_odds_api.py` — teste empírico pronto a disparar (gasta poucos créditos).
-- `bet_model.py` — modelo Poisson + de-vig + detecção de edge. **VALIDADO** (`_test_bet_model.py`).
-- Histórico p/ o modelo já existe: ESPN dá cantos/cartões por jogo (football_analysis.py:347).
+### Estado do motor (feito + validado)
+- `bet_odds.py` / `bet_model.py` / `bet_engine.py` + `BET_README.md`. Modelo Poisson **validado**
+  (`_test_bet_model.py`); pipeline ponta-a-ponta **provado ao vivo** no Mundial (`_run_bet_scan.py`).
+- Histórico do modelo vem do ESPN (cantos/cartões por jogo, football_analysis.py). 5 ligas EU
+  adicionadas ao `_COMPS` (slugs ESPN) para Agosto.
 
-### Risco conhecido (da própria doc da Odds API)
-Cantos/cartões são "additional markets... limited to selected bookmakers". Os market keys
-existem (`alternate_totals_corners`, `alternate_totals_cards`) mas a cobertura real p/
-ligas EU só se confirma com a chamada — por isso o probe. Se vier vazio, o produto-núcleo
-não tem combustível no tier grátis e há que reavaliar (plano pago $30/mês ou outra fonte).
+### NEEDS_DECISION (não-bloqueante) — quando as ligas abrirem (Ago)
+Correr scan em dia de jogo na Série A/EPL, calibrar `LEAGUE_PRIOR` com médias reais, e decidir se
+vale a pena endpoint+frontend (reusar stack do Lab). Não construir frontend agora: mostraria só
+ruído do Mundial (amostras de 2 jogos → tudo "thin sample").
 
 ---
 
