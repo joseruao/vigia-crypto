@@ -142,6 +142,44 @@ _COMPS: dict[str, dict] = {
         "date_range": "20260601-20260801",
         "grouped": True,  # group stage structure
     },
+    # --- Football Bet project: high-sample European leagues (ESPN slugs). ---
+    # Additive only; the Football Lab request models still validate
+    # ^(serie_a|world_cup)$, so these are reachable by the bet engine, not the Lab UI.
+    "ita_serie_a": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/ita.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+        "label": "Serie A (Italy)",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,
+    },
+    "epl": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/eng.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+        "label": "Premier League (England)",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,
+    },
+    "la_liga": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/esp.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+        "label": "La Liga (Spain)",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,
+    },
+    "bundesliga": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/ger.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+        "label": "Bundesliga (Germany)",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,
+    },
+    "ligue_1": {
+        "standings": "https://site.api.espn.com/apis/v2/sports/soccer/fra.1/standings",
+        "scoreboard": "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+        "label": "Ligue 1 (France)",
+        "date_range": f"{time.strftime('%Y')}0101-{time.strftime('%Y')}1231",
+        "grouped": False,
+    },
 }
 
 _CACHE: dict[str, tuple[float, object]] = {}

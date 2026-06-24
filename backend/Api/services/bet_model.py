@@ -117,6 +117,55 @@ class Edge:
         return None
 
 
+def match_total_lambda(home_for: list[float], away_for: list[float],
+                       market: str) -> tuple[float, int]:
+    """Expected match TOTAL (both teams) for a count market, e.g. total corners.
+
+    Each team's own per-game count (corners it wins, cards it gets) is shrunk
+    toward HALF the league prior (the per-team share), then summed. Returns
+    (lambda_total, effective_games) where effective_games is the smaller sample
+    of the two teams (drives the sample warning).
+    """
+    half_prior = LEAGUE_PRIOR.get(market, 0.0) / 2.0
+
+    def _team_rate(series: list[float]) -> float:
+        n = len(series)
+        if n == 0:
+            return half_prior
+        obs = sum(series) / n
+        if half_prior <= 0:
+            return obs
+        w = n / (n + SHRINK_K)
+        return w * obs + (1 - w) * half_prior
+
+    lam = _team_rate(home_for) + _team_rate(away_for)
+    eff = min(len(home_for), len(away_for))
+    return lam, eff
+
+
+def value_edge_from_lambda(market: str, line: float, over_odd: float,
+                           under_odd: float, lam: float, n_games: int) -> list[Edge]:
+    """Same as value_edge but with a precomputed Poisson lambda (used when the
+    lambda is a match TOTAL built from two teams, not a single history series)."""
+    p_over = prob_over(line, lam)
+    p_under = 1.0 - p_over
+    fair_over, fair_under = devig_two_way(over_odd, under_odd)
+    edges = []
+    for side, p_model, odd, fair in (
+        ("over", p_over, over_odd, fair_over),
+        ("under", p_under, under_odd, fair_under),
+    ):
+        if not odd or odd <= 1:
+            continue
+        edges.append(Edge(
+            market=market, line=line, side=side, odd=odd,
+            model_prob=p_model, fair_prob=fair, implied_prob=implied_prob(odd),
+            edge=p_model - fair, ev_per_unit=p_model * odd - 1.0,
+            n_games=n_games, lam=lam,
+        ))
+    return edges
+
+
 def value_edge(market: str, line: float, over_odd: float, under_odd: float,
                history: list[float]) -> list[Edge]:
     """Compute edges for both sides of a count over/under market.

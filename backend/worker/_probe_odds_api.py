@@ -25,7 +25,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # .env lives at repo root (one level above backend/)
+    _root_env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    load_dotenv(_root_env)
+    load_dotenv()  # also try cwd, harmless if absent
 except Exception:
     pass
 
