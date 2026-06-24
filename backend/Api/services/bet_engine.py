@@ -158,6 +158,19 @@ class MatchValue:
     away_hist: TeamHistory
     edges: list[dict] = field(default_factory=list)  # serialisable edge rows
 
+    def to_dict(self) -> dict:
+        return {
+            "sport_key": self.sport_key,
+            "home": self.home, "away": self.away,
+            "commence": self.commence,
+            "home_resolved": self.home_hist.resolved,
+            "away_resolved": self.away_hist.resolved,
+            "home_games": len(self.home_hist.goals_for),
+            "away_games": len(self.away_hist.goals_for),
+            "min_games": min(len(self.home_hist.goals_for), len(self.away_hist.goals_for)),
+            "edges": self.edges,
+        }
+
 
 def scan_event(client: OddsClient, sport_key: str, event: dict,
                last_n: int = 8, min_edge: float = 0.02) -> MatchValue:
@@ -225,3 +238,38 @@ def scan_active(client: OddsClient, hours_ahead: int = 72, last_n: int = 8,
     for sport_key in ACTIVE_BET_COMPETITIONS:
         out.extend(scan(client, sport_key, hours_ahead, last_n, min_edge, max_events))
     return out
+
+
+DISCLAIMER = (
+    "Informational tool, not financial advice. We surface where our data-derived "
+    "estimate disagrees with the bookmaker's price — not guaranteed winners. "
+    "Corners/cards come mostly from Pinnacle (a sharp book), so genuine value "
+    "there is rare. During the World Cup samples are tiny (1-3 games), so most "
+    "rows are flagged as thin-sample noise. Bet responsibly."
+)
+
+
+def build_board(hours_ahead: int = 48, last_n: int = 8, min_edge: float = 0.02,
+                max_events: int = 10) -> dict:
+    """JSON-serialisable value board across active competitions, cached ~30 min
+    (via the football module's cache) so each page view does not spend credits."""
+    from Api.services.football_analysis import _cached
+    key = f"bet_board_{hours_ahead}_{last_n}_{min_edge}_{max_events}"
+    return _cached(key, lambda: _build_board_uncached(
+        hours_ahead, last_n, min_edge, max_events))
+
+
+def _build_board_uncached(hours_ahead, last_n, min_edge, max_events) -> dict:
+    client = OddsClient()  # raises OddsAPIError if ODDS_API_KEY is unset
+    results = scan_active(client, hours_ahead, last_n, min_edge, max_events)
+    matches = [mv.to_dict() for mv in results]
+    return {
+        "source": "The Odds API (odds) + ESPN (history)",
+        "competitions": ACTIVE_BET_COMPETITIONS,
+        "hours_ahead": hours_ahead,
+        "last_n": last_n,
+        "credits_remaining": client.quota.remaining,
+        "total_value_rows": sum(len(m["edges"]) for m in matches),
+        "disclaimer": DISCLAIMER,
+        "matches": matches,
+    }

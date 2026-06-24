@@ -382,3 +382,55 @@ export async function fetchFootballTeamContext(teamName: string): Promise<Footba
 
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Football Bet — value board
+// ---------------------------------------------------------------------------
+
+export interface BetEdge {
+  market: string;        // "goals" | "corners" | "cards"
+  book: string;
+  line: number;
+  side: string;          // "over" | "under"
+  odd: number;
+  model_prob: number;
+  fair_prob: number;
+  edge: number;
+  ev_per_unit: number;
+  n_games: number;
+  lambda: number;
+  warning: string | null;
+}
+
+export interface BetMatch {
+  sport_key: string;
+  home: string;
+  away: string;
+  commence: string;
+  home_resolved: boolean;
+  away_resolved: boolean;
+  home_games: number;
+  away_games: number;
+  min_games: number;
+  edges: BetEdge[];
+}
+
+export interface BetBoard {
+  source: string;
+  competitions: string[];
+  hours_ahead: number;
+  last_n: number;
+  credits_remaining: number | null;
+  total_value_rows: number;
+  disclaimer: string;
+  matches: BetMatch[];
+}
+
+export async function fetchBetBoard(hours: number = 48): Promise<BetBoard> {
+  const res = await fetch(`${API_BASE}/api/bet/scan?hours=${hours}`, { cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

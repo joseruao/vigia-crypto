@@ -88,6 +88,12 @@ try:
 except ImportError as e:
     log.warning("Football router nao disponivel: %s", e)
 
+try:
+    from Api.routes.bet import router as bet_router
+    app.include_router(bet_router, prefix="")
+except ImportError as e:
+    log.warning("Bet router nao disponivel: %s", e)
+
 
 @app.get("/")
 @app.head("/")
