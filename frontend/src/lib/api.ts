@@ -400,6 +400,7 @@ export interface BetEdge {
   n_games: number;
   lambda: number;
   warning: string | null;
+  best?: boolean;
 }
 
 export interface BetMatch {
@@ -412,7 +413,9 @@ export interface BetMatch {
   home_games: number;
   away_games: number;
   min_games: number;
-  edges: BetEdge[];
+  picks: BetEdge[];       // curated: best pick per market (top one has best=true)
+  candidates: number;     // how many raw rows were collapsed
+  edges: BetEdge[];       // full list
 }
 
 export interface BetBoard {

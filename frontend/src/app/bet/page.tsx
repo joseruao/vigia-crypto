@@ -29,13 +29,20 @@ function kickoff(iso: string) {
   }
 }
 
-function EdgeRow({ e }: { e: BetEdge }) {
+function PickRow({ e }: { e: BetEdge }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b border-white/5 text-sm">
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 px-3 rounded-lg text-sm ${
+      e.best ? 'bg-emerald-500/[0.08] border border-emerald-500/25' : 'border-b border-white/5'
+    }`}>
       <span className={`px-2 py-0.5 rounded border text-xs font-medium ${MARKET_COLOR[e.market] ?? 'bg-white/10 text-white/70 border-white/20'}`}>
         {MARKET_LABEL[e.market] ?? e.market}
       </span>
-      <span className="font-semibold text-white capitalize w-28">
+      {e.best && (
+        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold uppercase tracking-wide">
+          Top pick
+        </span>
+      )}
+      <span className="font-semibold text-white capitalize w-24">
         {e.side} {e.line}
       </span>
       <span className="text-white/90">@ {e.odd.toFixed(2)}</span>
@@ -59,6 +66,7 @@ function EdgeRow({ e }: { e: BetEdge }) {
 
 function MatchCard({ m }: { m: BetMatch }) {
   const unresolved = !m.home_resolved || !m.away_resolved;
+  const collapsed = m.candidates - m.picks.length;
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex items-center justify-between mb-1">
@@ -69,10 +77,17 @@ function MatchCard({ m }: { m: BetMatch }) {
         history sample: {m.min_games} game{m.min_games === 1 ? '' : 's'} per team
         {unresolved && <span className="text-amber-400/80"> · one team unresolved — no model</span>}
       </div>
-      {m.edges.length === 0 ? (
+      {m.picks.length === 0 ? (
         <p className="text-sm text-white/40">No positive-edge bets.</p>
       ) : (
-        <div>{m.edges.map((e, i) => <EdgeRow key={i} e={e} />)}</div>
+        <div className="space-y-1.5">
+          {m.picks.map((e, i) => <PickRow key={i} e={e} />)}
+          {collapsed > 0 && (
+            <p className="text-[11px] text-white/30 pt-1">
+              best line per market shown · {collapsed} weaker candidate{collapsed === 1 ? '' : 's'} hidden
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

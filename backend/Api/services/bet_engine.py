@@ -159,6 +159,7 @@ class MatchValue:
     edges: list[dict] = field(default_factory=list)  # serialisable edge rows
 
     def to_dict(self) -> dict:
+        picks = curate_edges(self.edges)
         return {
             "sport_key": self.sport_key,
             "home": self.home, "away": self.away,
@@ -168,8 +169,42 @@ class MatchValue:
             "home_games": len(self.home_hist.goals_for),
             "away_games": len(self.away_hist.goals_for),
             "min_games": min(len(self.home_hist.goals_for), len(self.away_hist.goals_for)),
-            "edges": self.edges,
+            "picks": picks,                 # one best pick per market (the curated view)
+            "candidates": len(self.edges),  # how many raw value rows were collapsed
+            "edges": self.edges,            # full list (CLI / debugging)
         }
+
+
+def curate_edges(edges: list[dict]) -> list[dict]:
+    """Collapse the raw value rows into one best pick per market.
+
+    Two layers of de-duplication:
+      1. The SAME bet (market, line, side) appears once per bookmaker — keep only
+         the best price (highest odd → highest EV for our fixed model prob).
+      2. A market offers many lines (corners over 7.5/8.5/9.5...) — keep only the
+         single highest-EV line per market.
+    Result: at most one pick per market (goals/corners/cards), sorted best-first.
+    The top row is flagged `best=True`.
+    """
+    best_price: dict = {}
+    for e in edges:
+        k = (e["market"], e["line"], e["side"])
+        if k not in best_price or e["odd"] > best_price[k]["odd"]:
+            best_price[k] = e
+
+    per_market: dict = {}
+    for e in best_price.values():
+        m = e["market"]
+        if m not in per_market or e["ev_per_unit"] > per_market[m]["ev_per_unit"]:
+            per_market[m] = e
+
+    picks = sorted(per_market.values(), key=lambda e: e["ev_per_unit"], reverse=True)
+    out = []
+    for i, e in enumerate(picks):
+        row = dict(e)
+        row["best"] = (i == 0)
+        out.append(row)
+    return out
 
 
 def scan_event(client: OddsClient, sport_key: str, event: dict,
@@ -269,7 +304,7 @@ def _build_board_uncached(hours_ahead, last_n, min_edge, max_events) -> dict:
         "hours_ahead": hours_ahead,
         "last_n": last_n,
         "credits_remaining": client.quota.remaining,
-        "total_value_rows": sum(len(m["edges"]) for m in matches),
+        "total_value_rows": sum(len(m["picks"]) for m in matches),
         "disclaimer": DISCLAIMER,
         "matches": matches,
     }
