@@ -22,10 +22,15 @@ except Exception:
     pass
 
 from Api.services.bet_odds import OddsClient
-from Api.services.bet_engine import scan
+from Api.services.bet_engine import scan, ACTIVE_BET_COMPETITIONS
 
-SPORT = sys.argv[1] if len(sys.argv) > 1 else "soccer_fifa_world_cup"
+# Default to the active competition(s) — World Cup only for now.
+SPORT = sys.argv[1] if len(sys.argv) > 1 else ACTIVE_BET_COMPETITIONS[0]
 HOURS = int(sys.argv[2]) if len(sys.argv) > 2 else 36
+
+if SPORT not in ACTIVE_BET_COMPETITIONS:
+    print(f"NOTE: {SPORT} is not in ACTIVE_BET_COMPETITIONS {ACTIVE_BET_COMPETITIONS} "
+          f"(probably off-season). Scanning anyway — expect no fixtures.\n")
 
 c = OddsClient()
 print(f"Scanning {SPORT} for fixtures in the next {HOURS}h ...\n")

@@ -37,11 +37,31 @@ ESPN_COMP = {
     "soccer_france_ligue_one": "ligue_1",
 }
 
+# Which competitions the tool actually runs right now. The 5 big leagues are
+# off-season until ~21 Aug 2026, so the only live football is the World Cup —
+# small samples, acknowledged noise, but it's what's playing. Add the league
+# sport_keys back here when they kick off in August. (Mirrors the Football Lab's
+# ACTIVE_COMPETITIONS toggle.)
+ACTIVE_BET_COMPETITIONS = [
+    "soccer_fifa_world_cup",
+]
+
 # our_market -> (odds_api_market_key, model_market, espn_stat_extractor)
 MARKET_SPEC = {
     "goals": ("totals", "goals"),
     "corners": ("alternate_totals_corners", "corners"),
     "cards": ("alternate_totals_cards", "cards"),
+}
+
+# The Odds API and ESPN spell some national teams differently — without this the
+# team is "unresolved" and we get no history (and thus no model rate). Keys are
+# Odds API names, values ESPN names. (World Cup 2026 set; extend as needed.)
+ODDS_TO_ESPN_TEAM = {
+    "Bosnia & Herzegovina": "Bosnia-Herzegovina",
+    "Czech Republic": "Czechia",
+    "DR Congo": "Congo DR",
+    "Turkey": "Türkiye",
+    "USA": "United States",
 }
 
 
@@ -71,6 +91,7 @@ def team_history(comp_key: str, team_name: str, last_n: int = 8) -> TeamHistory:
     from Api.services.football_analysis import _teams_match
 
     prov = get_provider()
+    team_name = ODDS_TO_ESPN_TEAM.get(team_name, team_name)
     canon = prov.resolve_team(team_name, comp_key) or team_name
     hist = TeamHistory(name=canon, resolved=canon != team_name or True)
     try:
@@ -195,3 +216,12 @@ def scan(client: OddsClient, sport_key: str, hours_ahead: int = 72,
     upcoming.sort(key=lambda t: t[0])
     return [scan_event(client, sport_key, e, last_n, min_edge)
             for _, e in upcoming[:max_events]]
+
+
+def scan_active(client: OddsClient, hours_ahead: int = 72, last_n: int = 8,
+                min_edge: float = 0.02, max_events: int = 12) -> list[MatchValue]:
+    """Scan every currently-active competition (today: World Cup only)."""
+    out: list[MatchValue] = []
+    for sport_key in ACTIVE_BET_COMPETITIONS:
+        out.extend(scan(client, sport_key, hours_ahead, last_n, min_edge, max_events))
+    return out
