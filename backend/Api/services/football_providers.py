@@ -211,6 +211,10 @@ class ESPNProvider(DataProvider):
         goals: list[dict] = []
         for m in matches:
             summary = self._summary(m, m.get("_competition", "serie_a"))
+            # Dedupe per match: ESPN keyEvents can list the same goal twice
+            # (VAR confirmation, penalty + goal entries). Key on scorer+minute+team
+            # scoped to this match so genuine repeat scorelines across matches stay.
+            seen: set = set()
             for ev in summary.get("keyEvents", []):
                 if not ev.get("scoringPlay"):
                     continue
@@ -226,6 +230,10 @@ class ESPNProvider(DataProvider):
                     if mt:
                         assister = mt.group(1).strip()
                 clock = ev.get("clock", {}).get("displayValue", "")
+                dedupe_key = (scorer, _minute_to_int(clock), gteam)
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
                 goals.append({
                     "scorer": scorer,
                     "assister": assister,

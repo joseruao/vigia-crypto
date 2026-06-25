@@ -55,6 +55,7 @@ class MatchPrepReport(BaseModel):
     opponent_tactical_evolution: dict = Field(default_factory=dict)
     opponent_ranks: list[dict] = Field(default_factory=list)
     comparison: list[dict] = Field(default_factory=list)
+    data_quality: dict = Field(default_factory=dict)
     viz_payload: dict = Field(default_factory=dict)
     images: dict = Field(default_factory=dict)
 
@@ -83,6 +84,7 @@ class OpponentScoutReport(BaseModel):
     has_xg: bool = False
     tactical_evolution: dict = Field(default_factory=dict)
     competition_ranks: list[dict] = Field(default_factory=list)
+    data_quality: dict = Field(default_factory=dict)
     # Raw viz payload for PDF chart rendering (frontend ignores it)
     viz_payload: dict = Field(default_factory=dict)
     # Base64 chart images for inline web display
@@ -444,7 +446,7 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         "danger": [], "alerts": [], "circ_for": {}, "circ_against": {},
         "tend_for": {}, "tend_against": {}, "how_score": [], "how_concede": [],
         "insights_text": "", "viz_payload": {}, "lineup": [], "formation": {},
-        "images": {}, "has_xg": False, "tactical_evolution": {},
+        "images": {}, "has_xg": False, "tactical_evolution": {}, "data_quality": {},
     }
     try:
         shots = provider.get_shot_events(deep, team)
@@ -488,6 +490,9 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
             "lineup": [n for n, _ in lineup], "formation": formation,
             "images": images, "has_xg": provider.has_xg,
             "tactical_evolution": tact_evo,
+            "data_quality": fi.build_data_quality(
+                provider.name, len(deep), shots, goals, provider.has_xg,
+                lineup_inferred=True, lang=lang),
         })
     except Exception as exc:
         out["insights_text"] = f"(Shot-level analytics unavailable: {exc})"
@@ -774,6 +779,37 @@ def _comp_context(competition: str) -> str:
     )
 
 
+def _confidence_instruction(dq: dict) -> str:
+    """Turn the data-quality block into an explicit instruction that reins in the
+    LLM when the sample is thin — the anti-hallucination guardrail. The lower the
+    confidence, the less licence the model gets to make strong tactical claims."""
+    if not dq:
+        return ""
+    conf = dq.get("confidence", "low")
+    n = dq.get("matches_analysed", 0)
+    warns = "; ".join(dq.get("warnings", []))
+    header = (f"DATA CONFIDENCE: {conf.upper()} — {n} matches analysed. "
+              f"Caveats: {warns}.")
+    if conf == "low":
+        rule = (
+            "Because confidence is LOW: do NOT assert traits as established fact "
+            "(no 'defensive solidity', 'dominant', 'clinical'). Frame every claim as "
+            "a tendency from limited data ('in these few matches…', 'early signs suggest…'). "
+            "Prefer describing what the data literally shows over projecting a game model. "
+            "If a recommendation is not directly supported by the data, omit it rather than invent it."
+        )
+    elif conf == "medium":
+        rule = (
+            "Because confidence is MEDIUM: hedge strong claims and tie every tactical "
+            "statement to a specific number, name or scoreline. Avoid sweeping verdicts."
+        )
+    else:
+        rule = (
+            "Confidence is HIGH: you may state patterns firmly, but still cite evidence."
+        )
+    return header + "\n" + rule
+
+
 def _form_string(team: str, recent: list[dict]) -> str:
     results = []
     for m in recent:
@@ -862,6 +898,8 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
     ])
     raw_stats = raw_stats + "\n\n" + analytics_block
 
+    confidence_block = _confidence_instruction(opp_an.get("data_quality", {}))
+
     extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
     lang = getattr(req, "language", "en")
     lang_instruction = (
@@ -878,6 +916,8 @@ The head coach needs a match preparation report.
 LANGUAGE: {lang_instruction}
 
 {_comp_context(comp)}
+
+{confidence_block}
 
 MY TEAM: {req.my_team}
 OPPONENT: {req.opponent_team}
@@ -993,6 +1033,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         opponent_tactical_evolution=opp_an.get("tactical_evolution", {}),
         opponent_ranks=opp_ranks,
         comparison=comparison,
+        data_quality=opp_an.get("data_quality", {}),
         viz_payload=opp_an.get("viz_payload", {}),
         images=images,
     )
@@ -1084,6 +1125,9 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     goals_log_against: list[str] = []
     circ_for = circ_against = {}
     viz_payload: dict = {}
+    shots: list[dict] = []
+    goals: list[dict] = []
+    tact_evo: dict = {}
     try:
         shots = provider.get_shot_events(deep_matches, req.team)
         goals = provider.get_goal_events(deep_matches, req.team)
@@ -1120,6 +1164,11 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
     except Exception as exc:
         insights_text = f"(Shot-level analytics unavailable: {exc})"
         tact_evo = {}
+
+    data_quality = fi.build_data_quality(
+        provider.name, len(deep_matches), shots, goals, provider.has_xg,
+        lineup_inferred=True, lang=req.language)
+    confidence_block = _confidence_instruction(data_quality)
 
     recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
@@ -1158,6 +1207,8 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
 LANGUAGE: {lang_instruction}
 
 {_comp_context(comp)}
+
+{confidence_block}
 
 TEAM BEING SCOUTED: {req.team}
 
@@ -1259,6 +1310,7 @@ Return EXACTLY this JSON (no extra keys, no markdown):
         has_xg=bool(viz_payload.get("has_xg", False)),
         tactical_evolution=tact_evo,
         competition_ranks=ranks,
+        data_quality=data_quality,
         viz_payload=viz_payload,
         images=images,
     )

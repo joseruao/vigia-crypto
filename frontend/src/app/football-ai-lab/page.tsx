@@ -18,6 +18,7 @@ import {
 import {
   ComparisonMetric,
   CompetitionRank,
+  DataQuality,
   MatchPrepReport,
   OpponentScoutReport,
   TacticalEvolution,
@@ -73,7 +74,7 @@ const t = {
     setPieceTend: 'Set Piece Tendencies', formAnalysis: 'Form Analysis', vs: 'vs',
     group: 'Group',
     dangerPlayers: 'Top Danger Players', howTheyScore: 'How They Score',
-    probableLineup: 'Probable XI', goalsLabel: 'G', assistsLabel: 'A',
+    probableLineup: 'Probable XI (inferred from last lineup)', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'On target', dangerLabel: 'Danger',
     shotAnalysis: 'Shot Maps', goalTiming: 'Goal Timing',
     matchupEdges: 'Matchup Edges', subNotes: 'Match Management',
@@ -81,6 +82,8 @@ const t = {
     tacticalEvolution: 'Tactical Evolution', unchanged: 'Unchanged', formation: 'Formation',
     headToHead: 'Head-to-Head Comparison',
     competitionContext: 'Competition Context',
+    dataConfidence: 'Data Confidence', confidence: 'Confidence',
+    matchesAnalysed: 'matches analysed', shotsWithCoords: 'shots with coordinates',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -113,7 +116,7 @@ const t = {
     setPieceTend: 'Tendências em Bolas Paradas', formAnalysis: 'Análise de Forma', vs: 'vs',
     group: 'Grupo',
     dangerPlayers: 'Jogadores Mais Perigosos', howTheyScore: 'Como Marcam',
-    probableLineup: 'Onze Provável', goalsLabel: 'G', assistsLabel: 'A',
+    probableLineup: 'Onze Provável (inferido do último onze)', goalsLabel: 'G', assistsLabel: 'A',
     onTargetLabel: 'Ao alvo', dangerLabel: 'Perigo',
     shotAnalysis: 'Mapas de Remates', goalTiming: 'Timing dos Golos',
     matchupEdges: 'Confronto Directo', subNotes: 'Gestão de Jogo',
@@ -121,6 +124,8 @@ const t = {
     tacticalEvolution: 'Evolução Táctica', unchanged: 'Inalterado', formation: 'Formação',
     headToHead: 'Comparação Directa',
     competitionContext: 'Contexto na Competição',
+    dataConfidence: 'Confiança dos Dados', confidence: 'Confiança',
+    matchesAnalysed: 'jogos analisados', shotsWithCoords: 'remates com coordenadas',
   },
 } as const;
 
@@ -181,6 +186,40 @@ function TeamSelect({ label, value, onChange, teams, placeholder, competition }:
         <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
       </div>
     </label>
+  );
+}
+
+function DataConfidenceBar({ dq, lang }: { dq: DataQuality; lang: Lang }) {
+  const T = t[lang];
+  const tone =
+    dq.confidence === 'high' ? 'border-emerald-300 bg-emerald-50' :
+    dq.confidence === 'medium' ? 'border-amber-300 bg-amber-50' :
+    'border-red-300 bg-red-50';
+  const dot =
+    dq.confidence === 'high' ? 'bg-emerald-500' :
+    dq.confidence === 'medium' ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div className={`rounded-lg border ${tone} p-3`}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-700">
+          <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+          {T.dataConfidence}: {dq.confidence_label}
+        </span>
+        <span className="text-slate-600">{dq.matches_analysed} {T.matchesAnalysed}</span>
+        <span className="text-slate-600">{dq.shots_with_coordinates} {T.shotsWithCoords}</span>
+        <span className="text-slate-500">xG: {dq.xg_source === 'none' ? '—' : dq.xg_source}</span>
+        <span className="text-slate-400">· {dq.provider}</span>
+      </div>
+      {dq.warnings && dq.warnings.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {dq.warnings.map((w, i) => (
+            <li key={i} className="rounded-full bg-white/70 px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+              {w}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -584,6 +623,14 @@ export default function FootballAiLabPage() {
                     {T.source}: {matchReport?.data_source ?? scoutReport?.data_source}
                   </p>
                 </div>
+
+                {/* Data Confidence — provenance + sample size, top of every report */}
+                {(matchReport?.data_quality ?? scoutReport?.data_quality) && (
+                  <DataConfidenceBar
+                    dq={(matchReport?.data_quality ?? scoutReport?.data_quality) as DataQuality}
+                    lang={reportLang ?? lang}
+                  />
+                )}
 
                 {/* Key Alerts — prominent, top of scout report */}
                 {scoutReport?.key_alerts && scoutReport.key_alerts.length > 0 && (

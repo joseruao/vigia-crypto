@@ -273,6 +273,32 @@ class _ScoutPDF(FPDF):
             self.set_text_color(*_DARK)
         self.ln(2)
 
+    def _data_confidence_box(self, dq: dict, L: dict) -> None:
+        """Provenance + confidence strip at the top of page 1 (Codex #1 / #5)."""
+        if not dq:
+            return
+        conf = dq.get("confidence", "low")
+        bar = {"high": _GREEN, "medium": _AMBER, "low": _RED}.get(conf, _GRAY)
+        y0 = self.get_y()
+        self.set_fill_color(*bar)
+        self.rect(_MARGIN, y0, 2, 9, "F")
+        self.set_fill_color(*_GRAY_LT)
+        self.set_xy(_MARGIN + 2, y0)
+        self.set_font("U", "B", 8); self.set_text_color(*_DARK)
+        head = (f"   {L['data_confidence'].upper()}: {dq.get('confidence_label', conf)}   |   "
+                f"{dq.get('matches_analysed', 0)} {L['dq_matches']}   |   "
+                f"{dq.get('shots_with_coordinates', 0)} {L['dq_shots']}   |   "
+                f"xG: {'-' if dq.get('xg_source') == 'none' else dq.get('xg_source')}")
+        self.cell(_INNER - 2, 9, head, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        warns = dq.get("warnings", [])
+        if warns:
+            self.set_x(_MARGIN)
+            self.set_font("U", "I", 7); self.set_text_color(*_GRAY)
+            self.multi_cell(_INNER, 4.5, "   • " + "   • ".join(warns),
+                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_text_color(0, 0, 0)
+        self.ln(2)
+
     def _rank_cards(self, ranks: list[dict]) -> None:
         """Three competition-rank cards in a row (green=strength, red=weakness)."""
         if not ranks:
@@ -350,6 +376,8 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     # ----- PAGE 1: Cover + Priority Alerts + Context -----
     pdf.add_page()
     pdf._cover_box(L["match_prep"], f"{my_team}  vs  {opp_team}", source)
+
+    pdf._data_confidence_box(report.get("data_quality", {}), L)
 
     # Priority alerts: matchup edges first, then opponent danger + alerts
     prio = list(report.get("matchup_insights", []))
@@ -598,6 +626,8 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
     # ----- PAGE 1: Cover + Priority Alerts + Overview -----
     pdf.add_page()
     pdf._cover_box(L["scout_report"], team, source)
+
+    pdf._data_confidence_box(report.get("data_quality", {}), L)
 
     # Priority alerts: main danger player + top key alerts (10-second read)
     prio = []
@@ -897,7 +927,7 @@ def _labels(lang: str) -> dict[str, str]:
             "set_piece_tend": "Tendencias em Bolas Paradas",
             "how_to_beat": "Como Bater Esta Equipa",
             "how_to_beat_desc": "Instrucoes tacticas especificas com base nos dados analisados:",
-            "probable_lineup": "Onze Provavel",
+            "probable_lineup": "Onze Provavel (inferido)",
             "shot_analysis": "Analise de Remates",
             "shots_taken": "Remates Efectuados",
             "shots_conceded": "Remates Sofridos",
@@ -921,6 +951,9 @@ def _labels(lang: str) -> dict[str, str]:
             "formation": "FORMACAO",
             "head_to_head": "Comparacao Directa (por jogo)",
             "competition_context": "Contexto na Competicao",
+            "data_confidence": "Confianca dos Dados",
+            "dq_matches": "jogos",
+            "dq_shots": "remates c/ coords",
         }
     return {
         "match_prep": "Match Preparation Report",
@@ -948,7 +981,7 @@ def _labels(lang: str) -> dict[str, str]:
         "set_piece_tend": "Set Piece Tendencies",
         "how_to_beat": "How to Beat Them",
         "how_to_beat_desc": "Specific tactical instructions based on analysed data:",
-        "probable_lineup": "Probable XI",
+        "probable_lineup": "Probable XI (inferred)",
         "shot_analysis": "Shot Analysis",
         "shots_taken": "Shots Taken",
         "shots_conceded": "Shots Conceded",
@@ -972,4 +1005,7 @@ def _labels(lang: str) -> dict[str, str]:
         "formation": "FORMATION",
         "head_to_head": "Head-to-Head (per game)",
         "competition_context": "Competition Context",
+        "data_confidence": "Data Confidence",
+        "dq_matches": "matches",
+        "dq_shots": "shots w/ coords",
     }

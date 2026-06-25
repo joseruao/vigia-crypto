@@ -319,6 +319,74 @@ def key_alerts(
 
 
 # ---------------------------------------------------------------------------
+# Data confidence — honest provenance + sample-size flags for every report
+# ---------------------------------------------------------------------------
+
+def build_data_quality(
+    provider_name: str,
+    matches_analysed: int,
+    shots: list[dict],
+    goals: list[dict],
+    has_xg: bool,
+    lineup_inferred: bool = True,
+    lang: str = "en",
+) -> dict:
+    """Provenance + confidence block shown at the top of every report. The single
+    biggest credibility lever: it tells a coach exactly what the conclusions rest
+    on (how many matches, how many shots have coordinates, where xG/lineup came
+    from) instead of presenting thin samples with false confidence."""
+    pt = lang == "pt"
+    shots_with_coords = sum(1 for s in shots if s.get("x") is not None and s.get("y") is not None)
+    total_goals = len(goals)
+
+    if matches_analysed >= 6 and shots_with_coords >= 40:
+        confidence = "high"
+    elif matches_analysed >= 4 and shots_with_coords >= 20:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    warnings: list[str] = []
+    if matches_analysed < 4:
+        warnings.append(
+            f"Amostra pequena — apenas {matches_analysed} jogos analisados" if pt
+            else f"Small sample — only {matches_analysed} matches analysed"
+        )
+    if not has_xg:
+        warnings.append(
+            "Sem xG do fornecedor — perigo estimado por volume/zona de remate" if pt
+            else "No provider xG — danger scored by shot volume/zone"
+        )
+    if total_goals < 3:
+        warnings.append(
+            "Padrões de golo baseados em pouquíssimos golos" if pt
+            else "Goal patterns based on very few goals"
+        )
+    if lineup_inferred:
+        warnings.append(
+            "XI inferido do último onze disponível, não oficial" if pt
+            else "XI inferred from last available lineup, not official"
+        )
+
+    conf_label = {
+        "high": "Alta" if pt else "High",
+        "medium": "Média" if pt else "Medium",
+        "low": "Baixa" if pt else "Low",
+    }[confidence]
+
+    return {
+        "provider": provider_name,
+        "matches_analysed": matches_analysed,
+        "shots_with_coordinates": shots_with_coords,
+        "xg_source": "internal_estimate" if has_xg else "none",
+        "lineup_source": "last_available_roster" if lineup_inferred else "official",
+        "confidence": confidence,
+        "confidence_label": conf_label,
+        "warnings": warnings,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tactical evolution — match-by-match formation/XI changes
 # ---------------------------------------------------------------------------
 

@@ -190,6 +190,7 @@ export type MatchPrepReport = {
   opponent_tactical_evolution?: TacticalEvolution;
   opponent_ranks?: CompetitionRank[];
   comparison?: ComparisonMetric[];
+  data_quality?: DataQuality;
   images?: {
     shotmap_for?: string;
     shotmap_against?: string;
@@ -197,6 +198,17 @@ export type MatchPrepReport = {
     formation?: string;
     comparison?: string;
   };
+};
+
+export type DataQuality = {
+  provider: string;
+  matches_analysed: number;
+  shots_with_coordinates: number;
+  xg_source: string;
+  lineup_source: string;
+  confidence: 'low' | 'medium' | 'high' | string;
+  confidence_label: string;
+  warnings: string[];
 };
 
 export type CompetitionRank = {
@@ -269,6 +281,7 @@ export type OpponentScoutReport = {
   has_xg?: boolean;
   tactical_evolution?: TacticalEvolution;
   competition_ranks?: CompetitionRank[];
+  data_quality?: DataQuality;
   viz_payload?: Record<string, unknown>;
   images?: {
     shotmap_for?: string;
