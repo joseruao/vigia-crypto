@@ -5,6 +5,41 @@
 
 ---
 
+## ⚽ FOOTBALL LAB — Auditoria do Codex aplicada (24 Jun 2026, commit 74d211b)
+
+Codex fez auditoria de dados. Conclusão dele: **não há fonte grátis decente de xG/eventos
+táticos** ao nível pago; o problema real do produto não era visual, era **confiança nos dados**.
+
+### ✅ FEITO (recomendação #1 do Codex — esforço baixo, valor altíssimo)
+- **Data Confidence** em todos os relatórios: provider, nº de jogos, remates c/ coordenadas,
+  xg_source, lineup_source, confiança (low/medium/high) + avisos. Web (`DataConfidenceBar`) +
+  PDF (`_data_confidence_box`, página 1). `fi.build_data_quality()`.
+- **Dedupe de golos** por jogo (scorer+minuto+equipa) — corrige marcador a aparecer 2x (ex.
+  Vinícius 45+3'); propaga a shot maps e danger scores.
+- **Anti-alucinação:** `_confidence_instruction()` injecta o bloco de confiança nos dois prompts;
+  confiança baixa = LLM proibido de afirmar traços como facto ("defensive solidity" com 3 jogos).
+- **Relabel "Probable XI" → "Probable XI (inferred from last lineup)"** (vem do último onze ESPN
+  + heurística posicional, não é info oficial).
+
+### NEEDS_DECISION — modelo próprio de xG (recomendação #2 do Codex, esforço médio/alto)
+Codex recomenda treinar um xG caseiro com **StatsBomb Open Data** (grátis, GitHub: tem `location`,
+`shot.body_part`, `shot.type`, `shot.statsbomb_xg`) e aplicá-lo às coordenadas de remate do ESPN.
+Features: distância, ângulo, x/y, parte do corpo, zona, situação (penalty fixo ~0.76). Expectativa
+honesta: xG básico útil p/ ordenar chances, não igual ao comercial (sem GK/defensores/pressão).
+**NÃO comecei sozinho** — é tarefa de várias horas (download dados, feature eng., treino, validação)
+e meia-feita minaria a camada de confiança recém-criada. Decidir em sessão dedicada COM o José.
+Quando feito: `xg_source` passa de "none" → "internal_estimate" e o aviso "sem xG" desaparece.
+
+### Outras pistas do Codex (roadmap)
+- **Football-Data.co.uk** (CSVs grátis: resultados + odds históricas + cantos/cartões/faltas) → bom
+  p/ **backtesting** do Football Bet. NÃO resolve odds históricas de mercados de cantos (essas, grátis,
+  são fracas).
+- **Wyscout open dataset (Figshare)** — eventos espaço-temporais top-5 ligas 2017/18 + Mundial 2018 +
+  Euro 2016 (~1941 jogos, 3.25M eventos JSON) → treinar modelos de eventos/tática (histórico, não actual).
+- Understat (xG das 5 grandes, scraping/HTML, risco alto) e FBref (403, evitar).
+
+---
+
 ## ⚽ FOOTBALL BET — Pending Decisions (24 Jun 2026)
 
 > Projecto novo: value betting reaproveitando o motor do Football Lab. Ver memória
@@ -55,6 +90,14 @@ de magnitude**. Reconstrução completa via Dune (BSC) + Etherscan V2 (ETH) + Ar
   próprio Ghost Order** (isto É evidência de ocultação, usar como tal).
 - ❌ "Posição liquidada $2.69M / 45.9x realizado" → FALSO. Lucro era **não-realizado**; só agora (22 Jun)
   começaram a vender. Realizado até hoje = **$280,811**.
+
+**⚠️ CORRECÇÃO 24 Jun — o "45x / $1.01 listing" TAMBÉM estava errado.** Preço real do GENIUS
+(contrato 0x1f12b85a, VWAP dex.trades): 16 Abr (aquisição) = **$0.63**; 22 Mai (listing) = $0.57;
+22 Jun (venda) = $0.40. O token DESCEU, não subiu. O "$1.01 / TGE $0.022 / 45x" do dossier era
+mais um erro. Consequência: os $280k "realizados" NÃO são lucro provado — ele recebeu a $0.63 de
+mercado e vende a $0.40. A entrada real (custo) está ofuscada pelo hub. **GENIUS não é um "smart
+money win" defensável.** Query: 7804416. Lição: verificar SEMPRE preço por contrato antes de
+chamar "lucro" a uma venda.
 
 **MODELO HONESTO PARA A SUBMISSÃO:**
 - Adquiridos 2,377,157 GENIUS pré-listing (Abr) via ferramenta de ocultação Ghost Order.
