@@ -290,7 +290,9 @@ function TacticalEvolutionSection({ evo, lang }: { evo: TacticalEvolution; lang:
       <div className="space-y-2">
         {evo.matches.map((m, i) => {
           const hasChanges = m.changes_from_prev && m.changes_from_prev.length > 0;
-          const isFormationChange = m.changes_from_prev?.some(c => c.startsWith('Formation:'));
+          const isShapeChange = (c: string) => c.startsWith('Shape:') || c.startsWith('Formação:');
+          const isSameXI = (c: string) => c === 'Same XI' || c === 'Mesmo onze';
+          const isFormationChange = m.changes_from_prev?.some(isShapeChange);
           return (
             <div
               key={i}
@@ -314,9 +316,9 @@ function TacticalEvolutionSection({ evo, lang }: { evo: TacticalEvolution; lang:
                     <span
                       key={j}
                       className={`rounded-full px-2 py-0.5 text-xs ${
-                        c === 'Unchanged XI' || c === 'Inalterado'
+                        isSameXI(c)
                           ? 'bg-slate-100 text-slate-400'
-                          : c.startsWith('Formation:')
+                          : isShapeChange(c)
                           ? 'bg-amber-200 text-amber-900 font-semibold'
                           : 'bg-blue-50 text-blue-700'
                       }`}

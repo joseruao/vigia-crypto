@@ -462,7 +462,7 @@ def compute_team_analytics(team: str, competition: str, recent: list[dict],
         formation = provider.get_formation(deep, team) if hasattr(provider, "get_formation") else {}
         per_match_formation = (provider.get_formation_per_match(deep, team)
                                if hasattr(provider, "get_formation_per_match") else [])
-        tact_evo = fi.tactical_evolution(per_match_formation)
+        tact_evo = fi.tactical_evolution(per_match_formation, lang=lang)
         insights_text = fi.insights_to_text(
             danger, circ_for, circ_against, set_pieces, tend_for, tend_against, provider.has_xg)
         viz_payload = {
@@ -1174,7 +1174,7 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
             formation = provider.get_formation(deep_matches, req.team)
         per_match_formation = (provider.get_formation_per_match(deep_matches, req.team)
                                if hasattr(provider, "get_formation_per_match") else [])
-        tact_evo = fi.tactical_evolution(per_match_formation)
+        tact_evo = fi.tactical_evolution(per_match_formation, lang=req.language)
         insights_text = fi.insights_to_text(
             danger, circ_for, circ_against, set_pieces,
             tend_for, tend_against, provider.has_xg,

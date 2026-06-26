@@ -728,11 +728,14 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
         _R_COLORS = {"W": _GREEN, "D": _AMBER, "L": _RED}
         col_date = 22; col_opp = 52; col_res = 22; col_form = 24; col_changes = _INNER - col_date - col_opp - col_res - col_form
 
-        # Header
+        # Header (language-aware)
+        _hd = ({"date": "DATA", "opp": "ADVERSARIO", "res": "RESULTADO", "chg": "MUDANCAS"}
+               if lang == "pt" else
+               {"date": "DATE", "opp": "OPPONENT", "res": "RESULT", "chg": "CHANGES"})
         pdf.set_x(_MARGIN)
         pdf.set_font("U", "B", 7.5); pdf.set_text_color(*_GRAY)
-        for w, h in [(col_date, "DATE"), (col_opp, "OPPONENT"), (col_res, "RESULT"),
-                     (col_form, L["formation"]), (col_changes, "CHANGES")]:
+        for w, h in [(col_date, _hd["date"]), (col_opp, _hd["opp"]), (col_res, _hd["res"]),
+                     (col_form, L["formation"]), (col_changes, _hd["chg"])]:
             pdf.cell(w, 6, h, new_x=XPos.RIGHT, new_y=YPos.TOP)
         pdf.ln(6)
         pdf.set_draw_color(*_GRAY_LT); pdf.set_line_width(0.3)
@@ -743,7 +746,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
             rc = _R_COLORS.get(m.get("result", ""), _GRAY)
             changes = m.get("changes_from_prev", [])
             change_txt = " / ".join(changes[:3]) if changes else "—"
-            has_form_change = any(c.startswith("Formation:") for c in changes)
+            has_form_change = any(c.startswith("Shape:") or c.startswith("Formação:") for c in changes)
 
             if has_form_change:
                 pdf.set_fill_color(255, 251, 235)  # amber-50
