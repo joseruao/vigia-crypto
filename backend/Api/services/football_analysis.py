@@ -900,7 +900,7 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
 
     confidence_block = _confidence_instruction(opp_an.get("data_quality", {}))
 
-    if lang == "pt":
+    if req.language == "pt":
         exec_instruction = (
             "ESTILO ETIQUETA MILITAR: exactamente 4-5 linhas, cada uma uma ETIQUETA EM MAIUSCULAS "
             "+ dois pontos + valor curto, separadas por \\n. Usa ESTAS etiquetas EM PORTUGUES (nunca em ingles): "
