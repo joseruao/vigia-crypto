@@ -900,6 +900,34 @@ def generate_match_prep_report(req: MatchPrepRequest) -> MatchPrepReport:
 
     confidence_block = _confidence_instruction(opp_an.get("data_quality", {}))
 
+    if lang == "pt":
+        exec_instruction = (
+            "ESTILO ETIQUETA MILITAR: exactamente 4-5 linhas, cada uma uma ETIQUETA EM MAIUSCULAS "
+            "+ dois pontos + valor curto, separadas por \\n. Usa ESTAS etiquetas EM PORTUGUES (nunca em ingles): "
+            "VANTAGEM DE POSSE, PRINCIPAL AMEACA, PONTO FRACO DO ADVERSARIO, PRINCIPAL OPORTUNIDADE "
+            "(e opcionalmente PRINCIPAL RISCO). Exemplo: 'VANTAGEM DE POSSE: Espanha\\nPRINCIPAL AMEACA: "
+            "Maxi Araujo (Uruguai)\\nPONTO FRACO DO ADVERSARIO: Defesa central + bolas paradas\\n"
+            "PRINCIPAL OPORTUNIDADE: Atacar o lado direito'. Valores curtos e concretos. Sem frases."
+        )
+        checklist_instruction = (
+            "LISTA DE VERIFICACAO: 4-6 instrucoes curtas no imperativo, uma por linha, cada uma a comecar "
+            "com '✓ ', separadas por \\n. Exemplo: '✓ Defender pelo centro\\n✓ Explorar as bolas "
+            "paradas deles\\n✓ Marcar Maxi Araujo de perto\\n✓ Atacar o lado direito'. Maximo 6 palavras por linha. Sem prosa."
+        )
+    else:
+        exec_instruction = (
+            "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS + colon + short value, separated by "
+            "newline characters (\\n). Use these labels: POSSESSION ADVANTAGE, MAIN THREAT, OPPONENT WEAKNESS, "
+            "KEY OPPORTUNITY (and optionally KEY RISK). Example: 'POSSESSION ADVANTAGE: Spain\\nMAIN THREAT: "
+            "Maxi Araujo (Uruguay)\\nOPPONENT WEAKNESS: Central defence + set pieces\\nKEY OPPORTUNITY: Attack "
+            "their right side'. Each value short and concrete. No prose sentences."
+        )
+        checklist_instruction = (
+            "CHECKLIST: 4-6 short imperative instructions, one per line, each starting with '✓ ', separated by "
+            "newline characters (\\n). Example: '✓ Defend centrally\\n✓ Exploit their set pieces\\n✓ Mark "
+            "Maxi Araujo aggressively\\n✓ Attack the right side\\n✓ Avoid open transitions'. Each line max 6 words. No prose."
+        )
+
     extra = f"\n\nADDITIONAL COACH NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
     lang = getattr(req, "language", "en")
     lang_instruction = (
@@ -943,11 +971,11 @@ SMALL-SAMPLE RULE (critical for credibility):
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS + colon + short value, separated by newline characters (\\n). Use these labels: POSSESSION ADVANTAGE, MAIN THREAT, OPPONENT WEAKNESS, KEY OPPORTUNITY (and optionally KEY RISK). Example: 'POSSESSION ADVANTAGE: Spain\\nMAIN THREAT: Maxi Araujo (Uruguay)\\nOPPONENT WEAKNESS: Central defence + set pieces\\nKEY OPPORTUNITY: Attack their right side'. Each value short and concrete. No prose sentences.",
+  "executive_summary": "{exec_instruction}",
   "opponent_strengths": ["data-backed strength with evidence 1", "strength 2", "strength 3"],
   "opponent_weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],
   "key_threats": ["named opponent player or pattern to neutralise, with evidence 1", "threat 2"],
-  "tactical_approach": "CHECKLIST: 4-6 short imperative instructions, one per line, each starting with '✓ ', separated by newline characters (\\n). Example: '✓ Defend centrally\\n✓ Exploit their set pieces\\n✓ Mark Maxi Araujo aggressively\\n✓ Attack the right side\\n✓ Avoid open transitions'. Each line max 6 words. No prose.",
+  "tactical_approach": "{checklist_instruction}",
   "pressing_triggers": ["specific moment/situation to press 1", "trigger 2"],
   "attacking_approach": ["instruction tied to THEIR defensive weakness 1", "instruction 2", "instruction 3"],
   "set_piece_plan": ["set piece insight from the data 1", "consideration 2"],
@@ -1170,6 +1198,24 @@ def generate_opponent_scout(req: OpponentScoutRequest) -> OpponentScoutReport:
         lineup_inferred=True, lang=req.language)
     confidence_block = _confidence_instruction(data_quality)
 
+    if req.language == "pt":
+        exec_instruction = (
+            "ESTILO ETIQUETA MILITAR: exactamente 4-5 linhas, cada uma uma ETIQUETA EM MAIUSCULAS "
+            "seguida de dois pontos e um valor curto, separadas por \\n. Usa ESTAS etiquetas EM "
+            "PORTUGUES (nunca em ingles): ESTILO, PRINCIPAL AMEACA, PONTO FRACO, PERIODO PERIGOSO "
+            "(e opcionalmente BOLAS PARADAS). Exemplo: 'ESTILO: Dominador (55% posse)\\nPRINCIPAL "
+            "AMEACA: Cody Gakpo (2G 1A)\\nPONTO FRACO: Sofre de cantos\\nPERIODO PERIGOSO: 46-60''. "
+            "Valores curtos e concretos. Sem frases."
+        )
+    else:
+        exec_instruction = (
+            "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS followed by a colon and a "
+            "short value, separated by newline characters (\\n). Use these labels: STYLE, MAIN THREAT, "
+            "KEY WEAKNESS, DANGER PERIOD (and optionally SET PIECES). Example: 'STYLE: Ball-dominant "
+            "(55% possession)\\nMAIN THREAT: Cody Gakpo (2G 1A)\\nKEY WEAKNESS: Concedes from corners\\n"
+            "DANGER PERIOD: 46-60''. Each value short and concrete. No prose sentences."
+        )
+
     recent_str = "\n".join(f"  {_fmt_match(m, req.team, neutral)}" for m in recent) or "  no data"
     extra = f"\n\nADDITIONAL NOTES:\n{req.extra_notes}" if req.extra_notes.strip() else ""
 
@@ -1236,7 +1282,7 @@ SMALL-SAMPLE RULE (critical for credibility):
 
 Return EXACTLY this JSON (no extra keys, no markdown):
 {{
-  "executive_summary": "MILITARY LABEL STYLE: exactly 4-5 lines, each a LABEL in CAPS followed by a colon and a short value, separated by newline characters (\\n). Use these labels: STYLE, MAIN THREAT, KEY WEAKNESS, DANGER PERIOD (and optionally SET PIECES). Example: 'STYLE: Ball-dominant (55% possession)\\nMAIN THREAT: Cody Gakpo (2G 1A)\\nKEY WEAKNESS: Concedes from corners\\nDANGER PERIOD: 46-60''. Each value short and concrete. No prose sentences.",
+  "executive_summary": "{exec_instruction}",
   "playing_style": "2-3 sentences: inferred style from possession, shots, and results — are they dominant or reactive?",
   "strengths": ["specific data-backed strength with evidence 1", "strength 2", "strength 3"],
   "weaknesses": ["exploitable weakness with evidence 1", "weakness 2", "weakness 3"],

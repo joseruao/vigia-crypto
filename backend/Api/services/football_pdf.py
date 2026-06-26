@@ -124,7 +124,7 @@ class _ScoutPDF(FPDF):
         self.set_font("U", "", 9)
         self.set_text_color(*_DARK)
         self.set_x(_MARGIN + indent)
-        self.multi_cell(_INNER - indent, 5.5, text,
+        self.multi_cell(_INNER - indent, 5.5, text, align="L",
                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(1)
 
@@ -145,8 +145,40 @@ class _ScoutPDF(FPDF):
             self.cell(5, 5.5, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
             self.set_font("U", "", 8.5)
             self.set_text_color(*_DARK)
-            self.multi_cell(_INNER - indent - 5, 5.5, item,
+            self.multi_cell(_INNER - indent - 5, 5.5, item, align="L",
                             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(1)
+
+    def _ensure_space(self, needed: float) -> None:
+        """Start a new page if `needed` mm won't fit — stops a section header
+        being orphaned at the bottom with its table flowing to the next page."""
+        if self.get_y() + needed > 297 - 18:  # A4 height - bottom margin
+            self.add_page()
+
+    def _form_rows(self, items: list[str]) -> None:
+        """Recent matches with a colour-coded W/D/L chip FIRST, then the result —
+        green win / amber draw / red loss, so form reads at a glance."""
+        if not items:
+            self._bullets(["-"])
+            return
+        _RC = {"W": _GREEN, "D": _AMBER, "L": _RED}
+        self.set_font("U", "", 8.3)
+        for line in items:
+            res, body = "", line
+            parts = line.rsplit(" ", 1)
+            if len(parts) == 2 and parts[1] in ("W", "D", "L"):
+                res, body = parts[1], parts[0].strip()
+            x = _MARGIN
+            y = self.get_y()
+            self.set_fill_color(*_RC.get(res, _GRAY))
+            self.rect(x, y, 6, 5, "F")
+            self.set_xy(x, y)
+            self.set_font("U", "B", 8); self.set_text_color(*_WHITE)
+            self.cell(6, 5, res or "-", align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_x(x + 8)
+            self.set_font("U", "", 8.3); self.set_text_color(*_DARK)
+            self.multi_cell(_INNER - 8, 5, body, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_text_color(0, 0, 0)
         self.ln(1)
 
     def _two_col(
@@ -201,7 +233,7 @@ class _ScoutPDF(FPDF):
             self.cell(5, 5.2, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
             self.set_font("U", "", 8.3)
             self.set_text_color(*_DARK)
-            self.multi_cell(w - 5, 5.2, item, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.multi_cell(w - 5, 5.2, item, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     def _stat_row(self, label: str, value: str) -> None:
         self.set_x(_MARGIN)
@@ -210,7 +242,7 @@ class _ScoutPDF(FPDF):
         self.cell(40, 5, label, new_x=XPos.RIGHT, new_y=YPos.TOP)
         self.set_font("U", "", 8.5)
         self.set_text_color(*_DARK)
-        self.multi_cell(_INNER - 40, 5, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.multi_cell(_INNER - 40, 5, value, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     def _cover_box(self, badge: str, title: str, source: str) -> None:
         y = self.get_y()
@@ -274,30 +306,18 @@ class _ScoutPDF(FPDF):
         self.ln(2)
 
     def _data_confidence_box(self, dq: dict, L: dict) -> None:
-        """Provenance + confidence strip at the top of page 1 (Codex #1 / #5)."""
-        if not dq:
+        """Coach-facing sample-size note. Just the number of matches — the full
+        provenance (provider, xG source) still feeds the model to keep the prose
+        honest, but a coach doesn't need 'no xG / scraped ESPN' in his face."""
+        n = dq.get("matches_analysed", 0) if dq else 0
+        if not n:
             return
-        conf = dq.get("confidence", "low")
-        bar = {"high": _GREEN, "medium": _AMBER, "low": _RED}.get(conf, _GRAY)
-        y0 = self.get_y()
-        self.set_fill_color(*bar)
-        self.rect(_MARGIN, y0, 2, 9, "F")
-        self.set_fill_color(*_GRAY_LT)
-        self.set_xy(_MARGIN + 2, y0)
-        self.set_font("U", "B", 8); self.set_text_color(*_DARK)
-        head = (f"   {L['data_confidence'].upper()}: {dq.get('confidence_label', conf)}   |   "
-                f"{dq.get('matches_analysed', 0)} {L['dq_matches']}   |   "
-                f"{dq.get('shots_with_coordinates', 0)} {L['dq_shots']}   |   "
-                f"xG: {'-' if dq.get('xg_source') == 'none' else dq.get('xg_source')}")
-        self.cell(_INNER - 2, 9, head, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        warns = dq.get("warnings", [])
-        if warns:
-            self.set_x(_MARGIN)
-            self.set_font("U", "I", 7); self.set_text_color(*_GRAY)
-            self.multi_cell(_INNER, 4.5, "   • " + "   • ".join(warns),
-                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_x(_MARGIN)
+        self.set_font("U", "I", 8); self.set_text_color(*_GRAY)
+        self.cell(_INNER, 5, f"{L['based_on']} {n} {L['dq_matches']}",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
-        self.ln(2)
+        self.ln(1)
 
     def _rank_cards(self, ranks: list[dict]) -> None:
         """Three competition-rank cards in a row (green=strength, red=weakness)."""
@@ -349,7 +369,7 @@ class _ScoutPDF(FPDF):
         for a in alerts[:4]:
             self.set_x(_MARGIN)
             self.set_font("U", "B", 9); self.set_text_color(185, 28, 28)
-            self.multi_cell(_INNER, 6.5, f"   •  {a}", fill=True,
+            self.multi_cell(_INNER, 6.5, f"   •  {a}", fill=True, align="L",
                             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_text_color(0, 0, 0)
         self.ln(3)
@@ -396,12 +416,17 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     my_line  = next((l for l in raw_lines if l.startswith("MY TEAM")), "")
     opp_line = next((l for l in raw_lines if l.startswith("OPPONENT")), "")
 
+    # Strip the raw "MY TEAM [DW]:" / "OPPONENT [WW]:" prefix — the row label
+    # already says which team, so the prefix is redundant noise.
+    def _strip_prefix(line: str) -> str:
+        return line.split(":", 1)[1].strip() if ":" in line else line
+
     if my_line or opp_line:
         pdf._section_bar(L["season_stats"], color=_DARK)
         if my_line:
-            pdf._stat_row(L["my_team"] + ":", my_line)
+            pdf._stat_row(L["my_team"] + ":", _strip_prefix(my_line))
         if opp_line:
-            pdf._stat_row(L["opponent"] + ":", opp_line)
+            pdf._stat_row(L["opponent"] + ":", _strip_prefix(opp_line))
         pdf.ln(3)
 
     # Parse recent matches from raw block
@@ -423,12 +448,12 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     pdf.set_font("U", "B", 8); pdf.set_text_color(*_GRAY)
     pdf.set_x(_MARGIN); pdf.cell(0, 5, L["my_team"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(0, 0, 0)
-    pdf._bullets(my_matches[:6] or ["-"])
+    pdf._form_rows(my_matches[:6])
 
     pdf.set_font("U", "B", 8); pdf.set_text_color(*_GRAY)
     pdf.set_x(_MARGIN); pdf.cell(0, 5, L["opponent"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(0, 0, 0)
-    pdf._bullets(opp_matches[:6] or ["-"])
+    pdf._form_rows(opp_matches[:6])
 
     if h2h_matches:
         pdf.set_font("U", "B", 8); pdf.set_text_color(*_GRAY)
@@ -479,6 +504,7 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
     opp_danger = report.get("opponent_danger_players", [])
     if opp_danger:
         pdf.ln(2)
+        pdf._ensure_space(14 + 6 * (len(opp_danger) + 1))  # header + rows
         pdf._section_bar(L["danger_players"], color=_RED)
         pdf._danger_table(opp_danger, L)
 
@@ -489,7 +515,7 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
         pdf._section_bar(L["goal_log"], color=_DARK)
         pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
         pdf.set_x(_MARGIN)
-        pdf.multi_cell(_INNER, 5.5, "  ·  ".join(opp_glog), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(_INNER, 5.5, "  ·  ".join(opp_glog), align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # ----- PAGE: Opponent shot maps -----
     imgs = report.get("images", {})
@@ -560,7 +586,7 @@ def build_match_prep_pdf(report: dict, lang: str = "en") -> bytes:
                 pdf.set_fill_color(254, 242, 242)
                 pdf.set_xy(_MARGIN + 2, y)
                 pdf.set_font("U", "B", 9.5); pdf.set_text_color(150, 30, 30)
-                pdf.multi_cell(_INNER - 2, 11, f"   {a}", fill=True,
+                pdf.multi_cell(_INNER - 2, 11, f"   {a}", fill=True, align="L",
                                new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.ln(1.5)
 
@@ -661,7 +687,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
         pdf._section_bar(L["probable_lineup"], color=_DARK)
         pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
         pdf.set_x(_MARGIN)
-        pdf.multi_cell(_INNER, 5.5, "  •  ".join(lineup),
+        pdf.multi_cell(_INNER, 5.5, "  •  ".join(lineup), align="L",
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
 
@@ -818,7 +844,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
                 pdf.cell(0, 5, L["goals_scored"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
                 pdf.set_x(_MARGIN)
-                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_for), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_for), align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             if glog_against:
                 pdf.ln(1)
                 pdf.set_x(_MARGIN)
@@ -826,7 +852,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
                 pdf.cell(0, 5, L["goals_conceded"].upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_font("U", "", 8.5); pdf.set_text_color(*_DARK)
                 pdf.set_x(_MARGIN)
-                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_against), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.multi_cell(_INNER, 5.5, "  ·  ".join(glog_against), align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.ln(2)
 
         if timing_png:
@@ -854,7 +880,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
         pdf.cell(8, 8, str(i), fill=True, align="C",
                  new_x=XPos.RIGHT, new_y=YPos.TOP)
         pdf.set_font("U", "", 9); pdf.set_text_color(*_DARK)
-        pdf.multi_cell(_INNER - 10, 8, f"  {item}",
+        pdf.multi_cell(_INNER - 10, 8, f"  {item}", align="L",
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
 
@@ -884,7 +910,7 @@ def build_scout_pdf(report: dict, lang: str = "en") -> bytes:
             pdf.set_fill_color(254, 242, 242)
             pdf.set_xy(_MARGIN + 2, y)
             pdf.set_font("U", "B", 10); pdf.set_text_color(185, 28, 28)
-            pdf.multi_cell(_INNER - 2, 11, f"   {alert}", fill=True,
+            pdf.multi_cell(_INNER - 2, 11, f"   {alert}", fill=True, align="L",
                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.ln(2)
 
@@ -952,7 +978,8 @@ def _labels(lang: str) -> dict[str, str]:
             "head_to_head": "Comparacao Directa (por jogo)",
             "competition_context": "Contexto na Competicao",
             "data_confidence": "Confianca dos Dados",
-            "dq_matches": "jogos",
+            "based_on": "Baseado em",
+            "dq_matches": "jogos analisados",
             "dq_shots": "remates c/ coords",
         }
     return {
@@ -1006,6 +1033,7 @@ def _labels(lang: str) -> dict[str, str]:
         "head_to_head": "Head-to-Head (per game)",
         "competition_context": "Competition Context",
         "data_confidence": "Data Confidence",
-        "dq_matches": "matches",
+        "based_on": "Based on",
+        "dq_matches": "matches analysed",
         "dq_shots": "shots w/ coords",
     }

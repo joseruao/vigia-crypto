@@ -84,6 +84,7 @@ const t = {
     competitionContext: 'Competition Context',
     dataConfidence: 'Data Confidence', confidence: 'Confidence',
     matchesAnalysed: 'matches analysed', shotsWithCoords: 'shots with coordinates',
+    basedOn: 'Based on',
   },
   pt: {
     tagline: 'Relatórios Automáticos de Pré-Jogo para Clubes Profissionais',
@@ -126,6 +127,7 @@ const t = {
     competitionContext: 'Contexto na Competição',
     dataConfidence: 'Confiança dos Dados', confidence: 'Confiança',
     matchesAnalysed: 'jogos analisados', shotsWithCoords: 'remates com coordenadas',
+    basedOn: 'Baseado em',
   },
 } as const;
 
@@ -191,35 +193,14 @@ function TeamSelect({ label, value, onChange, teams, placeholder, competition }:
 
 function DataConfidenceBar({ dq, lang }: { dq: DataQuality; lang: Lang }) {
   const T = t[lang];
-  const tone =
-    dq.confidence === 'high' ? 'border-emerald-300 bg-emerald-50' :
-    dq.confidence === 'medium' ? 'border-amber-300 bg-amber-50' :
-    'border-red-300 bg-red-50';
-  const dot =
-    dq.confidence === 'high' ? 'bg-emerald-500' :
-    dq.confidence === 'medium' ? 'bg-amber-500' : 'bg-red-500';
+  if (!dq.matches_analysed) return null;
+  // Coach-facing: just the sample size, stated neutrally. The full provenance
+  // (provider, xG source, warnings) still feeds the model internally to keep
+  // the prose honest, but a coach doesn't need to see "no xG / scraped ESPN".
   return (
-    <div className={`rounded-lg border ${tone} p-3`}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-700">
-          <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
-          {T.dataConfidence}: {dq.confidence_label}
-        </span>
-        <span className="text-slate-600">{dq.matches_analysed} {T.matchesAnalysed}</span>
-        <span className="text-slate-600">{dq.shots_with_coordinates} {T.shotsWithCoords}</span>
-        <span className="text-slate-500">xG: {dq.xg_source === 'none' ? '—' : dq.xg_source}</span>
-        <span className="text-slate-400">· {dq.provider}</span>
-      </div>
-      {dq.warnings && dq.warnings.length > 0 && (
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {dq.warnings.map((w, i) => (
-            <li key={i} className="rounded-full bg-white/70 px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
-              {w}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <p className="text-xs font-medium text-slate-400">
+      {T.basedOn} {dq.matches_analysed} {T.matchesAnalysed}
+    </p>
   );
 }
 
