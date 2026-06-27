@@ -571,11 +571,11 @@ def analyze_document(
     from openai import OpenAI
 
     client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini"),
-        temperature=0.2,
-        response_format={"type": "json_object"},
-        messages=[
+    model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
+    create_kwargs: dict = {
+        "model": model,
+        "response_format": {"type": "json_object"},
+        "messages": [
             {"role": "system", "content": _system_prompt(language)},
             {
                 "role": "user",
@@ -591,7 +591,12 @@ def analyze_document(
                 ),
             },
         ],
-    )
+    }
+    # Newer OpenAI reasoning models (gpt-5*, o-series) reject a custom temperature.
+    # Only send it for models that accept it, so switching the model never 400s.
+    if not re.match(r"^(gpt-5|o\d)", model):
+        create_kwargs["temperature"] = 0.2
+    response = client.chat.completions.create(**create_kwargs)
     data = _normalize_model_payload(_parse_json_object(response.choices[0].message.content or "{}"))
     extracted_legal_refs = _extract_legal_references(extracted_text)
     data["cited_sources_in_document"] = _normalize_cited_sources(
