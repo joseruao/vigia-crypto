@@ -365,6 +365,14 @@ async def extract_upload_text(file: UploadFile) -> tuple[str, bool]:
         else:
             text = _extract_docx(tmp_path)
             truncated = False
+    except RuntimeError:
+        # Missing pypdf/python-docx — a server config issue (mapped to 503).
+        raise
+    except Exception as exc:
+        # Malformed/corrupt file — a client error, not a server fault.
+        raise ValueError(
+            "Could not read this document. Make sure it is a valid, non-corrupt PDF or DOCX."
+        ) from exc
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
