@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  Download,
   FileText,
   Gavel,
   Loader2,
@@ -127,6 +128,12 @@ export default function DevilsAdvocatePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
+      <style
+        dangerouslySetInnerHTML={{
+          __html:
+            '@media print { html, body { background: #fff !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+        }}
+      />
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
           <div>
@@ -138,14 +145,14 @@ export default function DevilsAdvocatePage() {
           <button
             type="button"
             onClick={() => setLanguage((value) => (value === 'pt' ? 'en' : 'pt'))}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400"
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 print:hidden"
           >
             {language === 'pt' ? 'PT' : 'EN'}
           </button>
         </header>
 
-        <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-6 xl:grid-cols-[360px_1fr] print:block">
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm print:hidden">
             <div className="mb-5 flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-md bg-red-50 text-red-700">
                 <Scale className="h-4 w-4" />
@@ -234,6 +241,16 @@ export default function DevilsAdvocatePage() {
               </div>
             ) : (
               <div className="space-y-5">
+                <div className="flex justify-end print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Exportar PDF
+                  </button>
+                </div>
+
                 <ReportSection title="Sumário" icon={<Scale className="h-4 w-4" />} tone="dark">
                   <p className="whitespace-pre-line text-sm leading-6 text-slate-100">{report.executive_summary}</p>
                   <p className="mt-4 text-xs text-slate-400">

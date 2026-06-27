@@ -195,6 +195,38 @@ def _filter_verified_reference_sources(refs: list[dict], legal_refs: list[str]) 
     return filtered
 
 
+def _dedupe_legal_references(refs: list) -> list[dict]:
+    """Collapse legal_references_used to one entry per article.
+
+    The model's own references plus the point-scanned links often produce
+    several entries for the same article with different 'point' texts. Keep a
+    single entry per article, preferring the most specific (non-generic,
+    longest) point so the report doesn't repeat the same law four times.
+    """
+    generic = "referência legal fornecida no documento"
+    best: dict[str, dict] = {}
+    order: list[str] = []
+    for item in refs:
+        if not isinstance(item, dict):
+            continue
+        key = _legal_ref_key(str(item.get("source") or ""))
+        if not key:
+            continue
+        if key not in best:
+            order.append(key)
+            best[key] = item
+            continue
+        new_point = str(item.get("point") or "")
+        cur_point = str(best[key].get("point") or "")
+        new_generic = generic in new_point.lower()
+        cur_generic = generic in cur_point.lower()
+        if (cur_generic and not new_generic) or (
+            new_generic == cur_generic and len(new_point) > len(cur_point)
+        ):
+            best[key] = item
+    return [best[k] for k in order]
+
+
 def _cache_key(
     *,
     document_name: str,
@@ -635,6 +667,7 @@ def analyze_document(
             }
             for ref in extracted_legal_refs
         ]
+    data["legal_references_used"] = _dedupe_legal_references(data["legal_references_used"])
     report = DevilsAdvocateReport(
         document_name=document_name,
         jurisdiction=jurisdiction,
