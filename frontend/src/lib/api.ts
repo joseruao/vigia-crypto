@@ -450,3 +450,80 @@ export async function fetchBetBoard(hours: number = 48): Promise<BetBoard> {
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Devil's Advocate - private legal argument stress test
+// ---------------------------------------------------------------------------
+
+export type DevilsAdvocateRisk = {
+  title: string;
+  points: string[];
+};
+
+export type DevilsAdvocateLegalReference = {
+  point: string;
+  source: string;
+  status: string;
+};
+
+export type DevilsAdvocateReport = {
+  document_name: string;
+  jurisdiction: string;
+  legal_area: string;
+  document_type: string;
+  represented_side: string;
+  objective: string;
+  source_note: string;
+  executive_summary: string;
+  case_theory: string[];
+  opponent_theory: string[];
+  extracted_facts: string[];
+  advocate_argument: string[];
+  opponent_argument: string[];
+  audit_findings: string[];
+  burden_and_proof: string[];
+  hearing_questions: string[];
+  next_actions: string[];
+  unverified_legal_points: string[];
+  missing_evidence: string[];
+  questions_for_lawyer: string[];
+  risk_matrix: DevilsAdvocateRisk[];
+  cited_sources_in_document: string[];
+  legal_references_used: DevilsAdvocateLegalReference[];
+  confidence_note: string;
+  content_truncated: boolean;
+};
+
+export async function analyzeDevilsAdvocate(input: {
+  file: File;
+  jurisdiction: string;
+  legal_area: string;
+  document_type: string;
+  represented_side: string;
+  objective: string;
+  language: "pt" | "en";
+  accessCode: string;
+}): Promise<DevilsAdvocateReport> {
+  const form = new FormData();
+  form.set("file", input.file);
+  form.set("jurisdiction", input.jurisdiction);
+  form.set("legal_area", input.legal_area);
+  form.set("document_type", input.document_type);
+  form.set("represented_side", input.represented_side);
+  form.set("objective", input.objective);
+  form.set("language", input.language);
+
+  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze`, {
+    method: "POST",
+    headers: { "X-Access-Code": input.accessCode },
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const err = new Error(data?.detail || `HTTP ${res.status}`);
+    err.name = `HTTP_${res.status}`;
+    throw err;
+  }
+  const data = await res.json();
+  return data.report;
+}

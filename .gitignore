@@ -19,6 +19,14 @@ node_modules/
 *.sqlite
 *.pkl
 *.bak_*
+
+# Test artifacts / sample documents (may contain real client/fiscal data — keep out of git)
+/*.pdf
+/*.docx
+/*.csv
+test_*.pdf
+test_*.docx
+prelisting_export.csv
 commit.cmd
 patch_backend.cmd
 repo_sanity.ps1

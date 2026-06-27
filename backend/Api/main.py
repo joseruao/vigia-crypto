@@ -94,6 +94,12 @@ try:
 except ImportError as e:
     log.warning("Bet router nao disponivel: %s", e)
 
+try:
+    from Api.routes.devils_advocate import router as devils_advocate_router
+    app.include_router(devils_advocate_router, prefix="")
+except ImportError as e:
+    log.warning("Devil's Advocate router nao disponivel: %s", e)
+
 
 @app.get("/")
 @app.head("/")
