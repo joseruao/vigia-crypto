@@ -97,7 +97,10 @@ except ImportError as e:
 try:
     from Api.routes.devils_advocate import router as devils_advocate_router
     app.include_router(devils_advocate_router, prefix="")
-except ImportError as e:
+except Exception as e:
+    # Catch Exception (not just ImportError): the route uses File/Form, which raise
+    # RuntimeError at import time if python-multipart is missing. An optional router
+    # must never take the whole API down.
     log.warning("Devil's Advocate router nao disponivel: %s", e)
 
 
