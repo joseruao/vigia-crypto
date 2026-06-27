@@ -75,6 +75,14 @@ export default function DevilsAdvocatePage() {
     if (saved) setAccessCode(saved);
   }, []);
 
+  // Persist the code as soon as it's typed — not only after a successful
+  // analysis — so it survives reloads even while debugging failed requests.
+  useEffect(() => {
+    if (accessCode.trim()) {
+      localStorage.setItem('devils_advocate_access_code', accessCode.trim());
+    }
+  }, [accessCode]);
+
   async function handleAnalyze() {
     if (!file || loading) return;
     if (!accessCode.trim()) {
@@ -99,7 +107,6 @@ export default function DevilsAdvocatePage() {
         language,
         accessCode: accessCode.trim(),
       });
-      localStorage.setItem('devils_advocate_access_code', accessCode.trim());
       setReport(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao analisar documento.');
