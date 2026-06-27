@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/devils-advocate", tags=["devils-advocate"])
 
 # Per-IP rate limit (in-memory, per-process). Defence in depth on top of the
 # access code — caps how fast a single client can spend OpenAI credits.
-RATE_LIMIT_MAX = int(os.getenv("DEVILS_ADVOCATE_RATE_LIMIT_MAX", "20"))
+RATE_LIMIT_MAX = int(os.getenv("DEVILS_ADVOCATE_RATE_LIMIT_MAX", "40"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("DEVILS_ADVOCATE_RATE_LIMIT_WINDOW", "3600"))
 _REQUEST_LOG: dict[str, deque[float]] = {}
 

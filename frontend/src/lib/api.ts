@@ -513,11 +513,26 @@ export async function analyzeDevilsAdvocate(input: {
   form.set("objective", input.objective);
   form.set("language", input.language);
 
-  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze`, {
-    method: "POST",
-    headers: { "X-Access-Code": input.accessCode },
-    body: form,
-  });
+  // Abort after 2 min so a slow/hung backend surfaces a clear error instead
+  // of an endless spinner.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/devils-advocate/analyze`, {
+      method: "POST",
+      headers: { "X-Access-Code": input.accessCode },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("A análise demorou demasiado. Tente novamente.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     const err = new Error(data?.detail || `HTTP ${res.status}`);

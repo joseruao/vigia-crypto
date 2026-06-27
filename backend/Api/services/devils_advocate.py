@@ -600,9 +600,11 @@ def analyze_document(
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
 
-    from openai import OpenAI
+    from openai import OpenAI, OpenAIError
 
-    client = OpenAI(api_key=api_key)
+    # Bounded timeout + retries so a slow or hung OpenAI call fails fast with a
+    # friendly error instead of leaving the user staring at a spinner forever.
+    client = OpenAI(api_key=api_key, timeout=90.0, max_retries=2)
     model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
     create_kwargs: dict = {
         "model": model,
@@ -628,8 +630,21 @@ def analyze_document(
     # Only send it for models that accept it, so switching the model never 400s.
     if not re.match(r"^(gpt-5|o\d)", model):
         create_kwargs["temperature"] = 0.2
-    response = client.chat.completions.create(**create_kwargs)
-    data = _normalize_model_payload(_parse_json_object(response.choices[0].message.content or "{}"))
+    try:
+        response = client.chat.completions.create(**create_kwargs)
+    except OpenAIError as exc:
+        raise RuntimeError(
+            "O serviço de IA está temporariamente indisponível ou demorou demasiado. Tente novamente."
+        ) from exc
+
+    try:
+        data = _normalize_model_payload(
+            _parse_json_object(response.choices[0].message.content or "{}")
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(
+            "A resposta da IA não pôde ser interpretada. Tente novamente."
+        ) from exc
     extracted_legal_refs = _extract_legal_references(extracted_text)
     data["cited_sources_in_document"] = _normalize_cited_sources(
         data.get("cited_sources_in_document", []),

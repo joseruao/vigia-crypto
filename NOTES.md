@@ -5,6 +5,40 @@
 
 ---
 
+## ⚖️ DEVIL'S ADVOCATE — Audit pré-advogado (27 Jun 2026)
+
+Ferramenta jurídica (backend `Api/services|routes/devils_advocate.py`, frontend
+`/devil`). Lançada e a funcionar em produção (Railway + Vercel). Modelo via env
+`DEVILS_ADVOCATE_MODEL` (default `gpt-4o-mini`; testado e bom em `gpt-5.5`).
+
+### ✅ Feito neste audit
+- **Timeout + retries no OpenAI** (90s, 2 retries) e **erros mapeados para mensagens
+  PT amigáveis** (503) em vez de "analysis failed"/spinner infinito. Falha de parse do
+  JSON da IA → mesma via.
+- **Timeout no fetch do frontend** (2 min, AbortController) → "A análise demorou demasiado".
+- **Rate-limit default 20 → 40/hora por IP** (mais folga para o advogado iterar; ainda protege).
+- (Antes neste dia) auth fail-closed por código de acesso, rate-limit, aviso RGPD,
+  guarda anti prompt-injection, truncagem visível, dedup das referências legais,
+  botão Exportar PDF, prompt afinado p/ profundidade, código gpt-5-safe (sem temperature).
+
+### NEEDS_DECISION — para o José decidir (não bloqueiam testes com advogado)
+1. **Modelo vs custo:** `gpt-5.5` ~18 cênt/doc (qualidade topo) vs `gpt-5.4` ~9 cênt
+   (metade do preço, qualidade quase igual). Recomendo testar o mesmo doc nos dois e
+   ficar no 5.4 se for equivalente. É só mudar `DEVILS_ADVOCATE_MODEL` no Railway.
+2. **Arquitetura de privacidade p/ produção real:** atual = OpenAI/EUA + aviso honesto
+   (ok p/ beta). Para escalar com dados reais de clientes: ou **UE+DPA** (Mistral / Azure
+   OpenAI região UE — mantém qualidade, defensável RGPD/segredo) ou **Llama local/self-hosted**
+   (tira o aviso por completo, mas qualidade cai e exige hardware). Decidir antes de uso real.
+3. **Railway sem créditos:** dashboard marcou "8 days or $3.81 left" (27 Jun). Quando esgotar,
+   backend cai (502). Adicionar crédito antes disso.
+
+### Limitações conhecidas (menores, não corrigidas — aceitáveis p/ beta)
+- Rate-limit é em memória por processo (não partilhado entre workers/instâncias).
+- Em modo EN, os títulos das secções do relatório ficam em PT (conteúdo vem em EN). Público é PT.
+- Sem cap de `max_tokens` na chamada (evita truncar o JSON; o timeout de 90s é o limite).
+
+---
+
 ## ⚽ FOOTBALL LAB — Auditoria do Codex aplicada (24 Jun 2026, commit 74d211b)
 
 Codex fez auditoria de dados. Conclusão dele: **não há fonte grátis decente de xG/eventos
