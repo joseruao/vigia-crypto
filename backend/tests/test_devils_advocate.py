@@ -22,7 +22,7 @@ def test_legal_references_filter_model_hallucinations():
         {
             "point": "valid point",
             "source": "CIVA, artigo 19.º",
-            "status": "mencionada no documento; redação atual em fonte oficial não verificada nesta fase",
+            "status": "redação atual não verificada em fonte oficial",
         }
     ]
 

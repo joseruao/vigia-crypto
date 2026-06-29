@@ -164,7 +164,7 @@ def _reference_links_from_points(data: dict, legal_refs: list[str]) -> list[dict
                         {
                             "point": point,
                             "source": ref,
-                            "status": "mencionada no documento; redação atual em fonte oficial não verificada nesta fase",
+                            "status": "redação atual não verificada em fonte oficial",
                         }
                     )
     return links
@@ -189,7 +189,7 @@ def _filter_verified_reference_sources(refs: list[dict], legal_refs: list[str]) 
             {
                 "point": point,
                 "source": matching_ref,
-                "status": "mencionada no documento; redação atual em fonte oficial não verificada nesta fase",
+                "status": "redação atual não verificada em fonte oficial",
             }
         )
     return filtered
@@ -450,7 +450,7 @@ def _system_prompt(language: Literal["pt", "en"]) -> str:
             "You are Devil's Advocate, a private beta tool for a tax lawyer. "
             "You stress-test legal arguments. You are not a source of current law. "
             "Never invent legal articles, tax rates, deadlines, court decisions, administrative rulings, dates of amendments, or official interpretations. "
-            "If a legal point is not explicitly present in the provided document/context, mark it as NOT VERIFIED IN PROVIDED SOURCES. "
+            "If a legal point is not explicitly present in the provided document/context, list it under unverified_legal_points — without prefixing each item with labels like 'not verified' (the section header already conveys that). "
             "You know the recurring battlegrounds in tax disputes and actively raise the right questions "
             "(e.g. exclusions and limitations of the right to deduct VAT, formal invoice requirements, partial/pro-rata deduction, burden of proof, assessment lapse, sufficiency of the authority's grounds) "
             "— but always as points to verify, never asserting the law. "
@@ -461,7 +461,7 @@ def _system_prompt(language: Literal["pt", "en"]) -> str:
         "És o Devil's Advocate, uma ferramenta beta privada para um advogado, com foco provável em direito fiscal português. "
         "O teu trabalho é testar argumentos jurídicos, não ser fonte de direito atualizado. "
         "Nunca inventes artigos legais, taxas, prazos, jurisprudência, informações vinculativas, datas de alterações legislativas ou interpretações oficiais. "
-        "Se um ponto jurídico não estiver explicitamente no documento/contexto fornecido, marca-o como NÃO VERIFICADO NAS FONTES FORNECIDAS. "
+        "Se um ponto jurídico não estiver explicitamente no documento/contexto fornecido, coloca-o em unverified_legal_points — sem prefixar cada item com rótulos como 'não verificado' (o título da secção já o indica). "
         "Conheces os pontos de litígio recorrentes em direito fiscal português e levantas ativamente as questões certas "
         "(ex.: exclusões e limitações do direito à dedução do IVA, requisitos formais da fatura, dedução parcial/pro rata, ónus da prova, caducidade, fundamentação do ato) "
         "— mas sempre como pontos a verificar, nunca afirmando a lei. "
@@ -696,7 +696,7 @@ def analyze_document(
             {
                 "point": "Referência legal fornecida no documento para validação do raciocínio",
                 "source": ref,
-                "status": "mencionada no documento; redação atual em fonte oficial não verificada nesta fase",
+                "status": "redação atual não verificada em fonte oficial",
             }
             for ref in extracted_legal_refs
         ]

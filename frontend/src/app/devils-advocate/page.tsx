@@ -198,12 +198,6 @@ export default function DevilsAdvocatePage() {
                 </div>
               </label>
 
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-                Portugal · Fiscal · análise adversarial com pontos não verificados destacados
-                <br />
-                Repetir o mesmo ficheiro usa cache temporária no backend durante os testes.
-              </div>
-
               {isLocal ? (
                 <div className="flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
@@ -217,10 +211,8 @@ export default function DevilsAdvocatePage() {
                 <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    <strong>Privacidade:</strong> o texto do documento é enviado para um modelo de
-                    IA de terceiros (OpenAI, EUA) para análise. Não carregue documentos cujo conteúdo
-                    não possa partilhar com um subcontratante. Confirme o cumprimento do segredo
-                    profissional e do RGPD antes de usar dados reais de clientes.
+                    <strong>Privacidade:</strong> processado por um modelo de IA externo (OpenAI, EUA).
+                    Não carregue conteúdo que não possa partilhar com um subcontratante.
                   </span>
                 </div>
               )}
@@ -260,7 +252,7 @@ export default function DevilsAdvocatePage() {
                 </div>
                 <h2 className="mt-4 text-xl font-semibold">Relatório adversarial</h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Upload de PDF/DOCX, contraditório, auditoria e pontos jurídicos não verificados.
+                  Carregue um PDF ou DOCX para gerar o relatório.
                 </p>
               </div>
             ) : (
