@@ -1,7 +1,7 @@
 // frontend/src/app/layout.tsx
 import type { Metadata } from 'next'
 import './globals.css'
-import { Sidebar } from '@/components/Sidebar'
+import { ConditionalSidebar } from '@/components/ConditionalSidebar'
 import { ChatHistoryProvider } from '@/lib/ChatHistoryProvider'
 import { LangProvider } from '@/lib/LangContext'
 
@@ -18,7 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="flex h-screen bg-white text-black antialiased overflow-hidden" suppressHydrationWarning>
         <LangProvider>
           <ChatHistoryProvider>
-            <Sidebar />
+            <ConditionalSidebar />
             <div className="flex-1 flex flex-col overflow-y-auto">{children}</div>
           </ChatHistoryProvider>
         </LangProvider>

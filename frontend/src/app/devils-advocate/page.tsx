@@ -70,10 +70,13 @@ export default function DevilsAdvocatePage() {
   const [report, setReport] = useState<DevilsAdvocateReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Local (desktop/Ollama) vs cloud (joseruao.com/OpenAI) — drives the privacy notice.
+  const [isLocal, setIsLocal] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('devils_advocate_access_code');
     if (saved) setAccessCode(saved);
+    setIsLocal(window.location.hostname === 'localhost');
   }, []);
 
   // Persist the code as soon as it's typed — not only after a successful
@@ -199,15 +202,26 @@ export default function DevilsAdvocatePage() {
                 Repetir o mesmo ficheiro usa cache temporária no backend durante os testes.
               </div>
 
-              <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  <strong>Privacidade:</strong> o texto do documento é enviado para um modelo de
-                  IA de terceiros (OpenAI, EUA) para análise. Não carregue documentos cujo conteúdo
-                  não possa partilhar com um subcontratante. Confirme o cumprimento do segredo
-                  profissional e do RGPD antes de usar dados reais de clientes.
-                </span>
-              </div>
+              {isLocal ? (
+                <div className="flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>Privacidade:</strong> esta versão corre inteiramente na sua máquina
+                    (modelo local). O documento <strong>não é enviado para nenhum serviço externo</strong> —
+                    nada sai do computador.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>Privacidade:</strong> o texto do documento é enviado para um modelo de
+                    IA de terceiros (OpenAI, EUA) para análise. Não carregue documentos cujo conteúdo
+                    não possa partilhar com um subcontratante. Confirme o cumprimento do segredo
+                    profissional e do RGPD antes de usar dados reais de clientes.
+                  </span>
+                </div>
+              )}
 
               {error && (
                 <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
