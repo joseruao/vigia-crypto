@@ -1,0 +1,13 @@
+{
+  "name": "devils-advocate-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devil's Advocate — versão local privada (corre tudo na máquina, modelo via Ollama)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
