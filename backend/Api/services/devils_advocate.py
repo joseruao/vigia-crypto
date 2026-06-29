@@ -596,15 +596,25 @@ def analyze_document(
     if cached:
         return cached
 
+    # Optional OpenAI-compatible endpoint override. Lets the same code talk to a
+    # local Ollama server (http://localhost:11434/v1 — free, no account, runs on
+    # your own machine) or an EU provider (e.g. Mistral) without any code change.
+    base_url = os.getenv("DEVILS_ADVOCATE_BASE_URL")
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not configured.")
+        if base_url:
+            api_key = "local"  # local servers like Ollama ignore the key
+        else:
+            raise RuntimeError("OPENAI_API_KEY is not configured.")
 
     from openai import OpenAI, OpenAIError
 
-    # Bounded timeout + retries so a slow or hung OpenAI call fails fast with a
-    # friendly error instead of leaving the user staring at a spinner forever.
-    client = OpenAI(api_key=api_key, timeout=90.0, max_retries=2)
+    # Bounded timeout + retries so a slow or hung call fails fast with a friendly
+    # error instead of leaving the user staring at a spinner forever.
+    client_kwargs: dict = {"api_key": api_key, "timeout": 90.0, "max_retries": 2}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = OpenAI(**client_kwargs)
     model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
     create_kwargs: dict = {
         "model": model,
