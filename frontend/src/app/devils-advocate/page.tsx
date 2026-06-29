@@ -239,6 +239,14 @@ export default function DevilsAdvocatePage() {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
                 {loading ? 'A analisar...' : 'Analisar documento'}
               </button>
+
+              {!canSubmit && !loading && (
+                <p className="text-center text-xs text-slate-500">
+                  {accessCode.trim().length === 0
+                    ? 'Introduza o código de acesso para continuar.'
+                    : 'Escolha um documento (PDF ou DOCX) para analisar.'}
+                </p>
+              )}
             </div>
           </section>
 
