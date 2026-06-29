@@ -36,8 +36,8 @@ npm start
 ```
 
 Isto arranca o backend (porta 8000), o frontend (porta 3000) e abre a janela em `/devil`.
-Na página, o **código de acesso é `local`**. Faz upload de um PDF/DOCX → a análise corre
-no Ollama, na tua máquina.
+Na página, o **código de acesso é `advogado-2026`** (vem do `backend/.env`). Faz upload de
+um PDF/DOCX → a análise corre no Ollama, na tua máquina.
 
 ### Mudar de modelo
 Define a variável antes do `npm start` (ou edita o default em `main.js`):

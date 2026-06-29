@@ -24,7 +24,6 @@ const LOCAL_ENV = {
   ...process.env,
   DEVILS_ADVOCATE_BASE_URL: 'http://localhost:11434/v1',
   DEVILS_ADVOCATE_MODEL: process.env.DEVILS_ADVOCATE_MODEL || 'llama3.2:1b',
-  DEVILS_ADVOCATE_ACCESS_CODE: process.env.DEVILS_ADVOCATE_ACCESS_CODE || 'local',
 };
 
 let backendProc = null;
@@ -77,7 +76,9 @@ function createWindow() {
     title: "Devil's Advocate (local)",
     webPreferences: { contextIsolation: true },
   });
-  win.loadURL(`http://127.0.0.1:${FRONTEND_PORT}/devil`);
+  // IMPORTANTE: carregar via "localhost" (não 127.0.0.1) — o api.ts só aponta
+  // para o backend local quando o hostname é exatamente "localhost".
+  win.loadURL(`http://localhost:${FRONTEND_PORT}/devil`);
 }
 
 app.whenReady().then(() => {
