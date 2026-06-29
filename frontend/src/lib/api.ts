@@ -520,7 +520,9 @@ export async function analyzeDevilsAdvocate(input: {
   // Cloud reasoning models (gpt-5.x) can take a few minutes even on small input.
   // Wait longer than the backend's own timeout so a slow result is delivered
   // instead of being abandoned after it was already generated and billed.
-  const timeoutMs = onLocalhost ? 600_000 : 270_000;
+  // Local models are free and slow-is-normal — allow up to 30 min (only catches a
+  // hung server). Cloud stays short to fail fast and bound cost.
+  const timeoutMs = onLocalhost ? 1_800_000 : 270_000;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;

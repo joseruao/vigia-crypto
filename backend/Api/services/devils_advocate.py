@@ -616,7 +616,10 @@ def analyze_document(
     # nothing. One attempt, one charge. Cloud reasoning models (gpt-5.x) can be
     # slow even on tiny input, so the single attempt gets a generous timeout.
     if base_url:
-        client_kwargs: dict = {"api_key": api_key, "timeout": 600.0, "max_retries": 0, "base_url": base_url}
+        # Local (Ollama): being slow is normal and costs nothing — a big model on
+        # modest hardware can take 10-15+ min. Use a 30-min ceiling that only
+        # catches a truly hung server, not a legitimately slow generation.
+        client_kwargs: dict = {"api_key": api_key, "timeout": 1800.0, "max_retries": 0, "base_url": base_url}
     else:
         client_kwargs = {"api_key": api_key, "timeout": 240.0, "max_retries": 0}
     client = OpenAI(**client_kwargs)
