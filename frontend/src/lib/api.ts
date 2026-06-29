@@ -517,7 +517,10 @@ export async function analyzeDevilsAdvocate(input: {
   // far more room. Cloud stays at 2 min so a hung backend surfaces quickly.
   const onLocalhost =
     typeof window !== "undefined" && window.location.hostname === "localhost";
-  const timeoutMs = onLocalhost ? 600_000 : 120_000;
+  // Cloud reasoning models (gpt-5.x) can take a few minutes even on small input.
+  // Wait longer than the backend's own timeout so a slow result is delivered
+  // instead of being abandoned after it was already generated and billed.
+  const timeoutMs = onLocalhost ? 600_000 : 270_000;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
