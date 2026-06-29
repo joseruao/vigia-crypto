@@ -609,11 +609,13 @@ def analyze_document(
 
     from openai import OpenAI, OpenAIError
 
-    # Bounded timeout + retries so a slow or hung call fails fast with a friendly
-    # error instead of leaving the user staring at a spinner forever.
-    client_kwargs: dict = {"api_key": api_key, "timeout": 90.0, "max_retries": 2}
+    # Local models (Ollama via base_url) are slow and retrying a timed-out
+    # generation is pointless — give a long timeout and no retries. Cloud gets a
+    # short timeout + retries so a hung/slow call fails fast and recovers.
     if base_url:
-        client_kwargs["base_url"] = base_url
+        client_kwargs: dict = {"api_key": api_key, "timeout": 600.0, "max_retries": 0, "base_url": base_url}
+    else:
+        client_kwargs = {"api_key": api_key, "timeout": 90.0, "max_retries": 2}
     client = OpenAI(**client_kwargs)
     model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
     create_kwargs: dict = {

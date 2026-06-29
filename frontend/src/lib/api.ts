@@ -513,10 +513,13 @@ export async function analyzeDevilsAdvocate(input: {
   form.set("objective", input.objective);
   form.set("language", input.language);
 
-  // Abort after 2 min so a slow/hung backend surfaces a clear error instead
-  // of an endless spinner.
+  // Local models (Ollama, desktop app) on modest hardware are slow — give them
+  // far more room. Cloud stays at 2 min so a hung backend surfaces quickly.
+  const onLocalhost =
+    typeof window !== "undefined" && window.location.hostname === "localhost";
+  const timeoutMs = onLocalhost ? 600_000 : 120_000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/devils-advocate/analyze`, {
