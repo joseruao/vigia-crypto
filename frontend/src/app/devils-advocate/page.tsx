@@ -89,7 +89,7 @@ export default function DevilsAdvocatePage() {
 
   async function handleAnalyze() {
     if (!file || loading) return;
-    if (!accessCode.trim()) {
+    if (!isLocal && !accessCode.trim()) {
       setError('Introduza o código de acesso para usar a ferramenta.');
       return;
     }
@@ -109,7 +109,7 @@ export default function DevilsAdvocatePage() {
         represented_side: 'Contribuinte',
         objective: 'Encontrar argumentos, contra-argumentos, riscos, falhas, prova em falta e pontos jurídicos que exigem verificação humana',
         language,
-        accessCode: accessCode.trim(),
+        accessCode: isLocal ? '' : accessCode.trim(),
       });
       setReport(result);
     } catch (err) {
@@ -119,7 +119,7 @@ export default function DevilsAdvocatePage() {
     }
   }
 
-  const canSubmit = Boolean(file) && accessCode.trim().length > 0 && !loading;
+  const canSubmit = Boolean(file) && (isLocal || accessCode.trim().length > 0) && !loading;
   const legalReferences = report?.legal_references_used ?? [];
   const riskMatrix = report?.risk_matrix ?? [];
   const unverifiedLegalPoints = report?.unverified_legal_points ?? [];
@@ -164,19 +164,21 @@ export default function DevilsAdvocatePage() {
             </div>
 
             <div className="space-y-4">
-              <label className="block">
-                <span className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                  <Lock className="h-3.5 w-3.5" /> Código de acesso
-                </span>
-                <input
-                  type="password"
-                  value={accessCode}
-                  onChange={(event) => setAccessCode(event.target.value)}
-                  placeholder="Código privado de beta"
-                  autoComplete="off"
-                  className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
-                />
-              </label>
+              {!isLocal && (
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                    <Lock className="h-3.5 w-3.5" /> Código de acesso
+                  </span>
+                  <input
+                    type="password"
+                    value={accessCode}
+                    onChange={(event) => setAccessCode(event.target.value)}
+                    placeholder="Código privado de beta"
+                    autoComplete="off"
+                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                  />
+                </label>
+              )}
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Documento</span>
@@ -242,7 +244,7 @@ export default function DevilsAdvocatePage() {
 
               {!canSubmit && !loading && (
                 <p className="text-center text-xs text-slate-500">
-                  {accessCode.trim().length === 0
+                  {!isLocal && accessCode.trim().length === 0
                     ? 'Introduza o código de acesso para continuar.'
                     : 'Escolha um documento (PDF ou DOCX) para analisar.'}
                 </p>

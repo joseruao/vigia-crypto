@@ -24,6 +24,8 @@ const LOCAL_ENV = {
   ...process.env,
   DEVILS_ADVOCATE_BASE_URL: 'http://localhost:11434/v1',
   DEVILS_ADVOCATE_MODEL: process.env.DEVILS_ADVOCATE_MODEL || 'llama3.2:1b',
+  // Local app = private, single user, no OpenAI cost — no access code needed.
+  DEVILS_ADVOCATE_REQUIRE_ACCESS_CODE: 'false',
 };
 
 let backendProc = null;

@@ -32,6 +32,10 @@ def _check_access_code(provided: str | None) -> None:
     This prevents the OpenAI-spending endpoint from ever being publicly open
     just because an env var was forgotten in a deploy.
     """
+    # Local builds (desktop/Ollama) have no wallet to protect — the gate can be
+    # disabled so the single, private user isn't asked for a code.
+    if os.getenv("DEVILS_ADVOCATE_REQUIRE_ACCESS_CODE", "true").strip().lower() in ("0", "false", "no"):
+        return
     expected = os.getenv("DEVILS_ADVOCATE_ACCESS_CODE", "")
     if not expected:
         log.error("DEVILS_ADVOCATE_ACCESS_CODE not set; refusing analysis requests")
