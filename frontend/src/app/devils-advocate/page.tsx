@@ -72,6 +72,9 @@ export default function DevilsAdvocatePage() {
   const [error, setError] = useState('');
   // Local (desktop/Ollama) vs cloud (joseruao.com/OpenAI) — drives the privacy notice.
   const [isLocal, setIsLocal] = useState(false);
+  const [represented, setRepresented] = useState('Contribuinte');
+  const [representedOther, setRepresentedOther] = useState('');
+  const [pedido, setPedido] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('devils_advocate_access_code');
@@ -100,14 +103,19 @@ export default function DevilsAdvocatePage() {
     setLoading(true);
     setError('');
     setReport(null);
+    const representedSide =
+      represented === 'Outro' ? representedOther.trim() || 'Outro' : represented;
+    const objective =
+      pedido.trim() ||
+      'Encontrar argumentos, contra-argumentos, riscos, falhas, prova em falta e pontos jurídicos que exigem verificação humana';
     try {
       const result = await analyzeDevilsAdvocate({
         file,
         jurisdiction: 'Portugal',
         legal_area: 'Fiscal',
         document_type: 'Documento fiscal',
-        represented_side: 'Contribuinte',
-        objective: 'Encontrar argumentos, contra-argumentos, riscos, falhas, prova em falta e pontos jurídicos que exigem verificação humana',
+        represented_side: representedSide,
+        objective,
         language,
         accessCode: isLocal ? '' : accessCode.trim(),
       });
@@ -179,6 +187,42 @@ export default function DevilsAdvocatePage() {
                   />
                 </label>
               )}
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Quem representa?</span>
+                <select
+                  value={represented}
+                  onChange={(event) => setRepresented(event.target.value)}
+                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                >
+                  <option value="Contribuinte">Contribuinte</option>
+                  <option value="Autoridade Tributária">Autoridade Tributária</option>
+                  <option value="Outro">Outro…</option>
+                </select>
+                {represented === 'Outro' && (
+                  <input
+                    type="text"
+                    value={representedOther}
+                    onChange={(event) => setRepresentedOther(event.target.value)}
+                    placeholder="Quem representa? (ex.: empresa, terceiro, banco…)"
+                    className="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                  />
+                )}
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                  O que pretende desta análise?{' '}
+                  <span className="font-normal text-slate-400">(opcional)</span>
+                </span>
+                <textarea
+                  value={pedido}
+                  onChange={(event) => setPedido(event.target.value)}
+                  rows={2}
+                  placeholder="Ex.: encontrar pontos fracos deste recurso, preparar-me para a audiência, atacar a posição da AT…"
+                  className="block w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                />
+              </label>
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Documento</span>

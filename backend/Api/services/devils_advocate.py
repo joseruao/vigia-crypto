@@ -488,7 +488,7 @@ def _user_prompt(
 Analyze this document as a three-agent adversarial legal review:
 
 1. Advocate Agent: build the strongest argument for the represented side.
-2. Opponent Agent: attack that argument as the tax authority, counterparty, or skeptical judge would.
+2. Opponent Agent: attack that argument as the OPPOSING party would — i.e. whoever is against the represented side (if the represented side is the taxpayer, the opponent is the tax authority; if the represented side is the tax authority, the opponent is the taxpayer; otherwise the counterparty) — plus a skeptical court.
 3. Audit Agent: identify omissions, unsupported claims, contradictions, hallucination risk, missing evidence, and questions for the lawyer.
 
 Treat the output as trial/contested-case preparation, not a generic summary. The lawyer should be able to use it to prepare a response, client call, hearing, negotiation, or internal litigation memo.
@@ -533,7 +533,7 @@ Output style — be specific, never generic:
 - Convert every weakness into a concrete action, document request, verification question, or argument risk.
 - questions_for_lawyer and hearing_questions must be CONCRETE questions tied to specific facts in the document (a value, a date, an invoice) and aimed at the client, accountant, inspector or witness. BAN generic questions such as "what are the requirements for deduction?" — the lawyer already knows those.
 - missing_evidence must name concrete documents or proof links, not vague categories.
-- opponent_argument should attack the case the way the Tax Authority or a skeptical court actually would, engaging the specific facts.
+- opponent_argument should attack the case the way the opposing party (whoever is against the represented side) or a skeptical court actually would, engaging the specific facts.
 - unverified_legal_points must NOT be empty when the document cites legal articles or when the matter implicates exclusion/limitation/burden rules: at minimum flag (a) verification of the current official wording of each cited article, and (b) the applicability of any exclusion or limitation rule relevant to the expenses or operations at issue.
 - case_theory: the cleanest story the lawyer should try to prove.
 - opponent_theory: the strongest story the other side will try to prove.
