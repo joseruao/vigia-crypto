@@ -71,6 +71,7 @@ async def analyze_devils_advocate(
     represented_side: str = Form(default="Contribuinte"),
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
+    provider: str = Form(default="openai"),
     x_access_code: str | None = Header(default=None),
 ):
     _check_access_code(x_access_code)
@@ -88,6 +89,7 @@ async def analyze_devils_advocate(
             objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
             language=language,
             content_truncated=content_truncated,
+            provider=provider,
         )
     except HTTPException:
         raise

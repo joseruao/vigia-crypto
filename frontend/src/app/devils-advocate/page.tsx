@@ -75,6 +75,7 @@ export default function DevilsAdvocatePage() {
   const [represented, setRepresented] = useState('Contribuinte');
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
+  const [provider, setProvider] = useState<'openai' | 'mistral'>('openai');
 
   useEffect(() => {
     const saved = localStorage.getItem('devils_advocate_access_code');
@@ -118,6 +119,7 @@ export default function DevilsAdvocatePage() {
         objective,
         language,
         accessCode: isLocal ? '' : accessCode.trim(),
+        provider,
       });
       setReport(result);
     } catch (err) {
@@ -172,6 +174,36 @@ export default function DevilsAdvocatePage() {
             </div>
 
             <div className="space-y-4">
+              {!isLocal && (
+                <div>
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Motor</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProvider('openai')}
+                      className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                        provider === 'openai'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                      }`}
+                    >
+                      OpenAI (EUA)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProvider('mistral')}
+                      className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                        provider === 'mistral'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                      }`}
+                    >
+                      Mistral (UE)
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {!isLocal && (
                 <label className="block">
                   <span className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-700">
@@ -249,6 +281,14 @@ export default function DevilsAdvocatePage() {
                     <strong>Privacidade:</strong> esta versão corre inteiramente na sua máquina
                     (modelo local). O documento <strong>não é enviado para nenhum serviço externo</strong> —
                     nada sai do computador.
+                  </span>
+                </div>
+              ) : provider === 'mistral' ? (
+                <div className="flex gap-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs leading-5 text-sky-800">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>Privacidade:</strong> processado por um modelo de IA na <strong>UE</strong> (Mistral).
+                    Não carregue conteúdo que não possa partilhar com um subcontratante.
                   </span>
                 </div>
               ) : (

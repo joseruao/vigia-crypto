@@ -503,6 +503,7 @@ export async function analyzeDevilsAdvocate(input: {
   objective: string;
   language: "pt" | "en";
   accessCode: string;
+  provider?: "openai" | "mistral";
 }): Promise<DevilsAdvocateReport> {
   const form = new FormData();
   form.set("file", input.file);
@@ -512,6 +513,7 @@ export async function analyzeDevilsAdvocate(input: {
   form.set("represented_side", input.represented_side);
   form.set("objective", input.objective);
   form.set("language", input.language);
+  form.set("provider", input.provider ?? "openai");
 
   // Local models (Ollama, desktop app) on modest hardware are slow — give them
   // far more room. Cloud stays at 2 min so a hung backend surfaces quickly.

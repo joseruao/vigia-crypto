@@ -237,6 +237,7 @@ def _cache_key(
     represented_side: str,
     objective: str,
     language: Literal["pt", "en"],
+    model: str,
 ) -> str:
     payload = "\n".join(
         [
@@ -248,7 +249,7 @@ def _cache_key(
             represented_side,
             objective,
             language,
-            os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini"),
+            model,
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -581,7 +582,33 @@ def analyze_document(
     objective: str,
     language: Literal["pt", "en"] = "pt",
     content_truncated: bool = False,
+    provider: str = "openai",
 ) -> DevilsAdvocateAnalyzeResult:
+    # --- Choose the engine ---
+    # The desktop sets DEVILS_ADVOCATE_BASE_URL (local Ollama) and that always wins.
+    # On the cloud, the request's provider picks OpenAI (default) or Mistral (EU).
+    provider = (provider or "openai").strip().lower()
+    env_base_url = os.getenv("DEVILS_ADVOCATE_BASE_URL")
+    if env_base_url:
+        engine_base_url = env_base_url
+        engine_api_key = os.getenv("OPENAI_API_KEY") or "local"  # local servers ignore the key
+        model = os.getenv("DEVILS_ADVOCATE_MODEL", "llama3.2:1b")
+        is_local = True
+    elif provider == "mistral":
+        engine_base_url = "https://api.mistral.ai/v1"  # EU-hosted, OpenAI-compatible
+        engine_api_key = os.getenv("DEVILS_ADVOCATE_MISTRAL_KEY")
+        if not engine_api_key:
+            raise RuntimeError("Motor Mistral não está configurado (falta DEVILS_ADVOCATE_MISTRAL_KEY).")
+        model = os.getenv("DEVILS_ADVOCATE_MISTRAL_MODEL", "mistral-large-latest")
+        is_local = False
+    else:  # openai (default) — unchanged behaviour
+        engine_base_url = None
+        engine_api_key = os.getenv("OPENAI_API_KEY")
+        if not engine_api_key:
+            raise RuntimeError("OPENAI_API_KEY is not configured.")
+        model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
+        is_local = False
+
     key = _cache_key(
         document_name=document_name,
         extracted_text=extracted_text,
@@ -591,39 +618,24 @@ def analyze_document(
         represented_side=represented_side,
         objective=objective,
         language=language,
+        model=model,
     )
     cached = _get_cached_analysis(key)
     if cached:
         return cached
 
-    # Optional OpenAI-compatible endpoint override. Lets the same code talk to a
-    # local Ollama server (http://localhost:11434/v1 — free, no account, runs on
-    # your own machine) or an EU provider (e.g. Mistral) without any code change.
-    base_url = os.getenv("DEVILS_ADVOCATE_BASE_URL")
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        if base_url:
-            api_key = "local"  # local servers like Ollama ignore the key
-        else:
-            raise RuntimeError("OPENAI_API_KEY is not configured.")
-
     from openai import OpenAI, OpenAIError
 
-    # Local models (Ollama via base_url) are slow and retrying a timed-out
-    # generation is pointless — give a long timeout and no retries. Cloud gets a
-    # short timeout + retries so a hung/slow call fails fast and recovers.
-    # No retries: retrying a slow-but-working generation re-bills the tokens for
-    # nothing. One attempt, one charge. Cloud reasoning models (gpt-5.x) can be
-    # slow even on tiny input, so the single attempt gets a generous timeout.
-    if base_url:
-        # Local (Ollama): being slow is normal and costs nothing — a big model on
-        # modest hardware can take 10-15+ min. Use a 30-min ceiling that only
-        # catches a truly hung server, not a legitimately slow generation.
-        client_kwargs: dict = {"api_key": api_key, "timeout": 1800.0, "max_retries": 0, "base_url": base_url}
+    # No retries (retrying a slow-but-working generation re-bills for nothing).
+    # Local models can be very slow but cost nothing → 30-min ceiling; cloud gets
+    # a short timeout to fail fast.
+    if is_local:
+        client_kwargs: dict = {"api_key": engine_api_key, "timeout": 1800.0, "max_retries": 0, "base_url": engine_base_url}
     else:
-        client_kwargs = {"api_key": api_key, "timeout": 240.0, "max_retries": 0}
+        client_kwargs = {"api_key": engine_api_key, "timeout": 240.0, "max_retries": 0}
+        if engine_base_url:
+            client_kwargs["base_url"] = engine_base_url
     client = OpenAI(**client_kwargs)
-    model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
     create_kwargs: dict = {
         "model": model,
         "response_format": {"type": "json_object"},
