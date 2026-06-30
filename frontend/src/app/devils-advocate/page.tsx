@@ -14,7 +14,12 @@ import {
   ShieldCheck,
   Upload,
 } from 'lucide-react';
-import { DevilsAdvocateReport, analyzeDevilsAdvocate } from '@/lib/api';
+import {
+  AcordaoSummary,
+  DevilsAdvocateReport,
+  analyzeDevilsAdvocate,
+  summarizeAcordao,
+} from '@/lib/api';
 
 type Lang = 'pt' | 'en';
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
@@ -63,6 +68,85 @@ function ReportSection({
   );
 }
 
+function AcordaoView({ summary }: { summary: AcordaoSummary }) {
+  const meta = [summary.tribunal, summary.processo, summary.data, summary.relator]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <div className="space-y-5">
+      <div className="flex justify-end print:hidden">
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400"
+        >
+          <Download className="h-3.5 w-3.5" /> Exportar PDF
+        </button>
+      </div>
+
+      <ReportSection title="Acórdão" icon={<Scale className="h-4 w-4" />} tone="dark">
+        {meta && <p className="text-sm leading-6 text-slate-100">{meta}</p>}
+        {summary.descritores.length > 0 && (
+          <p className="mt-2 text-xs text-slate-400">{summary.descritores.join(' · ')}</p>
+        )}
+        {summary.decisao && (
+          <p className="mt-3 text-sm font-semibold text-white">Decisão: {summary.decisao}</p>
+        )}
+      </ReportSection>
+
+      <ReportSection title="Aviso" icon={<ShieldCheck className="h-4 w-4" />} tone="warn">
+        <p className="text-sm leading-6">{summary.source_note}</p>
+        {summary.confidence_note && (
+          <p className="mt-2 text-sm leading-6 font-semibold">{summary.confidence_note}</p>
+        )}
+      </ReportSection>
+
+      {summary.content_truncated && (
+        <ReportSection title="Documento truncado" icon={<AlertTriangle className="h-4 w-4" />} tone="warn">
+          <p className="text-sm leading-6">
+            O acórdão excedeu o limite e foi cortado — o resumo cobre apenas a parte inicial.
+          </p>
+        </ReportSection>
+      )}
+
+      {summary.sumario_oficial && (
+        <ReportSection title="Sumário oficial" icon={<FileText className="h-4 w-4" />} tone="good">
+          <p className="whitespace-pre-line text-sm leading-6 text-emerald-950">
+            {summary.sumario_oficial}
+          </p>
+        </ReportSection>
+      )}
+
+      {summary.questao_juridica.length > 0 && (
+        <ReportSection title="Questão jurídica" icon={<Scale className="h-4 w-4" />}>
+          <ListBlock items={summary.questao_juridica} />
+        </ReportSection>
+      )}
+
+      {summary.fundamentacao.length > 0 && (
+        <ReportSection title="Fundamentação essencial" icon={<Gavel className="h-4 w-4" />}>
+          <ListBlock items={summary.fundamentacao} />
+        </ReportSection>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ReportSection title="Normas citadas" icon={<FileText className="h-4 w-4" />}>
+          <ListBlock items={summary.normas_citadas} empty="Nenhuma indicada." />
+        </ReportSection>
+        <ReportSection title="Jurisprudência citada" icon={<FileText className="h-4 w-4" />}>
+          <ListBlock items={summary.jurisprudencia_citada} empty="Nenhuma indicada." />
+        </ReportSection>
+      </div>
+
+      {summary.relevancia.length > 0 && (
+        <ReportSection title="Relevância" icon={<CheckCircle2 className="h-4 w-4" />} tone="good">
+          <ListBlock items={summary.relevancia} />
+        </ReportSection>
+      )}
+    </div>
+  );
+}
+
 export default function DevilsAdvocatePage() {
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState<Lang>('pt');
@@ -76,6 +160,9 @@ export default function DevilsAdvocatePage() {
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
   const [provider, setProvider] = useState<'openai' | 'mistral'>('openai');
+  const [mode, setMode] = useState<'analise' | 'acordao'>('analise');
+  const [acordao, setAcordao] = useState<AcordaoSummary | null>(null);
+  const [acordaoUrl, setAcordaoUrl] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('devils_advocate_access_code');
@@ -129,7 +216,47 @@ export default function DevilsAdvocatePage() {
     }
   }
 
-  const canSubmit = Boolean(file) && (isLocal || accessCode.trim().length > 0) && !loading;
+  async function handleSummarize() {
+    if (loading) return;
+    const hasInput = Boolean(file) || acordaoUrl.trim().length > 0;
+    if (!hasInput) {
+      setError('Cole o link do acórdão ou escolha um PDF/DOCX.');
+      return;
+    }
+    if (!isLocal && !accessCode.trim()) {
+      setError('Introduza o código de acesso para usar a ferramenta.');
+      return;
+    }
+    if (!acordaoUrl.trim() && file && file.size > MAX_FILE_BYTES) {
+      setError('O ficheiro é demasiado grande. Limite máximo: 12 MB.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setAcordao(null);
+    try {
+      const result = await summarizeAcordao({
+        file: acordaoUrl.trim() ? null : file,
+        url: acordaoUrl.trim(),
+        language,
+        accessCode: isLocal ? '' : accessCode.trim(),
+        provider,
+      });
+      setAcordao(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao resumir o acórdão.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const codeOk = isLocal || accessCode.trim().length > 0;
+  const canSubmit =
+    !loading &&
+    codeOk &&
+    (mode === 'analise'
+      ? Boolean(file)
+      : Boolean(file) || acordaoUrl.trim().length > 0);
   const legalReferences = report?.legal_references_used ?? [];
   const riskMatrix = report?.risk_matrix ?? [];
   const unverifiedLegalPoints = report?.unverified_legal_points ?? [];
@@ -174,6 +301,34 @@ export default function DevilsAdvocatePage() {
             </div>
 
             <div className="space-y-4">
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Modo</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('analise')}
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                      mode === 'analise'
+                        ? 'border-red-800 bg-red-800 text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Análise adversarial
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('acordao')}
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                      mode === 'acordao'
+                        ? 'border-red-800 bg-red-800 text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Resumo de acórdão
+                  </button>
+                </div>
+              </div>
+
               {!isLocal && (
                 <div>
                   <span className="mb-1.5 block text-sm font-medium text-slate-700">Motor</span>
@@ -220,44 +375,68 @@ export default function DevilsAdvocatePage() {
                 </label>
               )}
 
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Quem representa?</span>
-                <select
-                  value={represented}
-                  onChange={(event) => setRepresented(event.target.value)}
-                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
-                >
-                  <option value="Contribuinte">Contribuinte</option>
-                  <option value="Autoridade Tributária">Autoridade Tributária</option>
-                  <option value="Outro">Outro…</option>
-                </select>
-                {represented === 'Outro' && (
+              {mode === 'analise' && (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">Quem representa?</span>
+                    <select
+                      value={represented}
+                      onChange={(event) => setRepresented(event.target.value)}
+                      className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                    >
+                      <option value="Contribuinte">Contribuinte</option>
+                      <option value="Autoridade Tributária">Autoridade Tributária</option>
+                      <option value="Outro">Outro…</option>
+                    </select>
+                    {represented === 'Outro' && (
+                      <input
+                        type="text"
+                        value={representedOther}
+                        onChange={(event) => setRepresentedOther(event.target.value)}
+                        placeholder="Quem representa? (ex.: empresa, terceiro, banco…)"
+                        className="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                      />
+                    )}
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                      O que pretende desta análise?{' '}
+                      <span className="font-normal text-slate-400">(opcional)</span>
+                    </span>
+                    <textarea
+                      value={pedido}
+                      onChange={(event) => setPedido(event.target.value)}
+                      rows={2}
+                      placeholder="Ex.: encontrar pontos fracos deste recurso, preparar-me para a audiência, atacar a posição da AT…"
+                      className="block w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                    />
+                  </label>
+                </>
+              )}
+
+              {mode === 'acordao' && (
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                    Link do acórdão <span className="font-normal text-slate-400">(dgsi.pt)</span>
+                  </span>
                   <input
-                    type="text"
-                    value={representedOther}
-                    onChange={(event) => setRepresentedOther(event.target.value)}
-                    placeholder="Quem representa? (ex.: empresa, terceiro, banco…)"
-                    className="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                    type="url"
+                    value={acordaoUrl}
+                    onChange={(event) => setAcordaoUrl(event.target.value)}
+                    placeholder="https://www.dgsi.pt/..."
+                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
                   />
-                )}
-              </label>
+                  <span className="mt-1 block text-xs text-slate-400">
+                    Cole o link do acórdão, ou use o PDF/DOCX em baixo.
+                  </span>
+                </label>
+              )}
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">
-                  O que pretende desta análise?{' '}
-                  <span className="font-normal text-slate-400">(opcional)</span>
+                  {mode === 'acordao' ? 'Documento (alternativa ao link)' : 'Documento'}
                 </span>
-                <textarea
-                  value={pedido}
-                  onChange={(event) => setPedido(event.target.value)}
-                  rows={2}
-                  placeholder="Ex.: encontrar pontos fracos deste recurso, preparar-me para a audiência, atacar a posição da AT…"
-                  className="block w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">Documento</span>
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
                   <input
                     type="file"
@@ -310,26 +489,48 @@ export default function DevilsAdvocatePage() {
 
               <button
                 type="button"
-                onClick={handleAnalyze}
+                onClick={mode === 'analise' ? handleAnalyze : handleSummarize}
                 disabled={!canSubmit}
                 className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-red-800 px-4 text-base font-bold text-white shadow-md transition hover:bg-red-900 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
-                {loading ? 'A analisar...' : 'Analisar documento'}
+                {loading
+                  ? mode === 'analise'
+                    ? 'A analisar...'
+                    : 'A resumir...'
+                  : mode === 'analise'
+                    ? 'Analisar documento'
+                    : 'Resumar acórdão'}
               </button>
 
               {!canSubmit && !loading && (
                 <p className="text-center text-xs text-slate-500">
                   {!isLocal && accessCode.trim().length === 0
                     ? 'Introduza o código de acesso para continuar.'
-                    : 'Escolha um documento (PDF ou DOCX) para analisar.'}
+                    : mode === 'analise'
+                      ? 'Escolha um documento (PDF ou DOCX) para analisar.'
+                      : 'Cole o link do acórdão ou escolha um PDF/DOCX.'}
                 </p>
               )}
             </div>
           </section>
 
           <section className="min-h-[640px] rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            {!report ? (
+            {mode === 'acordao' ? (
+              !acordao ? (
+                <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-700">
+                    <FileText className="h-7 w-7" />
+                  </div>
+                  <h2 className="mt-4 text-xl font-semibold">Resumo de acórdão</h2>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    Cole o link de um acórdão (dgsi.pt) ou carregue um PDF/DOCX.
+                  </p>
+                </div>
+              ) : (
+                <AcordaoView summary={acordao} />
+              )
+            ) : !report ? (
               <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-700">
                   <Gavel className="h-7 w-7" />

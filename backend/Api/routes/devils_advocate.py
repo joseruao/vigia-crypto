@@ -11,9 +11,12 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from starlette.concurrency import run_in_threadpool
 
 from Api.services.devils_advocate import (
+    AcordaoSummaryResult,
     DevilsAdvocateAnalyzeResult,
     analyze_document,
     extract_upload_text,
+    fetch_acordao_from_url,
+    summarize_acordao,
 )
 
 log = logging.getLogger("vigia.devils_advocate")
@@ -100,3 +103,43 @@ async def analyze_devils_advocate(
     except Exception as exc:
         log.error("devils-advocate analyze failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Devil's Advocate analysis failed") from exc
+
+
+@router.post("/summarize", response_model=AcordaoSummaryResult)
+async def summarize_acordao_endpoint(
+    request: Request,
+    file: UploadFile | None = File(default=None),
+    url: str = Form(default=""),
+    language: Literal["pt", "en"] = Form(default="pt"),
+    provider: str = Form(default="openai"),
+    x_access_code: str | None = Header(default=None),
+):
+    _check_access_code(x_access_code)
+    _check_rate_limit(request.client.host if request.client else "unknown")
+    url = (url or "").strip()
+    try:
+        if url:
+            source_text, content_truncated = await run_in_threadpool(fetch_acordao_from_url, url)
+            source_label = url
+        elif file is not None and file.filename:
+            source_text, content_truncated = await extract_upload_text(file)
+            source_label = file.filename
+        else:
+            raise ValueError("Forneça um PDF/DOCX ou um link do acórdão (dgsi.pt).")
+        return await run_in_threadpool(
+            summarize_acordao,
+            source_text=source_text,
+            source_label=source_label,
+            language=language,
+            provider=provider,
+            content_truncated=content_truncated,
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        log.error("devils-advocate summarize failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Resumo de acórdão falhou") from exc

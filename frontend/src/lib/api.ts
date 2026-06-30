@@ -552,3 +552,66 @@ export async function analyzeDevilsAdvocate(input: {
   const data = await res.json();
   return data.report;
 }
+
+export type AcordaoSummary = {
+  source_label: string;
+  tribunal: string;
+  processo: string;
+  data: string;
+  relator: string;
+  descritores: string[];
+  sumario_oficial: string;
+  questao_juridica: string[];
+  decisao: string;
+  fundamentacao: string[];
+  normas_citadas: string[];
+  jurisprudencia_citada: string[];
+  relevancia: string[];
+  source_note: string;
+  confidence_note: string;
+  content_truncated: boolean;
+};
+
+export async function summarizeAcordao(input: {
+  file?: File | null;
+  url?: string;
+  language: "pt" | "en";
+  accessCode: string;
+  provider?: "openai" | "mistral";
+}): Promise<AcordaoSummary> {
+  const form = new FormData();
+  if (input.url && input.url.trim()) form.set("url", input.url.trim());
+  else if (input.file) form.set("file", input.file);
+  form.set("language", input.language);
+  form.set("provider", input.provider ?? "openai");
+
+  const onLocalhost =
+    typeof window !== "undefined" && window.location.hostname === "localhost";
+  const timeoutMs = onLocalhost ? 1_800_000 : 270_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/devils-advocate/summarize`, {
+      method: "POST",
+      headers: { "X-Access-Code": input.accessCode },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("O resumo demorou demasiado. Tente novamente.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const err = new Error(data?.detail || `HTTP ${res.status}`);
+    err.name = `HTTP_${res.status}`;
+    throw err;
+  }
+  const data = await res.json();
+  return data.summary;
+}
