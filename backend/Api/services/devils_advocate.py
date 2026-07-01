@@ -19,8 +19,10 @@ MAX_UPLOAD_BYTES = int(os.getenv("DEVILS_ADVOCATE_MAX_UPLOAD_BYTES", str(12 * 10
 ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("DEVILS_ADVOCATE_CACHE_TTL_SECONDS", "3600"))
 ANALYSIS_CACHE_MAX_ITEMS = int(os.getenv("DEVILS_ADVOCATE_CACHE_MAX_ITEMS", "32"))
 _ANALYSIS_CACHE: dict[str, tuple[float, DevilsAdvocateAnalyzeResult]] = {}
+_LEGAL_CODES = r"CIVA|CIRC|CIRS|CPPT|LGT|EBF|RGIT|RCPITA"
 LEGAL_REF_RE = re.compile(
-    r"\b(?:CIVA|CIRC|CIRS|CPPT|LGT|EBF|RGIT|RCPITA)\s*,?\s*artigo\s+\d+(?:\.\s*º|º|\.)?",
+    rf"\b(?:{_LEGAL_CODES})\s*,?\s*artigo\s+\d+(?:\.\s*º|º|\.)?"
+    rf"|artigo\s+\d+(?:\.\s*º|º|\.)?[\s\S]{{0,60}}?\b(?:do|da)\s+(?:{_LEGAL_CODES})\b",
     flags=re.I,
 )
 
@@ -133,10 +135,19 @@ def _normalize_cited_sources(sources: list, legal_refs: list[str]) -> list[str]:
 
 def _format_legal_ref(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", value).strip(" .")
+    # Forward order: "CIVA, artigo 21"
     match = re.match(r"(?P<code>[A-Za-z]+)\s*,?\s*artigo\s+(?P<num>\d+)", cleaned, flags=re.I)
-    if not match:
-        return cleaned
-    return f"{match.group('code').upper()}, artigo {match.group('num')}.º"
+    if match:
+        return f"{match.group('code').upper()}, artigo {match.group('num')}.º"
+    # Reversed order: "artigo 21, n.º 1, alíneas c) e d) do CIVA"
+    match = re.search(
+        rf"artigo\s+(?P<num>\d+).*?\b(?:do|da)\s+(?P<code>{_LEGAL_CODES})\b",
+        cleaned,
+        flags=re.I,
+    )
+    if match:
+        return f"{match.group('code').upper()}, artigo {match.group('num')}.º"
+    return cleaned
 
 
 def _legal_ref_key(value: str) -> str:
