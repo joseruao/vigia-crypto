@@ -840,6 +840,53 @@ ACORDAO
 """.strip()
 
 
+_CITATION_ALIASES = {
+    "constituicao da republica portuguesa": "crp",
+    "constituicao": "crp",
+    "codigo de processo civil": "cpc",
+    "codigo civil": "cc",
+    "codigo de processo penal": "cpp",
+    "codigo penal": "cp",
+    "codigo do trabalho": "ct",
+}
+
+
+def _citation_key(value: str) -> str:
+    """Normalize a legal citation for dedup: strip accents/punctuation and expand
+    common Portuguese abbreviations (CRP, CPC, CC...) to a common form, so
+    'artigo 211º da Constituição' and 'artigo 211.º da CRP' collapse together."""
+    import unicodedata
+
+    # Strip punctuation (incl. º/ª) BEFORE Unicode normalization — NFKD would
+    # otherwise silently turn 'º' into a bare 'o', making "96º" and "96.º"
+    # normalize to different strings ("96o" vs "96 o").
+    text = re.sub(r"[.,ºª]", " ", value.lower())
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"\s+", " ", text).strip()
+    for full, abbr in _CITATION_ALIASES.items():
+        text = re.sub(rf"\b{re.escape(full)}\b", abbr, text)
+    return text
+
+
+def _dedupe_citations(items: list[str]) -> list[str]:
+    """Collapse near-duplicate citations (punctuation/abbreviation variants),
+    keeping the longest (most complete) phrasing for each unique key."""
+    best: dict[str, str] = {}
+    order: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if not text:
+            continue
+        key = _citation_key(text)
+        if key not in best:
+            order.append(key)
+            best[key] = text
+        elif len(text) > len(best[key]):
+            best[key] = text
+    return [best[k] for k in order]
+
+
 def _normalize_acordao_payload(data: dict) -> dict:
     list_fields = [
         "descritores",
@@ -852,6 +899,8 @@ def _normalize_acordao_payload(data: dict) -> dict:
     str_fields = ["tribunal", "processo", "data", "relator", "sumario_oficial", "decisao", "confidence_note"]
     for field in list_fields:
         data[field] = _ensure_list(data.get(field))
+    data["normas_citadas"] = _dedupe_citations(data["normas_citadas"])
+    data["jurisprudencia_citada"] = _dedupe_citations(data["jurisprudencia_citada"])
     for field in str_fields:
         value = data.get(field)
         data[field] = "" if value is None else str(value)
