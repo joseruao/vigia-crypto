@@ -462,15 +462,7 @@ export default function DevilsAdvocatePage() {
                     nada sai do computador.
                   </span>
                 </div>
-              ) : provider === 'mistral' ? (
-                <div className="flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
-                    <strong>Privacidade:</strong> processado por um modelo europeu (Mistral) — os dados são
-                    tratados <strong>na União Europeia</strong> e não saem para fora da UE.
-                  </span>
-                </div>
-              ) : (
+              ) : provider === 'mistral' ? null : (
                 <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
