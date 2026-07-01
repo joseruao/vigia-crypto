@@ -594,7 +594,7 @@ def _parse_json_object(raw: str) -> dict:
         return json.loads(match.group(0))
 
 
-def _resolve_engine(provider: str):
+def _resolve_engine(provider: str, model_override: str | None = None):
     """Pick the engine and return (client, model, is_local). Shared by the
     adversarial analysis and the acórdão summary. Raises RuntimeError if the
     selected provider isn't configured."""
@@ -619,6 +619,9 @@ def _resolve_engine(provider: str):
             raise RuntimeError("OPENAI_API_KEY is not configured.")
         model = os.getenv("DEVILS_ADVOCATE_MODEL", "gpt-4o-mini")
         is_local = False
+
+    if model_override and not is_local:
+        model = model_override
 
     from openai import OpenAI
 
@@ -906,7 +909,9 @@ def summarize_acordao(
     provider: str = "openai",
     content_truncated: bool = False,
 ) -> AcordaoSummaryResult:
-    client, model, _is_local = _resolve_engine(provider)
+    # Summaries are an easy task — use a cheaper model if configured, without
+    # touching the (expensive) adversarial analysis model.
+    client, model, _is_local = _resolve_engine(provider, os.getenv("DEVILS_ADVOCATE_SUMMARY_MODEL"))
     messages = [
         {"role": "system", "content": _acordao_system_prompt(language)},
         {"role": "user", "content": _acordao_user_prompt(source_text, source_label, language)},
