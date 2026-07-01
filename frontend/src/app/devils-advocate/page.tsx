@@ -271,7 +271,7 @@ export default function DevilsAdvocatePage() {
       <style
         dangerouslySetInnerHTML={{
           __html:
-            '@media print { html, body { background: #fff !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+            '@media print { html, body { background: #fff !important; height: auto !important; overflow: visible !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow: visible !important; } }',
         }}
       />
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
