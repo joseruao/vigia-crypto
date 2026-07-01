@@ -392,7 +392,7 @@ def _extract_docx(path: Path) -> str:
     return _clean_text("\n".join(parts))
 
 
-async def extract_upload_text(file: UploadFile) -> tuple[str, bool]:
+async def extract_upload_text(file: UploadFile, max_chars: int = MAX_EXTRACTED_CHARS) -> tuple[str, bool]:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".pdf", ".docx"}:
         raise ValueError("Only PDF and DOCX files are supported.")
@@ -437,8 +437,8 @@ async def extract_upload_text(file: UploadFile) -> tuple[str, bool]:
 
     if not text:
         raise ValueError("Could not extract readable text from this document.")
-    if len(text) > MAX_EXTRACTED_CHARS:
-        text = text[:MAX_EXTRACTED_CHARS]
+    if len(text) > max_chars:
+        text = text[:max_chars]
         truncated = True
     return text, truncated
 
@@ -859,7 +859,7 @@ def _normalize_acordao_payload(data: dict) -> dict:
     return {k: v for k, v in data.items() if k in allowed}
 
 
-def fetch_acordao_from_url(url: str) -> tuple[str, bool]:
+def fetch_acordao_from_url(url: str, max_chars: int = MAX_EXTRACTED_CHARS) -> tuple[str, bool]:
     """Fetch an acórdão's text from a dgsi.pt URL. Restricted to dgsi.pt for
     safety (no arbitrary server-side fetches / SSRF)."""
     from urllib.parse import urlparse
@@ -895,8 +895,8 @@ def fetch_acordao_from_url(url: str) -> tuple[str, bool]:
     if not text:
         raise ValueError("O link não devolveu texto legível.")
     truncated = False
-    if len(text) > MAX_EXTRACTED_CHARS:
-        text = text[:MAX_EXTRACTED_CHARS]
+    if len(text) > max_chars:
+        text = text[:max_chars]
         truncated = True
     return text, truncated
 

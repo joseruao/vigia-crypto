@@ -117,12 +117,18 @@ async def summarize_acordao_endpoint(
     _check_access_code(x_access_code)
     _check_rate_limit(request.client.host if request.client else "unknown")
     url = (url or "").strip()
+    # Rulings can be much longer than fiscal documents and end with the conclusion
+    # that matters most — give the acórdão path a higher character ceiling than
+    # the default (unchanged for /analyze) so it doesn't cut before the decision.
+    acordao_max_chars = int(os.getenv("DEVILS_ADVOCATE_ACORDAO_MAX_CHARS", "200000"))
     try:
         if url:
-            source_text, content_truncated = await run_in_threadpool(fetch_acordao_from_url, url)
+            source_text, content_truncated = await run_in_threadpool(
+                fetch_acordao_from_url, url, acordao_max_chars
+            )
             source_label = url
         elif file is not None and file.filename:
-            source_text, content_truncated = await extract_upload_text(file)
+            source_text, content_truncated = await extract_upload_text(file, acordao_max_chars)
             source_label = file.filename
         else:
             raise ValueError("Forneça um PDF/DOCX ou um link do acórdão (dgsi.pt).")
