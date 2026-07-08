@@ -615,3 +615,78 @@ export async function summarizeAcordao(input: {
   const data = await res.json();
   return data.summary;
 }
+
+// ---------------------------------------------------------------------------
+// PME - purchasing comparison MVP
+// ---------------------------------------------------------------------------
+
+export type PmeCatalogItem = {
+  supplier: string;
+  product: string;
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  total_price?: string | null;
+  promotions: string;
+  notes: string;
+  source_file: string;
+  normalized_product: string;
+  effective_unit_price: string;
+  confidence: string;
+  commercial_value: string;
+  commercial_terms: PmeCommercialTerm[];
+};
+
+export type PmeCommercialTerm = {
+  type: string;
+  label: string;
+  quantity: string;
+  unit: string;
+  estimated_unit_value: string;
+  estimated_total_value: string;
+  confidence: string;
+  raw_text: string;
+};
+
+export type PmeRecommendation = {
+  product: string;
+  recommended_supplier: string;
+  price: string;
+  requested_quantity: string;
+  estimated_total_cost: string;
+  baseline_total_cost: string;
+  reason: string;
+  estimated_savings: string;
+  alternatives: PmeCatalogItem[];
+};
+
+export type PmeProcurementAnalysis = {
+  total_items: number;
+  products_compared: number;
+  estimated_savings_week: string;
+  recommendations: PmeRecommendation[];
+  warnings: string[];
+};
+
+export async function analyzePmeProcurement(input: {
+  files: File[];
+  needsText?: string;
+  commercialValuesText?: string;
+  accessCode?: string;
+}): Promise<PmeProcurementAnalysis> {
+  const form = new FormData();
+  input.files.forEach((file) => form.append("files", file));
+  form.set("needs_text", input.needsText ?? "");
+  form.set("commercial_values_text", input.commercialValuesText ?? "");
+  const res = await fetch(`${API_BASE}/api/pme/procurement/analyze`, {
+    method: "POST",
+    headers: input.accessCode ? { "X-Access-Code": input.accessCode } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

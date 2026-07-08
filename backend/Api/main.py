@@ -103,6 +103,12 @@ except Exception as e:
     # must never take the whole API down.
     log.warning("Devil's Advocate router nao disponivel: %s", e)
 
+try:
+    from Api.routes.pme import router as pme_router
+    app.include_router(pme_router, prefix="")
+except Exception as e:
+    log.warning("PME router nao disponivel: %s", e)
+
 
 @app.get("/")
 @app.head("/")
