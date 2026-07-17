@@ -60,11 +60,33 @@ class ProcurementRecommendation(BaseModel):
     alternatives: list[CatalogItem]
 
 
+class InvoiceAuditItem(BaseModel):
+    invoice_file: str
+    product: str
+    paid_supplier: str
+    paid_unit_price: Decimal
+    paid_quantity: Decimal = Field(default=Decimal("1"))
+    paid_total_cost: Decimal
+    better_supplier: str
+    better_unit_price: Decimal
+    better_total_cost: Decimal
+    estimated_savings: Decimal
+    reason: str
+
+
+class InvoiceAuditSummary(BaseModel):
+    invoices_analysed: int
+    invoice_items_compared: int
+    estimated_past_savings: Decimal
+    items: list[InvoiceAuditItem]
+
+
 class ProcurementAnalysisResponse(BaseModel):
     total_items: int
     products_compared: int
     estimated_savings_week: Decimal
     recommendations: list[ProcurementRecommendation]
+    invoice_audit: InvoiceAuditSummary | None = None
     warnings: list[str]
 
 
@@ -507,10 +529,71 @@ def _need_for_group(product_key: str, needs: list[PurchaseNeed]) -> PurchaseNeed
     return None
 
 
+def audit_invoices(
+    invoice_items: Iterable[CatalogItem],
+    catalog_groups: dict[str, list[CatalogItem]],
+) -> InvoiceAuditSummary:
+    audit_items: list[InvoiceAuditItem] = []
+    invoice_files: set[str] = set()
+
+    for paid in invoice_items:
+        invoice_files.add(paid.source_file)
+        alternatives: list[CatalogItem] = []
+        for normalized, items in catalog_groups.items():
+            if _matches_need(paid.normalized_product, normalized):
+                alternatives.extend(items)
+        if not alternatives:
+            continue
+
+        ordered = sorted(alternatives, key=lambda item: (item.effective_unit_price, item.unit_price))
+        best = ordered[0]
+        paid_quantity = paid.quantity if paid.quantity > 0 else Decimal("1")
+        paid_unit = paid.effective_unit_price or paid.unit_price
+        unit_savings = paid_unit - best.effective_unit_price
+        if unit_savings <= 0:
+            continue
+
+        paid_total = paid_unit * paid_quantity
+        better_total = best.effective_unit_price * paid_quantity
+        savings = unit_savings * paid_quantity
+        reason = (
+            f"Na fatura pagaste {paid_unit}€ por unidade. "
+            f"Em {best.supplier}, o custo efetivo era {best.effective_unit_price}€."
+        )
+        if best.commercial_terms:
+            reason += f" Inclui oferta valorizada em {best.commercial_value}€."
+
+        audit_items.append(
+            InvoiceAuditItem(
+                invoice_file=paid.source_file,
+                product=paid.product,
+                paid_supplier=paid.supplier,
+                paid_unit_price=_money(paid_unit),
+                paid_quantity=paid_quantity,
+                paid_total_cost=_money(paid_total),
+                better_supplier=best.supplier,
+                better_unit_price=best.effective_unit_price,
+                better_total_cost=_money(better_total),
+                estimated_savings=_money(savings),
+                reason=reason,
+            )
+        )
+
+    audit_items.sort(key=lambda item: item.estimated_savings, reverse=True)
+    total_savings = sum((item.estimated_savings for item in audit_items), Decimal("0"))
+    return InvoiceAuditSummary(
+        invoices_analysed=len(invoice_files),
+        invoice_items_compared=len(audit_items),
+        estimated_past_savings=_money(total_savings),
+        items=audit_items,
+    )
+
+
 def compare_catalogs(
     catalogs: Iterable[RawCatalog],
     purchase_needs: Iterable[PurchaseNeed] | None = None,
     commercial_values: CommercialValueMap | None = None,
+    invoice_catalogs: Iterable[RawCatalog] | None = None,
 ) -> ProcurementAnalysisResponse:
     all_items: list[CatalogItem] = []
     warnings: list[str] = []
@@ -523,6 +606,19 @@ def compare_catalogs(
     for item in all_items:
         if item.normalized_product:
             grouped[item.normalized_product].append(item)
+
+    invoice_audit: InvoiceAuditSummary | None = None
+    if invoice_catalogs:
+        invoice_items: list[CatalogItem] = []
+        invoice_files_seen = 0
+        for invoice in invoice_catalogs:
+            invoice_files_seen += 1
+            items, item_warnings = parse_catalog_text(invoice.filename, invoice.text, commercial_values)
+            invoice_items.extend(items)
+            warnings.extend([f"Fatura {warning}" for warning in item_warnings])
+        invoice_audit = audit_invoices(invoice_items, grouped)
+        if invoice_files_seen and not invoice_audit.items:
+            warnings.append("Faturas antigas: não encontrei poupanças comparáveis com os catálogos carregados.")
 
     recommendations: list[ProcurementRecommendation] = []
     savings_total = Decimal("0")
@@ -585,5 +681,6 @@ def compare_catalogs(
         products_compared=len(recommendations),
         estimated_savings_week=_money(savings_total),
         recommendations=recommendations,
+        invoice_audit=invoice_audit,
         warnings=warnings,
     )

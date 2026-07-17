@@ -126,6 +126,7 @@ function RecommendationRow({ rec }: { rec: PmeRecommendation }) {
 
 export default function PmePage() {
   const [files, setFiles] = useState<File[]>([]);
+  const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [needsText, setNeedsText] = useState('');
   const [commercialValuesText, setCommercialValuesText] = useState(
     'copos=0.80\ntacas=1.20\njarros=3.00\nguarda sol=25.00'
@@ -137,6 +138,7 @@ export default function PmePage() {
   const [error, setError] = useState('');
 
   const fileNames = useMemo(() => files.map((file) => file.name).join(', '), [files]);
+  const invoiceFileNames = useMemo(() => invoiceFiles.map((file) => file.name).join(', '), [invoiceFiles]);
   const canAnalyze = files.length > 0 && !loading && (isLocal || accessCode.trim().length > 0);
 
   useEffect(() => {
@@ -158,6 +160,7 @@ export default function PmePage() {
     try {
       const result = await analyzePmeProcurement({
         files,
+        invoiceFiles,
         needsText,
         commercialValuesText,
         accessCode: isLocal ? '' : accessCode.trim(),
@@ -228,6 +231,24 @@ export default function PmePage() {
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Faturas antigas <span className="font-normal text-slate-400">(opcional)</span>
+                </span>
+                <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/40 p-4">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".csv,.tsv,.txt,.pdf,.docx,text/csv,text/tab-separated-values,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(event) => setInvoiceFiles(Array.from(event.target.files ?? []))}
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-amber-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                  />
+                  {invoiceFileNames && (
+                    <p className="mt-3 text-xs font-medium leading-5 text-slate-500">{invoiceFileNames}</p>
+                  )}
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">
                   Lista de compra da semana <span className="font-normal text-slate-400">(opcional)</span>
                 </span>
                 <textarea
@@ -283,7 +304,11 @@ export default function PmePage() {
                 tone="good"
               />
               <Stat label="Produtos comparados" value={String(analysis?.products_compared ?? 0)} />
-              <Stat label="Linhas lidas" value={String(analysis?.total_items ?? 0)} tone="warn" />
+              <Stat
+                label="Poupança em faturas"
+                value={asMoney(analysis?.invoice_audit?.estimated_past_savings)}
+                tone="good"
+              />
             </div>
 
             {analysis?.warnings?.length ? (
@@ -339,6 +364,57 @@ export default function PmePage() {
                 </div>
               )}
             </div>
+
+            {analysis?.invoice_audit && analysis.invoice_audit.items.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-amber-200 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-amber-200 px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <BadgeEuro className="h-5 w-5 text-amber-800" />
+                    <h2 className="text-base font-semibold">Auditoria de faturas antigas</h2>
+                  </div>
+                  <div className="text-sm font-bold text-amber-800">
+                    {asMoney(analysis.invoice_audit.estimated_past_savings)}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[920px] text-left">
+                    <thead className="bg-amber-50 text-xs uppercase tracking-wide text-amber-800">
+                      <tr>
+                        <th className="px-4 py-3">Fatura</th>
+                        <th className="px-4 py-3">Produto</th>
+                        <th className="px-4 py-3">Pago</th>
+                        <th className="px-4 py-3">Melhor opção</th>
+                        <th className="px-4 py-3 text-right">Teria poupado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analysis.invoice_audit.items.map((item, index) => (
+                        <tr key={`${item.invoice_file}-${item.product}-${index}`} className="border-t border-amber-100 align-top">
+                          <td className="px-4 py-4 text-sm font-semibold text-slate-700">{item.invoice_file}</td>
+                          <td className="px-4 py-4">
+                            <div className="font-semibold text-slate-950">{item.product}</div>
+                            <div className="mt-1 text-xs text-slate-400">
+                              qtd. {Number(item.paid_quantity ?? 1).toLocaleString('pt-PT')}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-slate-600">
+                            {item.paid_supplier}<br />
+                            <span className="font-semibold text-slate-900">{asMoney(item.paid_unit_price)}</span>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-slate-600">
+                            {item.better_supplier}<br />
+                            <span className="font-semibold text-emerald-800">{asMoney(item.better_unit_price)}</span>
+                          </td>
+                          <td className="px-4 py-4 text-right font-bold text-emerald-800">
+                            {asMoney(item.estimated_savings)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
       </div>

@@ -94,6 +94,7 @@ def _extract_docx_text(content: bytes) -> str:
 @router.post("/procurement/analyze", response_model=ProcurementAnalysisResponse)
 async def analyze_procurement(
     files: list[UploadFile] = File(...),
+    invoice_files: list[UploadFile] | None = File(default=None),
     needs_text: str = Form(default=""),
     commercial_values_text: str = Form(default=""),
     x_access_code: str | None = Header(default=None),
@@ -105,10 +106,12 @@ async def analyze_procurement(
         raise HTTPException(status_code=400, detail="Máximo de 12 catálogos por análise.")
     try:
         catalogs = [await _read_catalog(file) for file in files]
+        invoices = [await _read_catalog(file) for file in (invoice_files or [])]
         return compare_catalogs(
             catalogs,
             parse_purchase_needs(needs_text),
             parse_commercial_values(commercial_values_text),
+            invoices,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

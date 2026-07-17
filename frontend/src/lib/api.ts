@@ -661,22 +661,46 @@ export type PmeRecommendation = {
   alternatives: PmeCatalogItem[];
 };
 
+export type PmeInvoiceAuditItem = {
+  invoice_file: string;
+  product: string;
+  paid_supplier: string;
+  paid_unit_price: string;
+  paid_quantity: string;
+  paid_total_cost: string;
+  better_supplier: string;
+  better_unit_price: string;
+  better_total_cost: string;
+  estimated_savings: string;
+  reason: string;
+};
+
+export type PmeInvoiceAudit = {
+  invoices_analysed: number;
+  invoice_items_compared: number;
+  estimated_past_savings: string;
+  items: PmeInvoiceAuditItem[];
+};
+
 export type PmeProcurementAnalysis = {
   total_items: number;
   products_compared: number;
   estimated_savings_week: string;
   recommendations: PmeRecommendation[];
+  invoice_audit?: PmeInvoiceAudit | null;
   warnings: string[];
 };
 
 export async function analyzePmeProcurement(input: {
   files: File[];
+  invoiceFiles?: File[];
   needsText?: string;
   commercialValuesText?: string;
   accessCode?: string;
 }): Promise<PmeProcurementAnalysis> {
   const form = new FormData();
   input.files.forEach((file) => form.append("files", file));
+  input.invoiceFiles?.forEach((file) => form.append("invoice_files", file));
   form.set("needs_text", input.needsText ?? "");
   form.set("commercial_values_text", input.commercialValuesText ?? "");
   const res = await fetch(`${API_BASE}/api/pme/procurement/analyze`, {

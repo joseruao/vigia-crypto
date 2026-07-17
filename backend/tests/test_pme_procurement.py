@@ -120,3 +120,22 @@ def test_custom_commercial_values_override_defaults():
     best = result.recommendations[0].alternatives[0]
     assert best.commercial_value == Decimal("5.00")
     assert result.recommendations[0].estimated_savings == Decimal("4.99")
+
+
+def test_invoice_audit_finds_past_savings_against_catalogs():
+    catalogs = [
+        RawCatalog(filename="current.csv", text="fornecedor;produto;preco;promocoes\nMakro;Coca Cola 24x33cl;18,00;\n"),
+    ]
+    invoices = [
+        RawCatalog(filename="invoice_old.csv", text="fornecedor;produto;quantidade;preco\nFornecedor Antigo;Coca-Cola 24x33cl;10;19,50\n"),
+    ]
+
+    result = compare_catalogs(catalogs, invoice_catalogs=invoices)
+
+    assert result.invoice_audit is not None
+    assert result.invoice_audit.invoices_analysed == 1
+    assert result.invoice_audit.invoice_items_compared == 1
+    assert result.invoice_audit.estimated_past_savings == Decimal("15.00")
+    item = result.invoice_audit.items[0]
+    assert item.better_supplier == "Makro"
+    assert item.paid_supplier == "Fornecedor Antigo"
