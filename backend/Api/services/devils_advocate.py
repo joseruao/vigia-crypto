@@ -755,8 +755,10 @@ async def extract_uploads_text(
         total += len(block)
     joined = "\n\n".join(parts)
     if not joined.strip():
-        failed = " ".join(f"'{p['name']}'" for p in per_file if not p.get("ok"))
-        raise ValueError(f"Nenhum documento legível foi extraído{f' ({failed})' if failed else ''}.")
+        failed = "; ".join(
+            f"'{p['name']}': {p.get('error', 'sem texto extraído')}" for p in per_file if not p.get("ok")
+        )
+        raise ValueError(f"Nenhum documento legível foi extraído{f' ({failed})' if failed else '.'}")
     return joined, truncated, per_file
 
 
