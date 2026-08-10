@@ -7,6 +7,7 @@ import logging
 import os
 import queue
 import time
+import uuid
 from collections import deque
 from typing import Literal
 
@@ -293,3 +294,98 @@ def _sse_event(event: str, data: str) -> str:
     """Format a single SSE message.  Multi-line data is sent as multiple
     `data:` lines — the empty trailing line terminates the message."""
     return f"event: {event}\n" + "".join(f"data: {line}\n" for line in data.split("\n")) + "\n"
+
+
+# ── Job + polling (robust against proxies that kill long-lived streams) ──
+# Cloud proxies (Railway free tier included) cut connections that stay open
+# too long, so SSE dies mid-analysis. A job endpoint answers immediately with
+# an id; the frontend polls a tiny GET until the analysis is done. Each
+# response is short, so no proxy limit is ever hit.
+_JOBS: dict[str, dict] = {}
+_JOB_TTL_SECONDS = 3600
+
+
+@router.post("/analyze-job")
+async def analyze_devils_advocate_job(
+    request: Request,
+    file: UploadFile = File(...),
+    jurisdiction: str = Form(default="Portugal"),
+    legal_area: str = Form(default="Fiscal"),
+    document_type: str = Form(default="Documento fiscal"),
+    represented_side: str = Form(default="Contribuinte"),
+    objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
+    language: Literal["pt", "en"] = Form(default="pt"),
+    provider: str = Form(default="openai"),
+    model: str = Form(default=""),
+    mode: Literal["adversarial", "pre_filing"] = Form(default="adversarial"),
+    x_access_code: str | None = Header(default=None),
+):
+    _check_access_code(x_access_code)
+    _check_rate_limit(request.client.host if request.client else "unknown")
+
+    try:
+        extracted_text, content_truncated = await extract_upload_text(file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Drop stale jobs so the dict doesn't grow forever.
+    now = time.time()
+    for job_id in [k for k, v in _JOBS.items() if now - v["created"] > _JOB_TTL_SECONDS]:
+        _JOBS.pop(job_id, None)
+
+    job_id = uuid.uuid4().hex
+    progress: list[dict] = []
+
+    def _progress_callback(stage: str, message: str) -> None:
+        progress.append({"stage": stage, "message": message, "ts": time.time()})
+
+    loop = asyncio.get_running_loop()
+    task = loop.run_in_executor(
+        None,
+        lambda: analyze_document(
+            document_name=file.filename or "documento",
+            extracted_text=extracted_text,
+            jurisdiction=jurisdiction.strip() or "Portugal",
+            legal_area=legal_area.strip() or "Fiscal",
+            document_type=document_type.strip() or "Documento fiscal",
+            represented_side=represented_side.strip() or "Contribuinte",
+            objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
+            language=language,
+            content_truncated=content_truncated,
+            provider=provider,
+            model_choice=model.strip() or None,
+            progress_callback=_progress_callback,
+            mode=mode,
+        ),
+    )
+    _JOBS[job_id] = {"task": task, "progress": progress, "created": now}
+    return {"job_id": job_id}
+
+
+@router.get("/job/{job_id}")
+async def get_devils_advocate_job(job_id: str):
+    job = _JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Trabalho não encontrado ou já expirou.")
+    elapsed = int(time.time() - job["created"])
+    task = job["task"]
+    if not task.done():
+        return {"status": "running", "progress": job["progress"], "elapsed": elapsed}
+    try:
+        result = task.result()
+    except Exception as exc:
+        log.error("devils-advocate job %s failed: %s", job_id, exc, exc_info=True)
+        return {
+            "status": "error",
+            "detail": str(exc) or "A análise falhou. Tente novamente.",
+            "progress": job["progress"],
+            "elapsed": elapsed,
+        }
+    return {
+        "status": "done",
+        "result": result.model_dump(),
+        "progress": job["progress"],
+        "elapsed": elapsed,
+    }

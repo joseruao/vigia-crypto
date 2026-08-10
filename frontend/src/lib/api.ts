@@ -532,7 +532,10 @@ export async function analyzeDevilsAdvocateStream(
   if (input.model) form.set("model", input.model);
   form.set("mode", input.mode ?? "adversarial");
 
-  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-stream`, {
+  // Job + polling: cloud proxies (Railway free tier included) kill
+  // long-lived streams, so we start a background job and poll a tiny GET
+  // until it's done. Every response here is short — no proxy limit is hit.
+  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-job`, {
     method: "POST",
     headers: { "X-Access-Code": input.accessCode },
     body: form,
@@ -545,41 +548,47 @@ export async function analyzeDevilsAdvocateStream(
     throw err;
   }
 
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("Streaming não é suportado neste browser.");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const { job_id } = (await res.json()) as { job_id: string };
+  const seen = new Set<string>();
+  const maxWaitMs = 15 * 60 * 1000; // backend timeout is 10 min; leave margin
 
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    const poll = await fetch(`${API_BASE}/api/devils-advocate/job/${job_id}`, {
+      headers: { "X-Access-Code": input.accessCode },
+    });
+    if (!poll.ok) {
+      const data = await poll.json().catch(() => null);
+      throw new Error(data?.detail || `HTTP ${poll.status}`);
+    }
+    const state = (await poll.json()) as {
+      status: "running" | "done" | "error";
+      progress?: DevilsAdvocateProgressEvent[];
+      detail?: string;
+      result?: { report: DevilsAdvocateReport };
+    };
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    let eventType = "";
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        eventType = line.slice(7).trim();
-      } else if (line.startsWith("data: ")) {
-        const data = line.slice(6);
-        if (eventType === "result") {
-          return JSON.parse(data) as DevilsAdvocateReport;
-        } else if (eventType === "error") {
-          throw new Error(data);
-        } else {
-          onProgress({ stage: eventType, message: data, ts: Date.now() });
-        }
+    for (const evt of state.progress ?? []) {
+      const key = `${evt.stage}|${evt.message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        onProgress(evt);
       }
     }
-  }
 
-  const waited = Math.round((Date.now() - startedAt) / 1000);
-  throw new Error(
-    `A ligação foi cortada após ${waited} s sem resultado. Tente novamente — se repetir, use o motor DeepSeek Flash.`,
-  );
+    if (state.status === "done") {
+      const report = state.result?.report;
+      if (!report) throw new Error("Resposta sem relatório.");
+      return report;
+    }
+    if (state.status === "error") {
+      throw new Error(state.detail || "A análise falhou. Tente novamente.");
+    }
+    if (Date.now() - startedAt > maxWaitMs) {
+      throw new Error("A análise demorou demasiado. Tente novamente.");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
 }
 
 export async function analyzeDevilsAdvocate(input: {
