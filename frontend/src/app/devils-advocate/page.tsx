@@ -618,7 +618,7 @@ export default function DevilsAdvocatePage() {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/png,image/jpeg,image/webp"
                     onChange={(event) =>
                       setFiles(Array.from(event.target.files ?? []))
                     }
@@ -695,7 +695,7 @@ export default function DevilsAdvocatePage() {
                     ? 'Introduza o código de acesso para continuar.'
                     : mode === 'acordao'
                       ? 'Cole o link do acórdão ou escolha um PDF/DOCX.'
-                      : 'Escolha um documento (PDF ou DOCX) para analisar.'}
+                      : 'Escolha documentos, PDFs ou prints (PNG/JPG) para analisar.'}
                 </p>
               )}
             </div>
@@ -759,7 +759,7 @@ export default function DevilsAdvocatePage() {
                 </div>
                 <h2 className="mt-4 text-xl font-semibold">Relatório adversarial</h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Carregue um PDF ou DOCX para gerar o relatório.
+                  Carregue documentos, PDFs ou prints (PNG/JPG) — o programa lê o texto das imagens.
                 </p>
               </div>
             ) : (

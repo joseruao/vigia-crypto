@@ -597,6 +597,33 @@ def _extract_pdf(path: Path) -> tuple[str, bool]:
     return _clean_text("\n\n".join(pages)), truncated
 
 
+_OCR_ENGINE = None
+
+
+def _get_ocr_engine():
+    """Lazy, process-wide OCR engine (rapidocr-onnxruntime). Loading the
+    ONNX models once per process saves a lot of startup cost per image."""
+    global _OCR_ENGINE
+    if _OCR_ENGINE is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+        except ImportError as exc:
+            raise RuntimeError("OCR requires rapidocr-onnxruntime. Install backend requirements.") from exc
+        _OCR_ENGINE = RapidOCR()
+    return _OCR_ENGINE
+
+
+def _extract_image(path: Path) -> str:
+    """OCR an image (WhatsApp/SMS screenshots, photos of documents) into text."""
+    engine = _get_ocr_engine()
+    result, _elapsed = engine(str(path))
+    if not result:
+        return ""
+    # Each item is [box, text, confidence]; keep lines in reading order.
+    lines = [str(item[1]).strip() for item in result if item and len(item) > 1 and str(item[1]).strip()]
+    return _clean_text("\n".join(lines))
+
+
 def _extract_txt(path: Path) -> str:
     raw = path.read_bytes()
     if raw.startswith(b"\xef\xbb\xbf"):  # UTF-8 BOM
@@ -629,10 +656,13 @@ def _extract_docx(path: Path) -> str:
     return _clean_text("\n".join(parts))
 
 
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+
 async def extract_upload_text(file: UploadFile, max_chars: int = MAX_EXTRACTED_CHARS) -> tuple[str, bool]:
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".pdf", ".docx", ".txt"}:
-        raise ValueError("Only PDF, DOCX and TXT files are supported.")
+    if suffix not in {".pdf", ".docx", ".txt"} | _IMAGE_SUFFIXES:
+        raise ValueError("Only PDF, DOCX, TXT and images (PNG/JPG — prints) are supported.")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
@@ -657,6 +687,9 @@ async def extract_upload_text(file: UploadFile, max_chars: int = MAX_EXTRACTED_C
             text, truncated = _extract_pdf(tmp_path)
         elif suffix == ".txt":
             text = _extract_txt(tmp_path)
+            truncated = False
+        elif suffix in _IMAGE_SUFFIXES:
+            text = _extract_image(tmp_path)
             truncated = False
         else:
             text = _extract_docx(tmp_path)
