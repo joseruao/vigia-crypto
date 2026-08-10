@@ -182,6 +182,7 @@ export default function DevilsAdvocatePage() {
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
   const [provider, setProvider] = useState<'openai' | 'deepseek' | 'mistral'>('deepseek');
+  const [model, setModel] = useState<'flash' | 'pro'>('flash');
   const [mode, setMode] = useState<'analise' | 'preparar' | 'acordao'>('analise');
   const [acordao, setAcordao] = useState<AcordaoSummary | null>(null);
   const [acordaoUrl, setAcordaoUrl] = useState('');
@@ -248,6 +249,7 @@ export default function DevilsAdvocatePage() {
           language,
           accessCode: isLocal ? '' : accessCode.trim(),
           provider,
+          model: provider === 'deepseek' ? (model === 'pro' ? 'deepseek-v4-pro' : 'deepseek-v4-flash') : undefined,
           mode: mode === 'preparar' ? 'pre_filing' : 'adversarial',
         },
         (evt) =>
@@ -436,6 +438,35 @@ export default function DevilsAdvocatePage() {
                       Mistral
                     </button>
                   </div>
+                  {provider === 'deepseek' && (
+                    <div className="mt-2">
+                      <span className="mb-1.5 block text-sm font-medium text-slate-700">Modelo</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setModel('flash')}
+                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                            model === 'flash'
+                              ? 'border-emerald-700 bg-emerald-700 text-white'
+                              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                          }`}
+                        >
+                          Flash — rápido e barato
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModel('pro')}
+                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                            model === 'pro'
+                              ? 'border-slate-900 bg-slate-900 text-white'
+                              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                          }`}
+                        >
+                          Pro — mais profundo
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -88,6 +88,7 @@ async def analyze_devils_advocate(
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
     provider: str = Form(default="openai"),
+    model: str = Form(default=""),
     mode: Literal["adversarial", "pre_filing"] = Form(default="adversarial"),
     x_access_code: str | None = Header(default=None),
 ):
@@ -107,6 +108,7 @@ async def analyze_devils_advocate(
             language=language,
             content_truncated=content_truncated,
             provider=provider,
+            model_choice=model.strip() or None,
             mode=mode,
         )
     except HTTPException:
@@ -180,6 +182,7 @@ async def analyze_devils_advocate_stream(
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
     provider: str = Form(default="openai"),
+    model: str = Form(default=""),
     mode: Literal["adversarial", "pre_filing"] = Form(default="adversarial"),
     x_access_code: str | None = Header(default=None),
 ):
@@ -223,6 +226,7 @@ async def analyze_devils_advocate_stream(
                 language=language,
                 content_truncated=content_truncated,
                 provider=provider,
+                model_choice=model.strip() or None,
                 progress_callback=_progress_callback,
                 mode=mode,
             ),

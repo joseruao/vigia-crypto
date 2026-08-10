@@ -514,6 +514,7 @@ export async function analyzeDevilsAdvocateStream(
     language: "pt" | "en";
     accessCode: string;
     provider?: "openai" | "deepseek" | "mistral";
+    model?: string;
     mode?: "adversarial" | "pre_filing";
   },
   onProgress: (event: DevilsAdvocateProgressEvent) => void,
@@ -528,6 +529,7 @@ export async function analyzeDevilsAdvocateStream(
   form.set("objective", input.objective);
   form.set("language", input.language);
   form.set("provider", input.provider ?? "openai");
+  if (input.model) form.set("model", input.model);
   form.set("mode", input.mode ?? "adversarial");
 
   const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-stream`, {
@@ -590,6 +592,7 @@ export async function analyzeDevilsAdvocate(input: {
   language: "pt" | "en";
   accessCode: string;
   provider?: "openai" | "deepseek" | "mistral";
+  model?: string;
   mode?: "adversarial" | "pre_filing";
 }): Promise<DevilsAdvocateReport> {
   const form = new FormData();
@@ -601,18 +604,19 @@ export async function analyzeDevilsAdvocate(input: {
   form.set("objective", input.objective);
   form.set("language", input.language);
   form.set("provider", input.provider ?? "openai");
+  if (input.model) form.set("model", input.model);
   form.set("mode", input.mode ?? "adversarial");
 
   // Local models (Ollama, desktop app) on modest hardware are slow — give them
   // far more room. Cloud stays at 2 min so a hung backend surfaces quickly.
   const onLocalhost =
     typeof window !== "undefined" && window.location.hostname === "localhost";
-  // Cloud reasoning models (gpt-5.x) can take a few minutes even on small input.
-  // Wait longer than the backend's own timeout so a slow result is delivered
-  // instead of being abandoned after it was already generated and billed.
+  // Cloud reasoning models (gpt-5.x / deepseek-v4-pro) can take several minutes.
+  // Wait longer than the backend's own timeout (600 s) so a slow result is
+  // delivered instead of being abandoned after it was already billed.
   // Local models are free and slow-is-normal — allow up to 30 min (only catches a
-  // hung server). Cloud stays short to fail fast and bound cost.
-  const timeoutMs = onLocalhost ? 1_800_000 : 270_000;
+  // hung server).
+  const timeoutMs = onLocalhost ? 1_800_000 : 630_000;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;

@@ -907,13 +907,20 @@ def analyze_document(
     language: Literal["pt", "en"] = "pt",
     content_truncated: bool = False,
     provider: str = "openai",
+    model_choice: str | None = None,
     progress_callback: Callable[[str, str], None] | None = None,
     mode: Literal["adversarial", "pre_filing"] = "adversarial",
 ) -> DevilsAdvocateAnalyzeResult:
-    client, model, _is_local = _resolve_engine(provider)
+    client, model, _is_local = _resolve_engine(provider, model_override=model_choice)
 
-    # DeepSeek: auto-switch to Pro for labour audits (deeper reasoning needed)
-    if provider == "deepseek" and not _is_local and "labor" in (legal_area or "").lower():
+    # DeepSeek: auto-switch to Pro for labour audits (deeper reasoning needed),
+    # but only when the user didn't pick a model explicitly.
+    if (
+        not model_choice
+        and provider == "deepseek"
+        and not _is_local
+        and "labor" in (legal_area or "").lower()
+    ):
         audit_model = os.getenv("DEVILS_ADVOCATE_DEEPSEEK_AUDIT_MODEL", "deepseek-v4-pro")
         if audit_model and audit_model != model:
             from openai import OpenAI
