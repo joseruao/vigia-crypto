@@ -497,9 +497,36 @@ export type DevilsAdvocateReport = {
   legal_references_used: DevilsAdvocateLegalReference[];
   confidence_note: string;
   content_truncated: boolean;
+  upload_notes: string[];
   procedural_prerequisites: string[];
   evidence_to_gather: string[];
   filing_strategy: string[];
+  case_qualification: string;
+  procedure: string;
+  petition_draft: string;
+  evidence_decisions: EvidenceDecision[];
+  audit_report: AuditReport | null;
+};
+
+export type EvidenceDecision = {
+  item: string;
+  decisao: string;
+  justificacao: string;
+};
+
+export type AuditReport = {
+  utilizados: { documento: string; factos_que_sustenta: string; parte_da_peca: string }[];
+  nao_utilizados: { item: string; motivo: string }[];
+  factos_sem_prova: string[];
+  fragilidades: string[];
+  questoes_incertas: {
+    questao: string;
+    legislacao_analisada: string;
+    interpretacao_adotada: string;
+    interpretacao_alternativa: string;
+    razao_da_escolha: string;
+  }[];
+  provas_que_melhoram: { documento: string; porque: string }[];
 };
 
 export type DevilsAdvocateProgressEvent = {
@@ -510,7 +537,7 @@ export type DevilsAdvocateProgressEvent = {
 
 export async function analyzeDevilsAdvocateStream(
   input: {
-    file: File;
+    files: File[];
     jurisdiction: string;
     legal_area: string;
     document_type: string;
@@ -526,7 +553,7 @@ export async function analyzeDevilsAdvocateStream(
 ): Promise<DevilsAdvocateReport> {
   const startedAt = Date.now();
   const form = new FormData();
-  form.set("file", input.file);
+  for (const f of input.files) form.append("files", f);
   form.set("jurisdiction", input.jurisdiction);
   form.set("legal_area", input.legal_area);
   form.set("document_type", input.document_type);
@@ -597,7 +624,7 @@ export async function analyzeDevilsAdvocateStream(
 }
 
 export async function analyzeDevilsAdvocate(input: {
-  file: File;
+  files: File[];
   jurisdiction: string;
   legal_area: string;
   document_type: string;
@@ -610,7 +637,7 @@ export async function analyzeDevilsAdvocate(input: {
   mode?: "adversarial" | "pre_filing";
 }): Promise<DevilsAdvocateReport> {
   const form = new FormData();
-  form.set("file", input.file);
+  for (const f of input.files) form.append("files", f);
   form.set("jurisdiction", input.jurisdiction);
   form.set("legal_area", input.legal_area);
   form.set("document_type", input.document_type);

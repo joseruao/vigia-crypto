@@ -19,7 +19,7 @@ from Api.services.devils_advocate import (
     AcordaoSummaryResult,
     DevilsAdvocateAnalyzeResult,
     analyze_document,
-    extract_upload_text,
+    extract_uploads_text,
     fetch_acordao_from_url,
     summarize_acordao,
 )
@@ -72,7 +72,7 @@ def _check_rate_limit(client_ip: str) -> None:
 @router.post("/analyze", response_model=DevilsAdvocateAnalyzeResult)
 async def analyze_devils_advocate(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     jurisdiction: str = Form(default="Portugal", description="Jurisdição (ex: Portugal)"),
     legal_area: str = Form(
         default="Fiscal",
@@ -96,10 +96,13 @@ async def analyze_devils_advocate(
     _check_access_code(x_access_code)
     _check_rate_limit(request.client.host if request.client else "unknown")
     try:
-        extracted_text, content_truncated = await extract_upload_text(file)
+        extracted_text, content_truncated, per_file = await extract_uploads_text(files)
+        upload_notes = [
+            f"{p['name']}: {p['error']}" for p in per_file if not p.get("ok")
+        ]
         return await run_in_threadpool(
             analyze_document,
-            document_name=file.filename or "documento",
+            document_name="; ".join(p["name"] for p in per_file) or "documento",
             extracted_text=extracted_text,
             jurisdiction=jurisdiction.strip() or "Portugal",
             legal_area=legal_area.strip() or "Fiscal",
@@ -108,6 +111,7 @@ async def analyze_devils_advocate(
             objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
             language=language,
             content_truncated=content_truncated,
+            upload_notes=upload_notes,
             provider=provider,
             model_choice=model.strip() or None,
             mode=mode,
@@ -172,7 +176,7 @@ async def summarize_acordao_endpoint(
 @router.post("/analyze-stream")
 async def analyze_devils_advocate_stream(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     jurisdiction: str = Form(default="Portugal"),
     legal_area: str = Form(
         default="Fiscal",
@@ -191,11 +195,13 @@ async def analyze_devils_advocate_stream(
     _check_rate_limit(request.client.host if request.client else "unknown")
 
     try:
-        extracted_text, content_truncated = await extract_upload_text(file)
+        extracted_text, content_truncated, per_file = await extract_uploads_text(files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    upload_notes = [f"{p['name']}: {p['error']}" for p in per_file if not p.get("ok")]
 
     _HEARTBEAT_MSGS = (
         "A analisar o documento...",
@@ -217,7 +223,7 @@ async def analyze_devils_advocate_stream(
         task = loop.run_in_executor(
             None,
             lambda: analyze_document(
-                document_name=file.filename or "documento",
+                document_name="; ".join(p["name"] for p in per_file) or "documento",
                 extracted_text=extracted_text,
                 jurisdiction=jurisdiction.strip() or "Portugal",
                 legal_area=legal_area.strip() or "Fiscal",
@@ -226,6 +232,7 @@ async def analyze_devils_advocate_stream(
                 objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
                 language=language,
                 content_truncated=content_truncated,
+                upload_notes=upload_notes,
                 provider=provider,
                 model_choice=model.strip() or None,
                 progress_callback=_progress_callback,
@@ -308,7 +315,7 @@ _JOB_TTL_SECONDS = 3600
 @router.post("/analyze-job")
 async def analyze_devils_advocate_job(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     jurisdiction: str = Form(default="Portugal"),
     legal_area: str = Form(default="Fiscal"),
     document_type: str = Form(default="Documento fiscal"),
@@ -324,11 +331,13 @@ async def analyze_devils_advocate_job(
     _check_rate_limit(request.client.host if request.client else "unknown")
 
     try:
-        extracted_text, content_truncated = await extract_upload_text(file)
+        extracted_text, content_truncated, per_file = await extract_uploads_text(files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    upload_notes = [f"{p['name']}: {p['error']}" for p in per_file if not p.get("ok")]
 
     # Drop stale jobs so the dict doesn't grow forever.
     now = time.time()
@@ -345,7 +354,7 @@ async def analyze_devils_advocate_job(
     task = loop.run_in_executor(
         None,
         lambda: analyze_document(
-            document_name=file.filename or "documento",
+            document_name="; ".join(p["name"] for p in per_file) or "documento",
             extracted_text=extracted_text,
             jurisdiction=jurisdiction.strip() or "Portugal",
             legal_area=legal_area.strip() or "Fiscal",
@@ -354,6 +363,7 @@ async def analyze_devils_advocate_job(
             objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
             language=language,
             content_truncated=content_truncated,
+            upload_notes=upload_notes,
             provider=provider,
             model_choice=model.strip() or None,
             progress_callback=_progress_callback,

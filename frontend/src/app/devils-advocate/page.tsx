@@ -202,7 +202,7 @@ function AcordaoView({ summary }: { summary: AcordaoSummary }) {
 }
 
 export default function DevilsAdvocatePage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [language, setLanguage] = useState<Lang>('pt');
   const [accessCode, setAccessCode] = useState('');
   const [report, setReport] = useState<DevilsAdvocateReport | null>(null);
@@ -253,13 +253,14 @@ export default function DevilsAdvocatePage() {
   }, [timerOn]);
 
   async function handleAnalyze() {
-    if (!file || loading) return;
+    if (!files.length || loading) return;
     if (!isLocal && !accessCode.trim()) {
       setError('Introduza o código de acesso para usar a ferramenta.');
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setError('O ficheiro é demasiado grande. Limite máximo: 12 MB.');
+    const oversized = files.find((f) => f.size > MAX_FILE_BYTES);
+    if (oversized) {
+      setError(`'${oversized.name}' é demasiado grande. Limite máximo: 12 MB por ficheiro.`);
       return;
     }
     setLoading(true);
@@ -273,7 +274,7 @@ export default function DevilsAdvocatePage() {
     try {
       const result = await analyzeDevilsAdvocateStream(
         {
-          file,
+          files,
           jurisdiction: 'Portugal',
           legal_area: legalArea,
           document_type: legalArea === 'Laboral' ? 'Documento laboral' : 'Documento fiscal',
@@ -307,7 +308,7 @@ export default function DevilsAdvocatePage() {
 
   async function handleSummarize() {
     if (loading) return;
-    const hasInput = Boolean(file) || acordaoUrl.trim().length > 0;
+    const hasInput = files.length > 0 || acordaoUrl.trim().length > 0;
     if (!hasInput) {
       setError('Cole o link do acórdão ou escolha um PDF/DOCX.');
       return;
@@ -316,7 +317,7 @@ export default function DevilsAdvocatePage() {
       setError('Introduza o código de acesso para usar a ferramenta.');
       return;
     }
-    if (!acordaoUrl.trim() && file && file.size > MAX_FILE_BYTES) {
+    if (!acordaoUrl.trim() && files[0] && files[0].size > MAX_FILE_BYTES) {
       setError('O ficheiro é demasiado grande. Limite máximo: 12 MB.');
       return;
     }
@@ -325,7 +326,7 @@ export default function DevilsAdvocatePage() {
     setAcordao(null);
     try {
       const result = await summarizeAcordao({
-        file: acordaoUrl.trim() ? null : file,
+        file: acordaoUrl.trim() ? null : (files[0] ?? null),
         url: acordaoUrl.trim(),
         language,
         accessCode: isLocal ? '' : accessCode.trim(),
@@ -344,8 +345,8 @@ export default function DevilsAdvocatePage() {
     !loading &&
     codeOk &&
     (mode === 'acordao'
-      ? Boolean(file) || acordaoUrl.trim().length > 0
-      : Boolean(file));
+      ? files.length > 0 || acordaoUrl.trim().length > 0
+      : files.length > 0);
   const legalReferences = report?.legal_references_used ?? [];
   const riskMatrix = report?.risk_matrix ?? [];
   const unverifiedLegalPoints = report?.unverified_legal_points ?? [];
@@ -357,7 +358,21 @@ export default function DevilsAdvocatePage() {
   const proceduralPrerequisites = report?.procedural_prerequisites ?? [];
   const evidenceToGather = report?.evidence_to_gather ?? [];
   const filingStrategy = report?.filing_strategy ?? [];
-  const isPreFiling = (proceduralPrerequisites.length + evidenceToGather.length + filingStrategy.length) > 0;
+  const isPreFiling =
+    (proceduralPrerequisites.length + evidenceToGather.length + filingStrategy.length) > 0 ||
+    Boolean(report?.petition_draft);
+
+  const [copiedPetition, setCopiedPetition] = useState(false);
+  async function copyPetition() {
+    if (!report?.petition_draft) return;
+    try {
+      await navigator.clipboard.writeText(report.petition_draft);
+      setCopiedPetition(true);
+      setTimeout(() => setCopiedPetition(false), 2000);
+    } catch {
+      /* clipboard bloqueado — o utilizador seleciona manualmente */
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -602,15 +617,30 @@ export default function DevilsAdvocatePage() {
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
                   <input
                     type="file"
-                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    multiple
+                    accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                    onChange={(event) =>
+                      setFiles(Array.from(event.target.files ?? []))
+                    }
                     className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
                   />
-                  {file && (
-                    <p className="mt-3 flex items-center gap-2 text-xs font-medium text-slate-500">
-                      <FileText className="h-3.5 w-3.5" />
-                      {file.name}
+                  {mode !== 'acordao' && files.length > 1 && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      {files.length} documentos carregados — o programa cruza todos.
                     </p>
+                  )}
+                  {files.length > 0 && (
+                    <ul className="mt-3 space-y-1">
+                      {files.map((f, i) => (
+                        <li key={i} className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{f.name}</span>
+                          <span className="ml-auto shrink-0 text-slate-400">
+                            {(f.size / 1024).toFixed(0)} KB
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               </label>
@@ -744,6 +774,12 @@ export default function DevilsAdvocatePage() {
                   </button>
                 </div>
 
+                {report.upload_notes && report.upload_notes.length > 0 && (
+                  <ReportSection title="Avisos de carregamento" icon={<AlertTriangle className="h-4 w-4" />} tone="warn">
+                    <ListBlock items={report.upload_notes} />
+                  </ReportSection>
+                )}
+
                 <ReportSection title="Sumário" icon={<Scale className="h-4 w-4" />} tone="dark">
                   <p className="whitespace-pre-line text-sm leading-6 text-slate-100">{report.executive_summary}</p>
                   <p className="mt-4 text-xs text-slate-400">
@@ -757,11 +793,11 @@ export default function DevilsAdvocatePage() {
                 </ReportSection>
 
                 {report.content_truncated && (
-                  <ReportSection title="Documento truncado" icon={<AlertTriangle className="h-4 w-4" />} tone="warn">
+                  <ReportSection title="Documentos truncados" icon={<AlertTriangle className="h-4 w-4" />} tone="warn">
                     <p className="text-sm leading-6">
-                      O documento excedeu o limite analisável (80 páginas ou ~65 000 caracteres) e foi
-                      cortado. A análise cobre apenas a parte inicial — divida o documento e analise os
-                      restantes blocos separadamente.
+                      O conjunto de documentos excedeu o limite analisável (150 páginas ou ~150 000
+                      caracteres no total) e foi cortado. A análise cobre apenas a parte inicial —
+                      divida os documentos e analise os restantes blocos separadamente.
                     </p>
                   </ReportSection>
                 )}
@@ -774,6 +810,136 @@ export default function DevilsAdvocatePage() {
 
                 {isPreFiling && (
                   <>
+                    {report.case_qualification && (
+                      <ReportSection title="Qualificação do caso" icon={<Scale className="h-4 w-4" />} tone="dark">
+                        <p className="whitespace-pre-line text-sm leading-6 text-slate-100">{report.case_qualification}</p>
+                      </ReportSection>
+                    )}
+
+                    {report.procedure && (
+                      <ReportSection title="Procedimento processual" icon={<Gavel className="h-4 w-4" />} tone="dark">
+                        <p className="whitespace-pre-line text-sm leading-6 text-slate-100">{report.procedure}</p>
+                      </ReportSection>
+                    )}
+
+                    {report.petition_draft && (
+                      <ReportSection title="Minuta da peça processual" icon={<FileText className="h-4 w-4" />} tone="dark">
+                        <div className="mb-3 flex justify-end print:hidden">
+                          <button
+                            type="button"
+                            onClick={copyPetition}
+                            className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-400"
+                          >
+                            {copiedPetition ? 'Copiado ✓' : 'Copiar peça'}
+                          </button>
+                        </div>
+                        <p className="whitespace-pre-line text-sm leading-6 text-slate-100">{report.petition_draft}</p>
+                      </ReportSection>
+                    )}
+
+                    {report.evidence_decisions && report.evidence_decisions.length > 0 && (
+                      <ReportSection title="Decisões de prova" icon={<ShieldCheck className="h-4 w-4" />} tone="good">
+                        <ul className="space-y-2 text-sm leading-6 text-slate-700">
+                          {report.evidence_decisions.map((d, i) => (
+                            <li key={i} className="rounded-md border border-slate-200 bg-white p-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold">{d.item}</span>
+                                <span
+                                  className={`inline-block w-fit rounded border px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${
+                                    d.decisao?.includes('NÃO INCLUÍDO')
+                                      ? 'border-red-300 bg-red-50 text-red-800'
+                                      : d.decisao?.includes('NÃO PODE')
+                                        ? 'border-red-300 bg-red-50 text-red-800'
+                                        : d.decisao?.includes('COM CONTEXTO')
+                                          ? 'border-amber-300 bg-amber-50 text-amber-800'
+                                          : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                  }`}
+                                >
+                                  {d.decisao}
+                                </span>
+                              </div>
+                              {d.justificacao && <p className="mt-1 text-xs text-slate-500">{d.justificacao}</p>}
+                            </li>
+                          ))}
+                        </ul>
+                      </ReportSection>
+                    )}
+
+                    {report.audit_report && (
+                      <ReportSection title="Relatório de auditoria da peça" icon={<ShieldCheck className="h-4 w-4" />} tone="warn">
+                        <div className="space-y-4">
+                          {report.audit_report.utilizados.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">A. Elementos utilizados</h3>
+                              <ul className="space-y-1.5 text-sm text-slate-700">
+                                {report.audit_report.utilizados.map((u, i) => (
+                                  <li key={i}>
+                                    <span className="font-semibold">{u.documento}</span>
+                                    {u.factos_que_sustenta && <span> — {u.factos_que_sustenta}</span>}
+                                    {u.parte_da_peca && <span className="text-slate-500"> ({u.parte_da_peca})</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {report.audit_report.nao_utilizados.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">B. Elementos não utilizados</h3>
+                              <ul className="space-y-1.5 text-sm text-slate-700">
+                                {report.audit_report.nao_utilizados.map((u, i) => (
+                                  <li key={i}>
+                                    <span className="font-semibold text-red-800">{u.item}</span>
+                                    {u.motivo && <span> — {u.motivo}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {report.audit_report.factos_sem_prova.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">C. Factos sem prova suficiente</h3>
+                              <ListBlock items={report.audit_report.factos_sem_prova} />
+                            </div>
+                          )}
+                          {report.audit_report.fragilidades.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">D. Fragilidades da peça</h3>
+                              <ListBlock items={report.audit_report.fragilidades} />
+                            </div>
+                          )}
+                          {report.audit_report.questoes_incertas.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">E. Questões jurídicas com incerteza</h3>
+                              <ul className="space-y-2 text-sm text-slate-700">
+                                {report.audit_report.questoes_incertas.map((q, i) => (
+                                  <li key={i} className="rounded-md border border-slate-200 bg-white p-2.5">
+                                    <p className="font-semibold">{q.questao}</p>
+                                    {q.legislacao_analisada && <p className="text-xs text-slate-500">Legislação: {q.legislacao_analisada}</p>}
+                                    {q.interpretacao_adotada && <p className="text-xs">Adotada: {q.interpretacao_adotada}</p>}
+                                    {q.interpretacao_alternativa && <p className="text-xs text-slate-500">Alternativa: {q.interpretacao_alternativa}</p>}
+                                    {q.razao_da_escolha && <p className="text-xs text-slate-500">Razão: {q.razao_da_escolha}</p>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {report.audit_report.provas_que_melhoram.length > 0 && (
+                            <div>
+                              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">F. Provas que melhorariam a peça</h3>
+                              <ul className="space-y-1.5 text-sm text-slate-700">
+                                {report.audit_report.provas_que_melhoram.map((p, i) => (
+                                  <li key={i}>
+                                    <span className="font-semibold">{p.documento}</span>
+                                    {p.porque && <span> — {p.porque}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </ReportSection>
+                    )}
+
                     {filingStrategy.length > 0 && (
                       <ReportSection title="Estratégia de entrada" icon={<CheckCircle2 className="h-4 w-4" />} tone="good">
                         <ListBlock items={filingStrategy} />
