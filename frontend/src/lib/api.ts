@@ -492,6 +492,9 @@ export type DevilsAdvocateReport = {
   legal_references_used: DevilsAdvocateLegalReference[];
   confidence_note: string;
   content_truncated: boolean;
+  procedural_prerequisites: string[];
+  evidence_to_gather: string[];
+  filing_strategy: string[];
 };
 
 export type DevilsAdvocateProgressEvent = {
@@ -511,6 +514,7 @@ export async function analyzeDevilsAdvocateStream(
     language: "pt" | "en";
     accessCode: string;
     provider?: "openai" | "deepseek" | "mistral";
+    mode?: "adversarial" | "pre_filing";
   },
   onProgress: (event: DevilsAdvocateProgressEvent) => void,
 ): Promise<DevilsAdvocateReport> {
@@ -523,6 +527,7 @@ export async function analyzeDevilsAdvocateStream(
   form.set("objective", input.objective);
   form.set("language", input.language);
   form.set("provider", input.provider ?? "openai");
+  form.set("mode", input.mode ?? "adversarial");
 
   const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-stream`, {
     method: "POST",
@@ -581,6 +586,7 @@ export async function analyzeDevilsAdvocate(input: {
   language: "pt" | "en";
   accessCode: string;
   provider?: "openai" | "deepseek" | "mistral";
+  mode?: "adversarial" | "pre_filing";
 }): Promise<DevilsAdvocateReport> {
   const form = new FormData();
   form.set("file", input.file);
@@ -591,6 +597,7 @@ export async function analyzeDevilsAdvocate(input: {
   form.set("objective", input.objective);
   form.set("language", input.language);
   form.set("provider", input.provider ?? "openai");
+  form.set("mode", input.mode ?? "adversarial");
 
   // Local models (Ollama, desktop app) on modest hardware are slow — give them
   // far more room. Cloud stays at 2 min so a hung backend surfaces quickly.

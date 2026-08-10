@@ -182,7 +182,7 @@ export default function DevilsAdvocatePage() {
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
   const [provider, setProvider] = useState<'openai' | 'deepseek' | 'mistral'>('deepseek');
-  const [mode, setMode] = useState<'analise' | 'acordao'>('analise');
+  const [mode, setMode] = useState<'analise' | 'preparar' | 'acordao'>('analise');
   const [acordao, setAcordao] = useState<AcordaoSummary | null>(null);
   const [acordaoUrl, setAcordaoUrl] = useState('');
   const [progress, setProgress] = useState<DevilsAdvocateProgressEvent[]>([]);
@@ -248,6 +248,7 @@ export default function DevilsAdvocatePage() {
           language,
           accessCode: isLocal ? '' : accessCode.trim(),
           provider,
+          mode: mode === 'preparar' ? 'pre_filing' : 'adversarial',
         },
         (evt) => setProgress((prev) => [...prev, evt]),
       );
@@ -298,9 +299,9 @@ export default function DevilsAdvocatePage() {
   const canSubmit =
     !loading &&
     codeOk &&
-    (mode === 'analise'
-      ? Boolean(file)
-      : Boolean(file) || acordaoUrl.trim().length > 0);
+    (mode === 'acordao'
+      ? Boolean(file) || acordaoUrl.trim().length > 0
+      : Boolean(file));
   const legalReferences = report?.legal_references_used ?? [];
   const riskMatrix = report?.risk_matrix ?? [];
   const unverifiedLegalPoints = report?.unverified_legal_points ?? [];
@@ -309,6 +310,10 @@ export default function DevilsAdvocatePage() {
   const burdenAndProof = report?.burden_and_proof ?? [];
   const hearingQuestions = report?.hearing_questions ?? [];
   const nextActions = report?.next_actions ?? [];
+  const proceduralPrerequisites = report?.procedural_prerequisites ?? [];
+  const evidenceToGather = report?.evidence_to_gather ?? [];
+  const filingStrategy = report?.filing_strategy ?? [];
+  const isPreFiling = (proceduralPrerequisites.length + evidenceToGather.length + filingStrategy.length) > 0;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -347,7 +352,18 @@ export default function DevilsAdvocatePage() {
             <div className="space-y-4">
               <div>
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">Modo</span>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('preparar')}
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                      mode === 'preparar'
+                        ? 'border-red-800 bg-red-800 text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Preparar ação
+                  </button>
                   <button
                     type="button"
                     onClick={() => setMode('analise')}
@@ -440,7 +456,7 @@ export default function DevilsAdvocatePage() {
                 </label>
               )}
 
-              {mode === 'analise' && (
+              {(mode === 'analise' || mode === 'preparar') && (
                 <>
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-slate-700">Área jurídica</span>
@@ -564,27 +580,29 @@ export default function DevilsAdvocatePage() {
 
               <button
                 type="button"
-                onClick={mode === 'analise' ? handleAnalyze : handleSummarize}
+                onClick={mode === 'acordao' ? handleSummarize : handleAnalyze}
                 disabled={!canSubmit}
                 className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-red-800 px-4 text-base font-bold text-white shadow-md transition hover:bg-red-900 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
                 {loading
-                  ? mode === 'analise'
-                    ? 'A analisar...'
-                    : 'A resumir...'
-                  : mode === 'analise'
-                    ? 'Analisar documento'
-                    : 'Resumir acórdão'}
+                  ? mode === 'acordao'
+                    ? 'A resumir...'
+                    : 'A analisar...'
+                  : mode === 'preparar'
+                    ? 'Preparar ação'
+                    : mode === 'analise'
+                      ? 'Analisar documento'
+                      : 'Resumir acórdão'}
               </button>
 
               {!canSubmit && !loading && (
                 <p className="text-center text-xs text-slate-500">
                   {!isLocal && accessCode.trim().length === 0
                     ? 'Introduza o código de acesso para continuar.'
-                    : mode === 'analise'
-                      ? 'Escolha um documento (PDF ou DOCX) para analisar.'
-                      : 'Cole o link do acórdão ou escolha um PDF/DOCX.'}
+                    : mode === 'acordao'
+                      ? 'Cole o link do acórdão ou escolha um PDF/DOCX.'
+                      : 'Escolha um documento (PDF ou DOCX) para analisar.'}
                 </p>
               )}
             </div>
@@ -689,6 +707,29 @@ export default function DevilsAdvocatePage() {
                   <ReportSection title="Não verificado nas fontes" icon={<AlertTriangle className="h-4 w-4" />} tone="warn">
                     <ListBlock items={unverifiedLegalPoints} />
                   </ReportSection>
+                )}
+
+                {isPreFiling && (
+                  <>
+                    {filingStrategy.length > 0 && (
+                      <ReportSection title="Estratégia de entrada" icon={<CheckCircle2 className="h-4 w-4" />} tone="good">
+                        <ListBlock items={filingStrategy} />
+                      </ReportSection>
+                    )}
+
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      {proceduralPrerequisites.length > 0 && (
+                        <ReportSection title="Requisitos processuais" icon={<ShieldCheck className="h-4 w-4" />} tone="warn">
+                          <ListBlock items={proceduralPrerequisites} />
+                        </ReportSection>
+                      )}
+                      {evidenceToGather.length > 0 && (
+                        <ReportSection title="Prova a recolher" icon={<FileText className="h-4 w-4" />}>
+                          <ListBlock items={evidenceToGather} />
+                        </ReportSection>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 {(caseTheory.length > 0 || opponentTheory.length > 0) && (

@@ -88,6 +88,7 @@ async def analyze_devils_advocate(
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
     provider: str = Form(default="openai"),
+    mode: Literal["adversarial", "pre_filing"] = Form(default="adversarial"),
     x_access_code: str | None = Header(default=None),
 ):
     _check_access_code(x_access_code)
@@ -106,6 +107,7 @@ async def analyze_devils_advocate(
             language=language,
             content_truncated=content_truncated,
             provider=provider,
+            mode=mode,
         )
     except HTTPException:
         raise
@@ -178,6 +180,7 @@ async def analyze_devils_advocate_stream(
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
     provider: str = Form(default="openai"),
+    mode: Literal["adversarial", "pre_filing"] = Form(default="adversarial"),
     x_access_code: str | None = Header(default=None),
 ):
     _check_access_code(x_access_code)
@@ -198,8 +201,6 @@ async def analyze_devils_advocate_stream(
     async def _event_stream():
         loop = asyncio.get_running_loop()
 
-        # Kick off the analysis in a thread — the callback pushes into the
-        # thread-safe queue; the async loop drains it as SSE events.
         task = loop.run_in_executor(
             None,
             lambda: analyze_document(
@@ -214,6 +215,7 @@ async def analyze_devils_advocate_stream(
                 content_truncated=content_truncated,
                 provider=provider,
                 progress_callback=_progress_callback,
+                mode=mode,
             ),
         )
 
