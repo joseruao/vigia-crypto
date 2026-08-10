@@ -597,31 +597,20 @@ def _extract_pdf(path: Path) -> tuple[str, bool]:
     return _clean_text("\n\n".join(pages)), truncated
 
 
-_OCR_ENGINE = None
-
-
-def _get_ocr_engine():
-    """Lazy, process-wide OCR engine (rapidocr-onnxruntime). Loading the
-    ONNX models once per process saves a lot of startup cost per image."""
-    global _OCR_ENGINE
-    if _OCR_ENGINE is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-        except ImportError as exc:
-            raise RuntimeError("OCR requires rapidocr-onnxruntime. Install backend requirements.") from exc
-        _OCR_ENGINE = RapidOCR()
-    return _OCR_ENGINE
-
-
 def _extract_image(path: Path) -> str:
-    """OCR an image (WhatsApp/SMS screenshots, photos of documents) into text."""
-    engine = _get_ocr_engine()
-    result, _elapsed = engine(str(path))
-    if not result:
-        return ""
-    # Each item is [box, text, confidence]; keep lines in reading order.
-    lines = [str(item[1]).strip() for item in result if item and len(item) > 1 and str(item[1]).strip()]
-    return _clean_text("\n".join(lines))
+    """OCR an image (WhatsApp/SMS screenshots, photos of documents) into text.
+    Uses the tesseract binary provided by nixpacks on the server."""
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("OCR requires pytesseract + Pillow. Install backend requirements.") from exc
+    try:
+        # pt-PT data may be absent (nix ships eng by default) — fall back.
+        text = pytesseract.image_to_string(Image.open(str(path)), lang="por")
+    except Exception:
+        text = pytesseract.image_to_string(Image.open(str(path)), lang="eng")
+    return _clean_text(text)
 
 
 def _extract_txt(path: Path) -> str:
