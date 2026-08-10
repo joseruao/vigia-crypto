@@ -550,7 +550,7 @@ export async function analyzeDevilsAdvocateStream(
 
   const { job_id } = (await res.json()) as { job_id: string };
   const seen = new Set<string>();
-  const maxWaitMs = 15 * 60 * 1000; // backend timeout is 10 min; leave margin
+  const maxWaitMs = 35 * 60 * 1000; // backend ceiling is 30 min; leave margin
 
   while (true) {
     const poll = await fetch(`${API_BASE}/api/devils-advocate/job/${job_id}`, {

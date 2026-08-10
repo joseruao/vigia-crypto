@@ -685,7 +685,7 @@ export default function DevilsAdvocatePage() {
                   </div>
 
                   <p className="text-center text-xs text-slate-400">
-                    Não feche esta página — documentos grandes podem demorar até 10 minutos.
+                    Não feche esta página — documentos extensos podem demorar até 30 minutos.
                   </p>
                 </div>
               </div>

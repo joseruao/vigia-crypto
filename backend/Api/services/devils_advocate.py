@@ -15,7 +15,7 @@ from fastapi import UploadFile
 from pydantic import BaseModel, Field
 
 
-MAX_EXTRACTED_CHARS = 65000
+MAX_EXTRACTED_CHARS = 150000
 MAX_UPLOAD_BYTES = int(os.getenv("DEVILS_ADVOCATE_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
 ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("DEVILS_ADVOCATE_CACHE_TTL_SECONDS", "3600"))
 ANALYSIS_CACHE_MAX_ITEMS = int(os.getenv("DEVILS_ADVOCATE_CACHE_MAX_ITEMS", "32"))
@@ -417,9 +417,9 @@ def _extract_pdf(path: Path) -> tuple[str, bool]:
 
     reader = PdfReader(str(path))
     pages: list[str] = []
-    for page in reader.pages[:80]:
+    for page in reader.pages[:150]:
         pages.append(page.extract_text() or "")
-    truncated = len(reader.pages) > 80
+    truncated = len(reader.pages) > 150
     return _clean_text("\n\n".join(pages)), truncated
 
 
@@ -857,11 +857,12 @@ def _resolve_engine(provider: str, model_override: str | None = None):
     from openai import OpenAI
 
     # No retries (a slow-but-working generation would be re-billed for nothing).
-    # Local models can be very slow but cost nothing → 30-min ceiling; cloud 10-min.
+    # Both local and cloud get a 30-min ceiling — job+polling means the browser
+    # never waits on a long-lived connection, so long documents are fine.
     if is_local:
         client_kwargs: dict = {"api_key": api_key, "timeout": 1800.0, "max_retries": 0, "base_url": base_url}
     else:
-        client_kwargs = {"api_key": api_key, "timeout": 600.0, "max_retries": 0}
+        client_kwargs = {"api_key": api_key, "timeout": 1800.0, "max_retries": 0}
         if base_url:
             client_kwargs["base_url"] = base_url
     return OpenAI(**client_kwargs), model, is_local
@@ -928,7 +929,7 @@ def analyze_document(
             client = OpenAI(
                 api_key=os.getenv("DEVILS_ADVOCATE_DEEPSEEK_KEY"),
                 base_url="https://api.deepseek.com/v1",
-                timeout=600.0,  # Pro needs more time for complex reasoning
+                timeout=1800.0,  # Pro needs more time for complex reasoning
                 max_retries=0,
             )
 
