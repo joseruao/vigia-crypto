@@ -181,7 +181,7 @@ export default function DevilsAdvocatePage() {
   const [represented, setRepresented] = useState('Contribuinte');
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
-  const [provider, setProvider] = useState<'openai' | 'mistral'>('openai');
+  const [provider, setProvider] = useState<'openai' | 'deepseek' | 'mistral'>('deepseek');
   const [mode, setMode] = useState<'analise' | 'acordao'>('analise');
   const [acordao, setAcordao] = useState<AcordaoSummary | null>(null);
   const [acordaoUrl, setAcordaoUrl] = useState('');
@@ -376,7 +376,18 @@ export default function DevilsAdvocatePage() {
               {!isLocal && (
                 <div>
                   <span className="mb-1.5 block text-sm font-medium text-slate-700">Motor</span>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProvider('deepseek')}
+                      className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                        provider === 'deepseek'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+                      }`}
+                    >
+                      DeepSeek
+                    </button>
                     <button
                       type="button"
                       onClick={() => setProvider('openai')}
@@ -386,7 +397,7 @@ export default function DevilsAdvocatePage() {
                           : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
                       }`}
                     >
-                      OpenAI (EUA)
+                      OpenAI
                     </button>
                     <button
                       type="button"
@@ -397,9 +408,19 @@ export default function DevilsAdvocatePage() {
                           : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
                       }`}
                     >
-                      Mistral (UE)
+                      Mistral
                     </button>
                   </div>
+                  {provider === 'deepseek' && legalArea === 'Laboral' && (
+                    <p className="mt-1.5 text-xs text-amber-600">
+                      ⚡ Laboral usa DeepSeek Pro (audit profundo). Fiscal usa Flash (rápido).
+                    </p>
+                  )}
+                  {provider === 'deepseek' && legalArea === 'Fiscal' && (
+                    <p className="mt-1.5 text-xs text-emerald-600">
+                      💨 DeepSeek Flash — rápido e barato.
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -510,7 +510,7 @@ export async function analyzeDevilsAdvocateStream(
     objective: string;
     language: "pt" | "en";
     accessCode: string;
-    provider?: "openai" | "mistral";
+    provider?: "openai" | "deepseek" | "mistral";
   },
   onProgress: (event: DevilsAdvocateProgressEvent) => void,
 ): Promise<DevilsAdvocateReport> {
@@ -580,7 +580,7 @@ export async function analyzeDevilsAdvocate(input: {
   objective: string;
   language: "pt" | "en";
   accessCode: string;
-  provider?: "openai" | "mistral";
+  provider?: "openai" | "deepseek" | "mistral";
 }): Promise<DevilsAdvocateReport> {
   const form = new FormData();
   form.set("file", input.file);
@@ -654,7 +654,7 @@ export async function summarizeAcordao(input: {
   url?: string;
   language: "pt" | "en";
   accessCode: string;
-  provider?: "openai" | "mistral";
+  provider?: "openai" | "deepseek" | "mistral";
 }): Promise<AcordaoSummary> {
   const form = new FormData();
   if (input.url && input.url.trim()) form.set("url", input.url.trim());

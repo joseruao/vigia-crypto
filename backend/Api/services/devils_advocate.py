@@ -685,6 +685,13 @@ def _resolve_engine(provider: str, model_override: str | None = None):
         api_key = os.getenv("OPENAI_API_KEY") or "local"
         model = os.getenv("DEVILS_ADVOCATE_MODEL", "llama3.2:1b")
         is_local = True
+    elif provider == "deepseek":
+        base_url = "https://api.deepseek.com/v1"
+        api_key = os.getenv("DEVILS_ADVOCATE_DEEPSEEK_KEY")
+        if not api_key:
+            raise RuntimeError("Motor DeepSeek não está configurado (falta DEVILS_ADVOCATE_DEEPSEEK_KEY).")
+        model = os.getenv("DEVILS_ADVOCATE_DEEPSEEK_MODEL", "deepseek-v4-flash")
+        is_local = False
     elif provider == "mistral":
         base_url = "https://api.mistral.ai/v1"
         api_key = os.getenv("DEVILS_ADVOCATE_MISTRAL_KEY")
@@ -726,8 +733,9 @@ def _run_json_completion(client, model: str, messages: list[dict]) -> dict:
         "response_format": {"type": "json_object"},
         "messages": messages,
     }
-    # Newer OpenAI reasoning models (gpt-5*, o-series) reject a custom temperature.
-    if not re.match(r"^(gpt-5|o\d)", model):
+    # Newer OpenAI reasoning models (gpt-5*, o-series) and DeepSeek v4 models
+    # reject a custom temperature.
+    if not re.match(r"^(gpt-5|o\d|deepseek-v4)", model):
         call_kwargs["temperature"] = 0.2
     try:
         response = client.chat.completions.create(**call_kwargs)
@@ -758,6 +766,20 @@ def analyze_document(
     progress_callback: Callable[[str, str], None] | None = None,
 ) -> DevilsAdvocateAnalyzeResult:
     client, model, _is_local = _resolve_engine(provider)
+
+    # DeepSeek: auto-switch to Pro for labour audits (deeper reasoning needed)
+    if provider == "deepseek" and not _is_local and "labor" in (legal_area or "").lower():
+        audit_model = os.getenv("DEVILS_ADVOCATE_DEEPSEEK_AUDIT_MODEL", "deepseek-v4-pro")
+        if audit_model and audit_model != model:
+            from openai import OpenAI
+            model = audit_model
+            client = OpenAI(
+                api_key=os.getenv("DEVILS_ADVOCATE_DEEPSEEK_KEY"),
+                base_url="https://api.deepseek.com/v1",
+                timeout=300.0,  # Pro needs more time for complex reasoning
+                max_retries=0,
+            )
+
     key = _cache_key(
         document_name=document_name,
         extracted_text=extracted_text,
