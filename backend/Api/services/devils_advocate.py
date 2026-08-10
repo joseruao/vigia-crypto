@@ -19,7 +19,14 @@ MAX_UPLOAD_BYTES = int(os.getenv("DEVILS_ADVOCATE_MAX_UPLOAD_BYTES", str(12 * 10
 ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("DEVILS_ADVOCATE_CACHE_TTL_SECONDS", "3600"))
 ANALYSIS_CACHE_MAX_ITEMS = int(os.getenv("DEVILS_ADVOCATE_CACHE_MAX_ITEMS", "32"))
 _ANALYSIS_CACHE: dict[str, tuple[float, DevilsAdvocateAnalyzeResult]] = {}
-_LEGAL_CODES = r"CIVA|CIRC|CIRS|CPPT|LGT|EBF|RGIT|RCPITA"
+_LEGAL_CODES = (
+    r"CIVA|CIRC|CIRS|CPPT|LGT|EBF|RGIT|RCPITA|CT|CPT|"
+    r"C[oó]digo do Trabalho|C[oó]digo de Processo do Trabalho|"
+    r"LAT|LTFP|RCT|"
+    r"Lei de Acidentes de Trabalho|"
+    r"Lei Geral do Trabalho em Funç[õo]es P[úu]blicas|"
+    r"Regulamento do C[oó]digo do Trabalho"
+)
 LEGAL_REF_RE = re.compile(
     rf"\b(?:{_LEGAL_CODES})\s*,?\s*artigo\s+\d+(?:\.\s*º|º|\.)?"
     rf"|artigo\s+\d+(?:\.\s*º|º|\.)?[\s\S]{{0,60}}?\b(?:do|da)\s+(?:{_LEGAL_CODES})\b",
@@ -136,9 +143,13 @@ def _normalize_cited_sources(sources: list, legal_refs: list[str]) -> list[str]:
 def _format_legal_ref(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", value).strip(" .")
     # Forward order: "CIVA, artigo 21"
-    match = re.match(r"(?P<code>[A-Za-z]+)\s*,?\s*artigo\s+(?P<num>\d+)", cleaned, flags=re.I)
+    match = re.match(
+        rf"(?P<code>{_LEGAL_CODES})\s*,?\s*artigo\s+(?P<num>\d+)",
+        cleaned,
+        flags=re.I,
+    )
     if match:
-        return f"{match.group('code').upper()}, artigo {match.group('num')}.º"
+        return f"{_format_legal_code(match.group('code'))}, artigo {match.group('num')}.º"
     # Reversed order: "artigo 21, n.º 1, alíneas c) e d) do CIVA"
     match = re.search(
         rf"artigo\s+(?P<num>\d+).*?\b(?:do|da)\s+(?P<code>{_LEGAL_CODES})\b",
@@ -146,8 +157,24 @@ def _format_legal_ref(value: str) -> str:
         flags=re.I,
     )
     if match:
-        return f"{match.group('code').upper()}, artigo {match.group('num')}.º"
+        return f"{_format_legal_code(match.group('code'))}, artigo {match.group('num')}.º"
     return cleaned
+
+
+def _format_legal_code(value: str) -> str:
+    normalized = value.strip().lower()
+    for accent, plain in (("ó", "o"), ("ç", "c"), ("ã", "a"), ("õ", "o"), ("ú", "u"), ("á", "a"), ("é", "e"), ("í", "i")):
+        normalized = normalized.replace(accent, plain)
+    _CODE_MAP = {
+        "codigo do trabalho": "Código do Trabalho",
+        "codigo de processo do trabalho": "Código de Processo do Trabalho",
+        "lei de acidentes de trabalho": "LAT",
+        "lei geral do trabalho em funcoes publicas": "LTFP",
+        "regulamento do codigo do trabalho": "RCT",
+    }
+    if normalized in _CODE_MAP:
+        return _CODE_MAP[normalized]
+    return value.strip().upper()
 
 
 def _legal_ref_key(value: str) -> str:
@@ -482,26 +509,49 @@ def _schema_hint() -> str:
 def _system_prompt(language: Literal["pt", "en"]) -> str:
     if language == "en":
         return (
-            "You are Devil's Advocate, a private beta tool for a tax lawyer. "
+            "You are Devil's Advocate, a private beta tool for a Portuguese lawyer. "
             "You stress-test legal arguments. You are not a source of current law. "
             "Never invent legal articles, tax rates, deadlines, court decisions, administrative rulings, dates of amendments, or official interpretations. "
             "If a legal point is not explicitly present in the provided document/context, list it under unverified_legal_points — without prefixing each item with labels like 'not verified' (the section header already conveys that). "
-            "You know the recurring battlegrounds in tax disputes and actively raise the right questions "
-            "(e.g. exclusions and limitations of the right to deduct VAT, formal invoice requirements, partial/pro-rata deduction, burden of proof, assessment lapse, sufficiency of the authority's grounds) "
+            "You know recurring battlegrounds in the selected Portuguese legal area and actively raise the right questions "
             "— but always as points to verify, never asserting the law. "
             "Be specific and concrete, never generic: use the amounts, dates, invoices and references present in the document. "
             "Separate facts from assumptions and reasoning. Be useful, skeptical, and conservative."
         )
     return (
-        "És o Devil's Advocate, uma ferramenta beta privada para um advogado, com foco provável em direito fiscal português. "
+        "És o Devil's Advocate, uma ferramenta beta privada para um advogado português. "
         "O teu trabalho é testar argumentos jurídicos, não ser fonte de direito atualizado. "
         "Nunca inventes artigos legais, taxas, prazos, jurisprudência, informações vinculativas, datas de alterações legislativas ou interpretações oficiais. "
         "Se um ponto jurídico não estiver explicitamente no documento/contexto fornecido, coloca-o em unverified_legal_points — sem prefixar cada item com rótulos como 'não verificado' (o título da secção já o indica). "
-        "Conheces os pontos de litígio recorrentes em direito fiscal português e levantas ativamente as questões certas "
-        "(ex.: exclusões e limitações do direito à dedução do IVA, requisitos formais da fatura, dedução parcial/pro rata, ónus da prova, caducidade, fundamentação do ato) "
+        "Conheces os pontos de litígio recorrentes na área jurídica indicada e levantas ativamente as questões certas "
         "— mas sempre como pontos a verificar, nunca afirmando a lei. "
         "Sê específico e concreto, nunca genérico: usa valores, datas, faturas e referências presentes no documento. "
         "Separa factos, suposições e raciocínio. Sê útil, cético e conservador."
+    )
+
+
+def _area_profile(legal_area: str, language: Literal["pt", "en"]) -> str:
+    area = (legal_area or "").strip().lower()
+    if "labor" in area or "trabalh" in area:
+        if language == "en":
+            return (
+                "Labour/employment profile: focus on the employment relationship, chronology, role/category, seniority, pay, working time, disciplinary procedure, dismissal/termination facts, communications, witnesses, documentary proof, proportionality, damages, settlement leverage and hearing preparation. "
+                "When relevant, test both employee and employer theories. Actively analyse: just-cause dismissal requirements (art. 351.º CT), disciplinary procedure formalities (art. 329.º ff. CT), dismissal challenge time limits (art. 386.º, 387.º CT), prescription of labour credits (art. 337.º CT), dismissal compensation calculation (art. 389.º ff. CT), holiday and Christmas subsidies (art. 263.º ff. CT), professional category vs actual duties, fixed-term contracts and conversion risk (art. 139.º-149.º CT), overtime and working hours (art. 203.º, 261.º-262.º CT), parental protection (art. 33.º-65.º CT), probation period (art. 112.º-113.º CT), suspension of contract (art. 347.º CT), workplace accidents and occupational diseases (LAT), moral and sexual harassment (Lei 73/2017), discrimination, equal pay. "
+                "Treat Labour Code, CPT, LAT, LTFP, RCT, ACT guidance, collective bargaining instruments and case law as unverified unless they are literally in the document."
+            )
+        return (
+            "Perfil Laboral: concentra a análise na relação laboral, cronologia, funções/categoria, antiguidade, remuneração, horário/tempo de trabalho, processo disciplinar, despedimento/cessação, comunicações, testemunhas, prova documental, proporcionalidade, danos, margem de acordo e preparação de audiência. "
+            "Quando fizer sentido, testa a tese do trabalhador e a tese do empregador. Analisa ativamente: justa causa de despedimento (art. 351.º CT) e seus requisitos concretos, formalidades do procedimento disciplinar (art. 329.º e ss CT), prazos de caducidade da ação de impugnação (art. 386.º e 387.º CT), prescrição de créditos laborais (art. 337.º CT), cálculo de indemnização por despedimento (art. 389.º e ss CT), retribuição de férias e subsídios (art. 263.º e ss CT), categoria profissional vs funções efetivamente exercidas, contratos a termo e risco de conversão (art. 139.º-149.º CT), trabalho suplementar e horas extraordinárias (art. 203.º, 261.º-262.º CT), proteção na parentalidade (art. 33.º-65.º CT), período experimental (art. 112.º-113.º CT), suspensão do contrato (art. 347.º CT), acidentes de trabalho e doenças profissionais (LAT), assédio moral e sexual (Lei 73/2017), discriminação, igualdade retributiva. "
+            "Código do Trabalho, CPT, LAT, LTFP, RCT, ACT, instrumentos de regulamentação coletiva e jurisprudência são sempre pontos não verificados salvo se estiverem literalmente no documento."
+        )
+    if language == "en":
+        return (
+            "Tax profile: for VAT/CIT/PIT disputes, actively consider deductions, exclusions and limitations, formal invoice requirements, partial/pro-rata deduction, burden of proof, assessment lapse, challenge deadlines, adequacy of the authority's reasoning, correction method, interest and penalties. "
+            "Any tax-law content absent from the document must remain unverified."
+        )
+    return (
+        "Perfil Fiscal: em IVA/IRC/IRS, considera ativamente deduções, exclusões e limitações, requisitos formais de fatura, dedução parcial/pro rata, ónus da prova, caducidade, prazos de reação, fundamentação do ato, método de correção, juros e coimas. "
+        "Qualquer conteúdo de direito fiscal que não esteja no documento fica como não verificado."
     )
 
 
@@ -536,6 +586,9 @@ Context:
 - Represented side: {represented_side}
 - Objective: {objective}
 
+Area-specific profile:
+{_area_profile(legal_area, language)}
+
 Critical legal safety rules:
 - Use only the uploaded document and the context above.
 - Do not invent legal citations, rates, deadlines, cases, administrative rulings, or current-law statements.
@@ -561,9 +614,24 @@ When the matter is tax/fiscal (IVA, IRC, IRS), actively consider and, where rele
 - Correction method used (technical corrections vs. indirect methods) and its preconditions.
 - Compensatory interest and any associated penalty.
 Anything from this checklist that touches the CONTENT of the law MUST go into unverified_legal_points for human verification — never state it as established law and never put it in legal_references_used.
+When the matter is labour/employment, actively consider and, where relevant, surface in unverified_legal_points, opponent_argument and questions:
+- Exact chronology: hiring, role changes, incidents, notices, disciplinary steps, suspension, dismissal/termination, payments and deadlines mentioned in the document.
+- Evidence links: employment contract, payslips, attendance records, schedules, emails/messages, warnings, disciplinary file, medical certificates, witness names, company policies and collective bargaining instruments.
+- Dismissal grounds: whether the facts in the document meet the just-cause requirements (art. 351.º CT), including the duty to investigate, the specific conduct imputed, the imediatidade (time gap between knowledge of facts and disciplinary action), and whether the disciplinary procedure formalities (art. 329.º ff. CT — nota de culpa, right of defence, final decision, communication) appear satisfied from the document.
+- Time-bar and limitation risks: dismissal challenge deadline (art. 386.º, 387.º CT), prescription of labour credits (art. 337.º CT), time limits for supplementary claims, and any applicable limitation periods visible in the timeline.
+- Compensation and payment risk: calculation basis for dismissal compensation (art. 389.º ff. CT), seniority, unpaid wages, holiday and Christmas subsidies (art. 263.º ff. CT), overtime, training credits, and any amounts mentioned or conspicuously missing in the document.
+- Contract type and stability: whether the contract is fixed-term or open-ended, conversion risk (art. 139.º-149.º CT), whether the probation period (art. 112.º-113.º CT) has expired, and whether the contract was suspended (art. 347.º CT) at any relevant point.
+- Working time and overtime: whether the hours, overtime (art. 261.º-262.º CT), schedules, rest periods and working-time exemptions (art. 203.º ff. CT) align with the contract, payslips and attendance records.
+- Parental protection: if the facts suggest pregnancy, recent childbirth, breastfeeding, or parental leave (art. 33.º-65.º CT), flag the applicable anti-dismissal shield and the specific legal requirements for a valid dismissal during that period.
+- Professional category and role: whether the contractual category matches the functions actually performed, potential requalification risk, and salary implications.
+- Occupational accidents/diseases: if the facts suggest a workplace accident or occupational disease, flag the applicable LAT regime, insurance/compensation questions, and employer liability exposure.
+- Harassment and fundamental rights: if the facts suggest moral or sexual harassment (Lei 73/2017), discrimination, victimisation, or violation of personality rights, flag the specific conduct and the applicable legal verification points (burden of proof shift, employer's duty of prevention).
+- Proportionality and consistency of any sanction, prior conduct, comparable treatment of other workers, and whether the process appears coherent on the documents.
+- Economic and practical outcomes: reinstatement/compensation risk, unpaid amounts, settlement leverage and documents to request before a hearing.
+Anything from this labour checklist that touches the CONTENT of the law MUST go into unverified_legal_points for human verification — never state it as established law and never put it in legal_references_used.
 
 Output style — be specific, never generic:
-- Be practical, not academic. Do not explain generic tax law unless a source is provided.
+- Be practical, not academic. Do not explain generic law unless a source is provided.
 - extracted_facts MUST capture concrete data present in the document: monetary amounts, periods/dates, invoice references, article numbers, and the parties involved.
 - Convert every weakness into a concrete action, document request, verification question, or argument risk.
 - questions_for_lawyer and hearing_questions must be CONCRETE questions tied to specific facts in the document (a value, a date, an invoice) and aimed at the client, accountant, inspector or witness. BAN generic questions such as "what are the requirements for deduction?" — the lawyer already knows those.
@@ -859,6 +927,10 @@ _CITATION_ALIASES = {
     "codigo de processo penal": "cpp",
     "codigo penal": "cp",
     "codigo do trabalho": "ct",
+    "codigo de processo do trabalho": "cpt",
+    "regulamento do codigo do trabalho": "rct",
+    "lei de acidentes de trabalho": "lat",
+    "lei geral do trabalho em funcoes publicas": "ltfp",
 }
 
 
