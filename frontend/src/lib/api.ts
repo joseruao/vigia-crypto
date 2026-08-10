@@ -494,6 +494,83 @@ export type DevilsAdvocateReport = {
   content_truncated: boolean;
 };
 
+export type DevilsAdvocateProgressEvent = {
+  stage: string;
+  message: string;
+  ts?: number;
+};
+
+export async function analyzeDevilsAdvocateStream(
+  input: {
+    file: File;
+    jurisdiction: string;
+    legal_area: string;
+    document_type: string;
+    represented_side: string;
+    objective: string;
+    language: "pt" | "en";
+    accessCode: string;
+    provider?: "openai" | "mistral";
+  },
+  onProgress: (event: DevilsAdvocateProgressEvent) => void,
+): Promise<DevilsAdvocateReport> {
+  const form = new FormData();
+  form.set("file", input.file);
+  form.set("jurisdiction", input.jurisdiction);
+  form.set("legal_area", input.legal_area);
+  form.set("document_type", input.document_type);
+  form.set("represented_side", input.represented_side);
+  form.set("objective", input.objective);
+  form.set("language", input.language);
+  form.set("provider", input.provider ?? "openai");
+
+  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-stream`, {
+    method: "POST",
+    headers: { "X-Access-Code": input.accessCode },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const err = new Error(data?.detail || `HTTP ${res.status}`);
+    err.name = `HTTP_${res.status}`;
+    throw err;
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("Streaming não é suportado neste browser.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    let eventType = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventType = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        const data = line.slice(6);
+        if (eventType === "result") {
+          return JSON.parse(data) as DevilsAdvocateReport;
+        } else if (eventType === "error") {
+          throw new Error(data);
+        } else {
+          onProgress({ stage: eventType, message: data, ts: Date.now() });
+        }
+      }
+    }
+  }
+
+  throw new Error("Stream terminou sem resultado.");
+}
+
 export async function analyzeDevilsAdvocate(input: {
   file: File;
   jurisdiction: string;

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
+import json
 import logging
 import os
+import queue
 import time
 from collections import deque
 from typing import Literal
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from Api.services.devils_advocate import (
@@ -68,10 +72,19 @@ def _check_rate_limit(client_ip: str) -> None:
 async def analyze_devils_advocate(
     request: Request,
     file: UploadFile = File(...),
-    jurisdiction: str = Form(default="Portugal"),
-    legal_area: str = Form(default="Fiscal"),
-    document_type: str = Form(default="Documento fiscal"),
-    represented_side: str = Form(default="Contribuinte"),
+    jurisdiction: str = Form(default="Portugal", description="Jurisdição (ex: Portugal)"),
+    legal_area: str = Form(
+        default="Fiscal",
+        description="Área jurídica — 'Fiscal' (IVA/IRC/IRS) ou 'Laboral' (relações laborais, despedimento, acidentes de trabalho, assédio)",
+    ),
+    document_type: str = Form(
+        default="Documento fiscal",
+        description="Tipo de documento (ex: 'Documento fiscal', 'Nota de culpa', 'Decisão de despedimento', 'Relatório médico')",
+    ),
+    represented_side: str = Form(
+        default="Contribuinte",
+        description="Parte representada (ex: 'Contribuinte', 'Autoridade Tributária', 'Trabalhador', 'Empregador')",
+    ),
     objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
     language: Literal["pt", "en"] = Form(default="pt"),
     provider: str = Form(default="openai"),
@@ -149,3 +162,115 @@ async def summarize_acordao_endpoint(
     except Exception as exc:
         log.error("devils-advocate summarize failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Resumo de acórdão falhou") from exc
+
+
+@router.post("/analyze-stream")
+async def analyze_devils_advocate_stream(
+    request: Request,
+    file: UploadFile = File(...),
+    jurisdiction: str = Form(default="Portugal"),
+    legal_area: str = Form(
+        default="Fiscal",
+        description="Área jurídica — 'Fiscal' (IVA/IRC/IRS) ou 'Laboral'",
+    ),
+    document_type: str = Form(default="Documento fiscal"),
+    represented_side: str = Form(default="Contribuinte"),
+    objective: str = Form(default="Encontrar argumentos, riscos e pontos a verificar"),
+    language: Literal["pt", "en"] = Form(default="pt"),
+    provider: str = Form(default="openai"),
+    x_access_code: str | None = Header(default=None),
+):
+    _check_access_code(x_access_code)
+    _check_rate_limit(request.client.host if request.client else "unknown")
+
+    try:
+        extracted_text, content_truncated = await extract_upload_text(file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    progress_queue: queue.Queue[dict] = queue.Queue()
+
+    def _progress_callback(stage: str, message: str) -> None:
+        progress_queue.put({"stage": stage, "message": message, "ts": time.time()})
+
+    async def _event_stream():
+        loop = asyncio.get_running_loop()
+
+        # Kick off the analysis in a thread — the callback pushes into the
+        # thread-safe queue; the async loop drains it as SSE events.
+        task = loop.run_in_executor(
+            None,
+            lambda: analyze_document(
+                document_name=file.filename or "documento",
+                extracted_text=extracted_text,
+                jurisdiction=jurisdiction.strip() or "Portugal",
+                legal_area=legal_area.strip() or "Fiscal",
+                document_type=document_type.strip() or "Documento fiscal",
+                represented_side=represented_side.strip() or "Contribuinte",
+                objective=objective.strip() or "Encontrar argumentos, riscos e pontos a verificar",
+                language=language,
+                content_truncated=content_truncated,
+                provider=provider,
+                progress_callback=_progress_callback,
+            ),
+        )
+
+        # ── SSE event loop ──────────────────────────────────────────
+        # Drain the queue every ~200 ms while the analysis runs.  When
+        # the analysis finishes, drain one last time, then send the
+        # result (or error) and close the stream.
+        yield _sse_event("extracting",
+                         f"Texto extraído de '{file.filename}' "
+                         f"({len(extracted_text):,} caracteres). A iniciar análise...")
+
+        last_drain = time.time()
+        while True:
+            try:
+                evt = progress_queue.get(timeout=0.2)
+                yield _sse_event(evt["stage"], evt["message"])
+                last_drain = time.time()
+            except queue.Empty:
+                if task.done():
+                    # Drain any late events, then break
+                    while True:
+                        try:
+                            evt = progress_queue.get_nowait()
+                            yield _sse_event(evt["stage"], evt["message"])
+                        except queue.Empty:
+                            break
+                    break
+                # Heartbeat every 5 s so proxies don't close the connection
+                if time.time() - last_drain > 5:
+                    yield _sse_event("heartbeat", "A analisar...")
+                    last_drain = time.time()
+
+        # ── Final result ────────────────────────────────────────────
+        try:
+            result = task.result()
+        except Exception as exc:
+            log.error("devils-advocate analyze-stream failed: %s", exc, exc_info=True)
+            detail = str(exc)
+            if not detail:
+                detail = "Devil's Advocate analysis failed"
+            yield _sse_event("error", detail)
+            return
+
+        yield _sse_event("result", json.dumps(result.model_dump(), ensure_ascii=False))
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+def _sse_event(event: str, data: str) -> str:
+    """Format a single SSE message.  Multi-line data is sent as multiple
+    `data:` lines — the empty trailing line terminates the message."""
+    return f"event: {event}\n" + "".join(f"data: {line}\n" for line in data.split("\n")) + "\n"

@@ -8,7 +8,8 @@ import hashlib
 import tempfile
 import copy
 from pathlib import Path
-from typing import Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 from fastapi import UploadFile
 from pydantic import BaseModel, Field
@@ -754,6 +755,7 @@ def analyze_document(
     language: Literal["pt", "en"] = "pt",
     content_truncated: bool = False,
     provider: str = "openai",
+    progress_callback: Callable[[str, str], None] | None = None,
 ) -> DevilsAdvocateAnalyzeResult:
     client, model, _is_local = _resolve_engine(provider)
     key = _cache_key(
@@ -769,7 +771,15 @@ def analyze_document(
     )
     cached = _get_cached_analysis(key)
     if cached:
+        if progress_callback:
+            progress_callback("done", "Análise recuperada da cache.")
         return cached
+
+    def _emit(stage: str, message: str) -> None:
+        if progress_callback:
+            progress_callback(stage, message)
+
+    _emit("analyzing", f"A analisar com {model}...")
 
     messages = [
         {"role": "system", "content": _system_prompt(language)},
@@ -788,6 +798,9 @@ def analyze_document(
         },
     ]
     data = _normalize_model_payload(_run_json_completion(client, model, messages))
+
+    _emit("cross-referencing", "A cruzar referências legais com o documento...")
+
     extracted_legal_refs = _extract_legal_references(extracted_text)
     data["cited_sources_in_document"] = _normalize_cited_sources(
         data.get("cited_sources_in_document", []),
@@ -844,6 +857,7 @@ def analyze_document(
     )
     result = DevilsAdvocateAnalyzeResult(report=report)
     _set_cached_analysis(key, result)
+    _emit("done", "Análise concluída.")
     return result
 
 

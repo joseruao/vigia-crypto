@@ -16,13 +16,34 @@ import {
 } from 'lucide-react';
 import {
   AcordaoSummary,
+  DevilsAdvocateProgressEvent,
   DevilsAdvocateReport,
-  analyzeDevilsAdvocate,
+  analyzeDevilsAdvocateStream,
   summarizeAcordao,
 } from '@/lib/api';
 
 type Lang = 'pt' | 'en';
+type LegalArea = 'Fiscal' | 'Laboral';
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
+
+const REPRESENTED_OPTIONS: Record<LegalArea, string[]> = {
+  Fiscal: ['Contribuinte', 'Autoridade Tributária', 'Outro'],
+  Laboral: ['Trabalhador', 'Empregador', 'Outro'],
+};
+
+const DEFAULT_OBJECTIVE: Record<LegalArea, string> = {
+  Fiscal:
+    'Encontrar argumentos, contra-argumentos, riscos, falhas, prova em falta e pontos jurídicos que exigem verificação humana',
+  Laboral:
+    'Preparar análise laboral adversarial: cronologia, tese do trabalhador/empregador, prova documental, testemunhas, riscos, perguntas de confronto e próximos passos',
+};
+
+const OBJECTIVE_PLACEHOLDER: Record<LegalArea, string> = {
+  Fiscal:
+    'Ex.: encontrar pontos fracos deste recurso, preparar-me para a audiência, atacar a posição da AT...',
+  Laboral:
+    'Ex.: preparar despedimento/contestação, atacar justa causa, organizar prova, perguntas para testemunhas...',
+};
 
 function ListBlock({ items, empty = '—' }: { items?: string[]; empty?: string }) {
   const safeItems = Array.isArray(items) ? items : [];
@@ -156,6 +177,7 @@ export default function DevilsAdvocatePage() {
   const [error, setError] = useState('');
   // Local (desktop/Ollama) vs cloud (joseruao.com/OpenAI) — drives the privacy notice.
   const [isLocal, setIsLocal] = useState(false);
+  const [legalArea, setLegalArea] = useState<LegalArea>('Fiscal');
   const [represented, setRepresented] = useState('Contribuinte');
   const [representedOther, setRepresentedOther] = useState('');
   const [pedido, setPedido] = useState('');
@@ -163,6 +185,9 @@ export default function DevilsAdvocatePage() {
   const [mode, setMode] = useState<'analise' | 'acordao'>('analise');
   const [acordao, setAcordao] = useState<AcordaoSummary | null>(null);
   const [acordaoUrl, setAcordaoUrl] = useState('');
+  const [progress, setProgress] = useState<DevilsAdvocateProgressEvent[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const [timerOn, setTimerOn] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('devils_advocate_access_code');
@@ -178,6 +203,21 @@ export default function DevilsAdvocatePage() {
     }
   }, [accessCode]);
 
+  useEffect(() => {
+    const options = REPRESENTED_OPTIONS[legalArea];
+    if (!options.includes(represented)) {
+      setRepresented(options[0]);
+      setRepresentedOther('');
+    }
+  }, [legalArea, represented]);
+
+  useEffect(() => {
+    if (!timerOn) return;
+    const start = Date.now();
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, [timerOn]);
+
   async function handleAnalyze() {
     if (!file || loading) return;
     if (!isLocal && !accessCode.trim()) {
@@ -189,30 +229,34 @@ export default function DevilsAdvocatePage() {
       return;
     }
     setLoading(true);
+    setTimerOn(true);
     setError('');
     setReport(null);
+    setProgress([]);
     const representedSide =
       represented === 'Outro' ? representedOther.trim() || 'Outro' : represented;
-    const objective =
-      pedido.trim() ||
-      'Encontrar argumentos, contra-argumentos, riscos, falhas, prova em falta e pontos jurídicos que exigem verificação humana';
+    const objective = pedido.trim() || DEFAULT_OBJECTIVE[legalArea];
     try {
-      const result = await analyzeDevilsAdvocate({
-        file,
-        jurisdiction: 'Portugal',
-        legal_area: 'Fiscal',
-        document_type: 'Documento fiscal',
-        represented_side: representedSide,
-        objective,
-        language,
-        accessCode: isLocal ? '' : accessCode.trim(),
-        provider,
-      });
+      const result = await analyzeDevilsAdvocateStream(
+        {
+          file,
+          jurisdiction: 'Portugal',
+          legal_area: legalArea,
+          document_type: legalArea === 'Laboral' ? 'Documento laboral' : 'Documento fiscal',
+          represented_side: representedSide,
+          objective,
+          language,
+          accessCode: isLocal ? '' : accessCode.trim(),
+          provider,
+        },
+        (evt) => setProgress((prev) => [...prev, evt]),
+      );
       setReport(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao analisar documento.');
     } finally {
       setLoading(false);
+      setTimerOn(false);
     }
   }
 
@@ -378,22 +422,40 @@ export default function DevilsAdvocatePage() {
               {mode === 'analise' && (
                 <>
                   <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">Área jurídica</span>
+                    <select
+                      value={legalArea}
+                      onChange={(event) => setLegalArea(event.target.value as LegalArea)}
+                      className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
+                    >
+                      <option value="Fiscal">Fiscal</option>
+                      <option value="Laboral">Laboral</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-slate-700">Quem representa?</span>
                     <select
                       value={represented}
                       onChange={(event) => setRepresented(event.target.value)}
                       className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
                     >
-                      <option value="Contribuinte">Contribuinte</option>
-                      <option value="Autoridade Tributária">Autoridade Tributária</option>
-                      <option value="Outro">Outro…</option>
+                      {REPRESENTED_OPTIONS[legalArea].map((option) => (
+                        <option key={option} value={option}>
+                          {option === 'Outro' ? 'Outro...' : option}
+                        </option>
+                      ))}
                     </select>
                     {represented === 'Outro' && (
                       <input
                         type="text"
                         value={representedOther}
                         onChange={(event) => setRepresentedOther(event.target.value)}
-                        placeholder="Quem representa? (ex.: empresa, terceiro, banco…)"
+                        placeholder={
+                          legalArea === 'Laboral'
+                            ? 'Quem representa? (ex.: sindicato, gerente, trabalhador específico...)'
+                            : 'Quem representa? (ex.: empresa, terceiro, banco...)'
+                        }
                         className="mt-2 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
                       />
                     )}
@@ -408,7 +470,7 @@ export default function DevilsAdvocatePage() {
                       value={pedido}
                       onChange={(event) => setPedido(event.target.value)}
                       rows={2}
-                      placeholder="Ex.: encontrar pontos fracos deste recurso, preparar-me para a audiência, atacar a posição da AT…"
+                      placeholder={OBJECTIVE_PLACEHOLDER[legalArea]}
                       className="block w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-slate-500 focus:outline-none"
                     />
                   </label>
@@ -492,7 +554,7 @@ export default function DevilsAdvocatePage() {
                     : 'A resumir...'
                   : mode === 'analise'
                     ? 'Analisar documento'
-                    : 'Resumar acórdão'}
+                    : 'Resumir acórdão'}
               </button>
 
               {!canSubmit && !loading && (
@@ -522,6 +584,42 @@ export default function DevilsAdvocatePage() {
               ) : (
                 <AcordaoView summary={acordao} />
               )
+            ) : loading ? (
+              /* ── Progress console ─────────────────────────────── */
+              <div className="flex h-full min-h-[560px] flex-col justify-center">
+                <div className="mx-auto w-full max-w-xl space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-red-700" />
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      A analisar documento...
+                    </h2>
+                    <span className="ml-auto text-sm tabular-nums text-slate-400">
+                      {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                    </span>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-green-400 max-h-[420px] overflow-y-auto">
+                    {progress.length === 0 && (
+                      <p className="text-slate-500">A aguardar início da análise...</p>
+                    )}
+                    {progress.map((evt, i) => (
+                      <p key={i} className="flex gap-2">
+                        <span className="shrink-0 text-slate-600">
+                          [{new Date(evt.ts ?? Date.now()).toLocaleTimeString('pt')}]
+                        </span>
+                        <span className={evt.stage === 'error' ? 'text-red-400' : 'text-green-400'}>
+                          {evt.message}
+                        </span>
+                      </p>
+                    ))}
+                    <p className="animate-pulse text-slate-500">▊</p>
+                  </div>
+
+                  <p className="text-center text-xs text-slate-400">
+                    Não feche esta página — documentos grandes podem demorar até 3 minutos.
+                  </p>
+                </div>
+              </div>
             ) : !report ? (
               <div className="flex h-full min-h-[560px] flex-col items-center justify-center text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-700">
