@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   AcordaoSummary,
+  ClassifiedPoint,
   DevilsAdvocateProgressEvent,
   DevilsAdvocateReport,
   analyzeDevilsAdvocateStream,
@@ -44,6 +45,38 @@ const OBJECTIVE_PLACEHOLDER: Record<LegalArea, string> = {
   Laboral:
     'Ex.: preparar despedimento/contestação, atacar justa causa, organizar prova, perguntas para testemunhas...',
 };
+
+const TYPE_COLORS: Record<string, string> = {
+  'FACTO COMPROVADO': 'border-emerald-300 bg-emerald-50 text-emerald-800',
+  'FACTO ALEGADO': 'border-amber-300 bg-amber-50 text-amber-800',
+  'INFERÊNCIA': 'border-sky-300 bg-sky-50 text-sky-800',
+  'ARGUMENTO JURÍDICO': 'border-indigo-300 bg-indigo-50 text-indigo-800',
+  'NORMA NÃO VERIFICADA': 'border-slate-300 bg-slate-100 text-slate-600',
+  'CONCLUSÃO NÃO SUSTENTADA': 'border-red-300 bg-red-50 text-red-800',
+};
+
+function ClassifiedListBlock({ items, empty = '—' }: { items?: ClassifiedPoint[]; empty?: string }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return <p className="text-sm text-slate-400">{empty}</p>;
+  return (
+    <ul className="space-y-2 text-sm leading-6 text-slate-700">
+      {safeItems.map((item, index) => (
+        <li key={index} className="flex flex-col gap-1 rounded-md border border-slate-100 bg-white p-2.5">
+          <span>{item.texto}</span>
+          {item.tipo && (
+            <span
+              className={`inline-block w-fit rounded border px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${
+                TYPE_COLORS[item.tipo] ?? 'border-slate-300 bg-slate-100 text-slate-600'
+              }`}
+            >
+              {item.tipo}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function ListBlock({ items, empty = '—' }: { items?: string[]; empty?: string }) {
   const safeItems = Array.isArray(items) ? items : [];
@@ -765,18 +798,18 @@ export default function DevilsAdvocatePage() {
                 {(caseTheory.length > 0 || opponentTheory.length > 0) && (
                   <div className="grid gap-5 lg:grid-cols-2">
                     <ReportSection title="Teoria do caso" icon={<Scale className="h-4 w-4" />} tone="good">
-                      <ListBlock items={caseTheory} />
+                      <ClassifiedListBlock items={caseTheory} />
                     </ReportSection>
 
                     <ReportSection title="Teoria da contraparte" icon={<Gavel className="h-4 w-4" />}>
-                      <ListBlock items={opponentTheory} />
+                      <ClassifiedListBlock items={opponentTheory} />
                     </ReportSection>
                   </div>
                 )}
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   <ReportSection title="Factos extraídos" icon={<FileText className="h-4 w-4" />}>
-                    <ListBlock items={report.extracted_facts} />
+                    <ClassifiedListBlock items={report.extracted_facts} />
                   </ReportSection>
 
                   <ReportSection title="Perguntas ao advogado" icon={<CheckCircle2 className="h-4 w-4" />}>
@@ -786,16 +819,16 @@ export default function DevilsAdvocatePage() {
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   <ReportSection title="Advocate" icon={<Scale className="h-4 w-4" />} tone="good">
-                    <ListBlock items={report.advocate_argument} />
+                    <ClassifiedListBlock items={report.advocate_argument} />
                   </ReportSection>
 
                   <ReportSection title="Opponent" icon={<Gavel className="h-4 w-4" />}>
-                    <ListBlock items={report.opponent_argument} />
+                    <ClassifiedListBlock items={report.opponent_argument} />
                   </ReportSection>
                 </div>
 
                 <ReportSection title="Audit" icon={<ShieldCheck className="h-4 w-4" />}>
-                  <ListBlock items={report.audit_findings} />
+                  <ClassifiedListBlock items={report.audit_findings} />
                 </ReportSection>
 
                 {(burdenAndProof.length > 0 || hearingQuestions.length > 0) && (

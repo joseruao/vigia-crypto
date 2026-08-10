@@ -466,6 +466,11 @@ export type DevilsAdvocateLegalReference = {
   status: string;
 };
 
+export type ClassifiedPoint = {
+  texto: string;
+  tipo: string;
+};
+
 export type DevilsAdvocateReport = {
   document_name: string;
   jurisdiction: string;
@@ -475,12 +480,12 @@ export type DevilsAdvocateReport = {
   objective: string;
   source_note: string;
   executive_summary: string;
-  case_theory: string[];
-  opponent_theory: string[];
-  extracted_facts: string[];
-  advocate_argument: string[];
-  opponent_argument: string[];
-  audit_findings: string[];
+  case_theory: ClassifiedPoint[];
+  opponent_theory: ClassifiedPoint[];
+  extracted_facts: ClassifiedPoint[];
+  advocate_argument: ClassifiedPoint[];
+  opponent_argument: ClassifiedPoint[];
+  audit_findings: ClassifiedPoint[];
   burden_and_proof: string[];
   hearing_questions: string[];
   next_actions: string[];

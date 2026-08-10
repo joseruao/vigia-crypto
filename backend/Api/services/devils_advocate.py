@@ -46,6 +46,21 @@ class DevilsAdvocateLegalReference(BaseModel):
     status: str
 
 
+CLASSIFIED_TYPES = (
+    "FACTO COMPROVADO",
+    "FACTO ALEGADO",
+    "INFERÊNCIA",
+    "ARGUMENTO JURÍDICO",
+    "NORMA NÃO VERIFICADA",
+    "CONCLUSÃO NÃO SUSTENTADA",
+)
+
+
+class ClassifiedPoint(BaseModel):
+    texto: str
+    tipo: str = ""
+
+
 class DevilsAdvocateReport(BaseModel):
     document_name: str
     jurisdiction: str
@@ -55,12 +70,12 @@ class DevilsAdvocateReport(BaseModel):
     objective: str
     source_note: str
     executive_summary: str
-    case_theory: list[str] = Field(default_factory=list)
-    opponent_theory: list[str] = Field(default_factory=list)
-    extracted_facts: list[str] = Field(default_factory=list)
-    advocate_argument: list[str] = Field(default_factory=list)
-    opponent_argument: list[str] = Field(default_factory=list)
-    audit_findings: list[str] = Field(default_factory=list)
+    case_theory: list[ClassifiedPoint] = Field(default_factory=list)
+    opponent_theory: list[ClassifiedPoint] = Field(default_factory=list)
+    extracted_facts: list[ClassifiedPoint] = Field(default_factory=list)
+    advocate_argument: list[ClassifiedPoint] = Field(default_factory=list)
+    opponent_argument: list[ClassifiedPoint] = Field(default_factory=list)
+    audit_findings: list[ClassifiedPoint] = Field(default_factory=list)
     burden_and_proof: list[str] = Field(default_factory=list)
     hearing_questions: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
@@ -354,6 +369,35 @@ def _ensure_list(value: object) -> list:
     return [str(value)]
 
 
+CLASSIFIED_FIELDS = (
+    "extracted_facts",
+    "case_theory",
+    "opponent_theory",
+    "advocate_argument",
+    "opponent_argument",
+    "audit_findings",
+)
+
+
+def _normalize_classification(raw) -> str:
+    """Map any model variant of a classification label to the canonical one."""
+    if not isinstance(raw, str):
+        return ""
+    import unicodedata
+
+    def _flat(s: str) -> str:
+        s = s.upper().replace("FATO", "FACTO")  # pt-BR -> pt-PT
+        return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+    t = _flat(raw.strip())
+    if not t:
+        return ""
+    for canon in CLASSIFIED_TYPES:
+        if _flat(canon) in t:
+            return canon
+    return ""
+
+
 def _normalize_model_payload(data: dict) -> dict:
     list_fields = [
         "extracted_facts",
@@ -375,6 +419,23 @@ def _normalize_model_payload(data: dict) -> dict:
     ]
     for field in list_fields:
         data[field] = _ensure_list(data.get(field))
+
+    # Classified sections: {texto, tipo} with the type normalized to the
+    # canonical set (tolerates plain strings from older models/caches).
+    for field in CLASSIFIED_FIELDS:
+        items = data.get(field)
+        normalized_points: list[dict] = []
+        for item in _ensure_list(items):
+            if isinstance(item, dict):
+                normalized_points.append(
+                    {
+                        "texto": str(item.get("texto") or item.get("point") or item.get("text") or "").strip(),
+                        "tipo": _normalize_classification(item.get("tipo")),
+                    }
+                )
+            else:
+                normalized_points.append({"texto": str(item).strip(), "tipo": ""})
+        data[field] = [p for p in normalized_points if p["texto"]]
 
     risks = data.get("risk_matrix")
     if not isinstance(risks, list):
@@ -513,12 +574,12 @@ def _schema_hint() -> str:
     return json.dumps(
         {
             "executive_summary": "string",
-            "case_theory": ["string"],
-            "opponent_theory": ["string"],
-            "extracted_facts": ["string"],
-            "advocate_argument": ["string"],
-            "opponent_argument": ["string"],
-            "audit_findings": ["string"],
+            "case_theory": [_classified_point_schema()],
+            "opponent_theory": [_classified_point_schema()],
+            "extracted_facts": [_classified_point_schema()],
+            "advocate_argument": [_classified_point_schema()],
+            "opponent_argument": [_classified_point_schema()],
+            "audit_findings": [_classified_point_schema()],
             "burden_and_proof": ["string"],
             "hearing_questions": ["string"],
             "next_actions": ["string"],
@@ -534,17 +595,24 @@ def _schema_hint() -> str:
     )
 
 
+def _classified_point_schema() -> dict:
+    return {
+        "texto": "string",
+        "tipo": "FACTO COMPROVADO | FACTO ALEGADO | INFERÊNCIA | ARGUMENTO JURÍDICO | NORMA NÃO VERIFICADA | CONCLUSÃO NÃO SUSTENTADA",
+    }
+
+
 def _pre_filing_schema_hint() -> str:
     """Schema for the pre-filing / preparação mode — includes strategy fields."""
     return json.dumps(
         {
             "executive_summary": "string",
-            "case_theory": ["string"],
-            "opponent_theory": ["string"],
-            "extracted_facts": ["string"],
-            "advocate_argument": ["string"],
-            "opponent_argument": ["string"],
-            "audit_findings": ["string"],
+            "case_theory": [_classified_point_schema()],
+            "opponent_theory": [_classified_point_schema()],
+            "extracted_facts": [_classified_point_schema()],
+            "advocate_argument": [_classified_point_schema()],
+            "opponent_argument": [_classified_point_schema()],
+            "audit_findings": [_classified_point_schema()],
             "burden_and_proof": ["string"],
             "hearing_questions": ["string"],
             "next_actions": ["string"],
@@ -661,7 +729,11 @@ def _system_prompt(language: Literal["pt", "en"]) -> str:
             "You know recurring battlegrounds in the selected Portuguese legal area and actively raise the right questions "
             "— but always as points to verify, never asserting the law. "
             "Be specific and concrete, never generic: use the amounts, dates, invoices and references present in the document. "
-            "Separate facts from assumptions and reasoning. Be useful, skeptical, and conservative."
+            "Separate facts from assumptions and reasoning. Be useful, skeptical, and conservative. "
+            "Classification: in extracted_facts, case_theory, opponent_theory, advocate_argument, opponent_argument and audit_findings, each point is an object {\"texto\": string, \"tipo\": string} where tipo is exactly one of: "
+            "FACTO COMPROVADO (written literally in the document), FACTO ALEGADO (a party asserts it, no proof in the document), INFERÊNCIA (a deduction from reasoning, not written), "
+            "ARGUMENTO JURÍDICO (interpretation/application of the law), NORMA NÃO VERIFICADA (legal reference not confirmed against an official source), CONCLUSÃO NÃO SUSTENTADA (no basis in the document's facts). "
+            "Be strict: a fact that is only asserted by one party is FACTO ALEGADO, not FACTO COMPROVADO."
         )
     return (
         "És o Devil's Advocate, uma ferramenta beta privada para um advogado português. "
@@ -671,7 +743,11 @@ def _system_prompt(language: Literal["pt", "en"]) -> str:
         "Conheces os pontos de litígio recorrentes na área jurídica indicada e levantas ativamente as questões certas "
         "— mas sempre como pontos a verificar, nunca afirmando a lei. "
         "Sê específico e concreto, nunca genérico: usa valores, datas, faturas e referências presentes no documento. "
-        "Separa factos, suposições e raciocínio. Sê útil, cético e conservador."
+        "Separa factos, suposições e raciocínio. Sê útil, cético e conservador. "
+        "Classificação: em extracted_facts, case_theory, opponent_theory, advocate_argument, opponent_argument e audit_findings, cada ponto é um objeto {\"texto\": string, \"tipo\": string} em que o tipo é exatamente um de: "
+        "FACTO COMPROVADO (escrito literalmente no documento), FACTO ALEGADO (uma parte afirma, sem prova no documento), INFERÊNCIA (dedução do raciocínio, não escrita), "
+        "ARGUMENTO JURÍDICO (interpretação/aplicação do direito), NORMA NÃO VERIFICADA (referência legal sem confirmação em fonte oficial), CONCLUSÃO NÃO SUSTENTADA (sem base nos factos do documento). "
+        "Sê rigoroso: um facto apenas afirmado por uma parte é FACTO ALEGADO, não FACTO COMPROVADO."
     )
 
 
