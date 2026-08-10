@@ -193,6 +193,15 @@ async def analyze_devils_advocate_stream(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    _HEARTBEAT_MSGS = (
+        "A analisar o documento...",
+        "A montar a defesa e o ataque...",
+        "A cruzar factos com a legislação...",
+        "A procurar pontos fracos e riscos...",
+        "A verificar o que não está documentado...",
+        "A compor o relatório final...",
+    )
+
     progress_queue: queue.Queue[dict] = queue.Queue()
 
     def _progress_callback(stage: str, message: str) -> None:
@@ -227,6 +236,7 @@ async def analyze_devils_advocate_stream(
                          f"Texto extraído de '{file.filename}' "
                          f"({len(extracted_text):,} caracteres). A iniciar análise...")
 
+        stream_start = time.time()
         last_drain = time.time()
         while True:
             try:
@@ -243,9 +253,12 @@ async def analyze_devils_advocate_stream(
                         except queue.Empty:
                             break
                     break
-                # Heartbeat every 5 s so proxies don't close the connection
+                # Heartbeat every 5 s so proxies don't close the connection —
+                # vary the message so the user sees real progress, not a loop.
                 if time.time() - last_drain > 5:
-                    yield _sse_event("heartbeat", "A analisar...")
+                    elapsed = int(time.time() - stream_start)
+                    msg = _HEARTBEAT_MSGS[(elapsed // 15) % len(_HEARTBEAT_MSGS)]
+                    yield _sse_event("heartbeat", f"{msg} (há {elapsed} s)")
                     last_drain = time.time()
 
         # ── Final result ────────────────────────────────────────────

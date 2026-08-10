@@ -250,7 +250,16 @@ export default function DevilsAdvocatePage() {
           provider,
           mode: mode === 'preparar' ? 'pre_filing' : 'adversarial',
         },
-        (evt) => setProgress((prev) => [...prev, evt]),
+        (evt) =>
+          setProgress((prev) => {
+            // Heartbeats repeat every 5 s — replace the previous one instead
+            // of stacking endless identical lines in the console.
+            const last = prev[prev.length - 1];
+            if (evt.stage === 'heartbeat' && last?.stage === 'heartbeat') {
+              return [...prev.slice(0, -1), evt];
+            }
+            return [...prev, evt];
+          }),
       );
       setReport(result);
     } catch (err) {
@@ -427,16 +436,6 @@ export default function DevilsAdvocatePage() {
                       Mistral
                     </button>
                   </div>
-                  {provider === 'deepseek' && legalArea === 'Laboral' && (
-                    <p className="mt-1.5 text-xs text-amber-600">
-                      ⚡ Laboral usa DeepSeek Pro (audit profundo). Fiscal usa Flash (rápido).
-                    </p>
-                  )}
-                  {provider === 'deepseek' && legalArea === 'Fiscal' && (
-                    <p className="mt-1.5 text-xs text-emerald-600">
-                      💨 DeepSeek Flash — rápido e barato.
-                    </p>
-                  )}
                 </div>
               )}
 
@@ -561,7 +560,7 @@ export default function DevilsAdvocatePage() {
                     nada sai do computador.
                   </span>
                 </div>
-              ) : provider === 'mistral' ? null : (
+              ) : provider === 'mistral' || mode === 'preparar' ? null : (
                 <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
@@ -655,7 +654,7 @@ export default function DevilsAdvocatePage() {
                   </div>
 
                   <p className="text-center text-xs text-slate-400">
-                    Não feche esta página — documentos grandes podem demorar até 3 minutos.
+                    Não feche esta página — documentos grandes podem demorar até 10 minutos.
                   </p>
                 </div>
               </div>

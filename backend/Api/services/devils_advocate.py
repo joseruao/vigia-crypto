@@ -857,11 +857,11 @@ def _resolve_engine(provider: str, model_override: str | None = None):
     from openai import OpenAI
 
     # No retries (a slow-but-working generation would be re-billed for nothing).
-    # Local models can be very slow but cost nothing → 30-min ceiling; cloud short.
+    # Local models can be very slow but cost nothing → 30-min ceiling; cloud 10-min.
     if is_local:
         client_kwargs: dict = {"api_key": api_key, "timeout": 1800.0, "max_retries": 0, "base_url": base_url}
     else:
-        client_kwargs = {"api_key": api_key, "timeout": 240.0, "max_retries": 0}
+        client_kwargs = {"api_key": api_key, "timeout": 600.0, "max_retries": 0}
         if base_url:
             client_kwargs["base_url"] = base_url
     return OpenAI(**client_kwargs), model, is_local
@@ -921,7 +921,7 @@ def analyze_document(
             client = OpenAI(
                 api_key=os.getenv("DEVILS_ADVOCATE_DEEPSEEK_KEY"),
                 base_url="https://api.deepseek.com/v1",
-                timeout=300.0,  # Pro needs more time for complex reasoning
+                timeout=600.0,  # Pro needs more time for complex reasoning
                 max_retries=0,
             )
 

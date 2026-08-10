@@ -518,6 +518,7 @@ export async function analyzeDevilsAdvocateStream(
   },
   onProgress: (event: DevilsAdvocateProgressEvent) => void,
 ): Promise<DevilsAdvocateReport> {
+  const startedAt = Date.now();
   const form = new FormData();
   form.set("file", input.file);
   form.set("jurisdiction", input.jurisdiction);
@@ -573,7 +574,10 @@ export async function analyzeDevilsAdvocateStream(
     }
   }
 
-  throw new Error("Stream terminou sem resultado.");
+  const waited = Math.round((Date.now() - startedAt) / 1000);
+  throw new Error(
+    `A ligação foi cortada após ${waited} s sem resultado. Tente novamente — se repetir, use o motor DeepSeek Flash.`,
+  );
 }
 
 export async function analyzeDevilsAdvocate(input: {
