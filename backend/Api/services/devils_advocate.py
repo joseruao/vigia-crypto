@@ -1124,7 +1124,7 @@ def _resolve_engine(provider: str, model_override: str | None = None):
     return OpenAI(**client_kwargs), model, is_local
 
 
-def _run_json_completion(client, model: str, messages: list[dict]) -> dict:
+def _run_json_completion(client, model: str, messages: list[dict], max_tokens: int | None = None) -> dict:
     """Run a JSON-mode chat completion and return the parsed object, mapping
     provider/parse errors to friendly RuntimeErrors (503 at the route)."""
     from openai import OpenAIError
@@ -1134,6 +1134,10 @@ def _run_json_completion(client, model: str, messages: list[dict]) -> dict:
         "response_format": {"type": "json_object"},
         "messages": messages,
     }
+    if max_tokens:
+        # Long outputs (petition draft + audit report) can exceed the model's
+        # default output cap, which truncates the JSON and kills the parse.
+        call_kwargs["max_tokens"] = max_tokens
     # Newer OpenAI reasoning models (gpt-5*, o-series) and DeepSeek v4 models
     # reject a custom temperature.
     if not re.match(r"^(gpt-5|o\d|deepseek-v4)", model):
@@ -1240,7 +1244,10 @@ def analyze_document(
         {"role": "system", "content": _system_prompt(language)},
         {"role": "user", "content": user_content},
     ]
-    data = _normalize_model_payload(_run_json_completion(client, model, messages))
+    # Pre-filing output (petition draft + audit report) is much longer than
+    # the adversarial report — raise the output cap so the JSON isn't cut off.
+    max_tokens = 24000 if mode == "pre_filing" else None
+    data = _normalize_model_payload(_run_json_completion(client, model, messages, max_tokens=max_tokens))
 
     _emit("cross-referencing", "A cruzar referências legais com o documento...")
 
