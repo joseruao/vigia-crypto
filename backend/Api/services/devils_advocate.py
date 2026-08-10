@@ -107,6 +107,7 @@ class AcordaoSummaryResult(BaseModel):
 
 def _clean_text(text: str) -> str:
     text = text.replace("\x00", " ")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -422,6 +423,19 @@ def _extract_pdf(path: Path) -> tuple[str, bool]:
     return _clean_text("\n\n".join(pages)), truncated
 
 
+def _extract_txt(path: Path) -> str:
+    raw = path.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):  # UTF-8 BOM
+        text = raw.decode("utf-8-sig")
+    else:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # ficheiros Windows antigos (CP1252) — tenta sempre chegar a algo legível
+            text = raw.decode("cp1252")
+    return _clean_text(text)
+
+
 def _extract_docx(path: Path) -> str:
     try:
         from docx import Document
@@ -443,8 +457,8 @@ def _extract_docx(path: Path) -> str:
 
 async def extract_upload_text(file: UploadFile, max_chars: int = MAX_EXTRACTED_CHARS) -> tuple[str, bool]:
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".pdf", ".docx"}:
-        raise ValueError("Only PDF and DOCX files are supported.")
+    if suffix not in {".pdf", ".docx", ".txt"}:
+        raise ValueError("Only PDF, DOCX and TXT files are supported.")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = Path(tmp.name)
@@ -467,6 +481,9 @@ async def extract_upload_text(file: UploadFile, max_chars: int = MAX_EXTRACTED_C
     try:
         if suffix == ".pdf":
             text, truncated = _extract_pdf(tmp_path)
+        elif suffix == ".txt":
+            text = _extract_txt(tmp_path)
+            truncated = False
         else:
             text = _extract_docx(tmp_path)
             truncated = False
