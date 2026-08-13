@@ -26,7 +26,7 @@ Dry-run recomendado antes de gravar:
     python backend/worker/arkham_token_prelisting_scan.py
 
 Guardar no Supabase so depois do output parecer limpo:
-    $env:SUPABASE_URL="https://qynnajpvxnqcmkzrhpde.supabase.co"
+    $env:SUPABASE_URL="https://klnzoiuaxhwjgfmccbee.supabase.co"
     $env:SUPABASE_SERVICE_ROLE="SERVICE_ROLE_KEY"
     $env:ARKHAM_PRELISTING_SAVE="1"
     python backend/worker/arkham_token_prelisting_scan.py
@@ -72,9 +72,9 @@ ARKHAM_API_KEY = os.getenv("ARKHAM_API_KEY", "").strip()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
-TOKEN_SYMBOL = os.getenv("ARKHAM_PRELISTING_TOKEN_SYMBOL", "AI").strip().upper()
-TOKEN_DISPLAY = os.getenv("ARKHAM_PRELISTING_TOKEN_DISPLAY", "AIGENSYN").strip().upper()
-TOKEN_ID = os.getenv("ARKHAM_PRELISTING_TOKEN_ID", "gensyn").strip()
+TOKEN_SYMBOL = os.getenv("ARKHAM_PRELISTING_TOKEN_SYMBOL", "").strip().upper()
+TOKEN_DISPLAY = os.getenv("ARKHAM_PRELISTING_TOKEN_DISPLAY", "").strip().upper()
+TOKEN_ID = os.getenv("ARKHAM_PRELISTING_TOKEN_ID", "").strip()
 TOKEN_FILTER = [
     part.strip()
     for part in os.getenv("ARKHAM_PRELISTING_TOKEN_FILTER", "").replace(";", ",").split(",")
@@ -86,6 +86,12 @@ WINDOW_END = os.getenv("ARKHAM_PRELISTING_END", "2026-05-22T07:00:00Z").strip()
 LISTING_TS = os.getenv("ARKHAM_PRELISTING_LISTING_TS", WINDOW_END).strip()
 
 MIN_TRANSFER_USD = float(os.getenv("ARKHAM_PRELISTING_MIN_USD", "50000"))
+# SCORE_USD_SCALE: scales all USD breakpoints in scoring proportionally to token market cap.
+# Default 1.0 = large-cap mode ($50k min, breakpoints $100k/$500k/$1M).
+# For small-cap tokens (mcap ~$2M), use ~0.04; for mid-cap (~$20M), use ~0.2.
+# Formula: scale = estimated_mcap_usd / 25_000_000 (reference = $25M mcap).
+# Example: $2M mcap → scale=0.08 → MIN_USD=$4k, breakpoints $8k/$40k/$80k
+SCORE_USD_SCALE = float(os.getenv("ARKHAM_PRELISTING_SCORE_SCALE", "1.0"))
 TRANSFER_LIMIT = int(os.getenv("ARKHAM_PRELISTING_TRANSFER_LIMIT", "100"))
 MAX_OFFSETS = int(os.getenv("ARKHAM_PRELISTING_MAX_OFFSETS", "1"))
 ENRICH_LIMIT = int(os.getenv("ARKHAM_PRELISTING_ENRICH_LIMIT", "20"))
@@ -96,8 +102,9 @@ FILTER_EXITED_BEFORE_LISTING = os.getenv("ARKHAM_PRELISTING_FILTER_EXITED", "1")
 FILTER_DISTRIBUTION_ROUTES = os.getenv("ARKHAM_PRELISTING_FILTER_DISTRIBUTION_ROUTES", "1").strip().lower() in {"1", "true", "yes"}
 TRACE_POST_DESTINATIONS = os.getenv("ARKHAM_PRELISTING_TRACE_POST", "1").strip().lower() in {"1", "true", "yes"}
 TRACE_DESTINATION_LIMIT = int(os.getenv("ARKHAM_PRELISTING_TRACE_DEST_LIMIT", "3"))
-SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "0").strip().lower() in {"1", "true", "yes"}
+SAVE_TO_SUPABASE = os.getenv("ARKHAM_PRELISTING_SAVE", "1").strip().lower() in {"1", "true", "yes"}
 SUPABASE_TABLE = os.getenv("ARKHAM_PRELISTING_TABLE", "token_prelisting_wallets")
+SIGNALS_TABLE = os.getenv("ARKHAM_PRELISTING_SIGNALS_TABLE", "wallet_signals")
 REQUEST_TIMEOUT = int(os.getenv("ARKHAM_PRELISTING_TIMEOUT", "45"))
 TOKEN_ADDRESS_LOOKUP = os.getenv("ARKHAM_PRELISTING_LOOKUP_ADDRESSES", "1").strip().lower() in {"1", "true", "yes"}
 TOKEN_SEARCH_LOOKUP = os.getenv("ARKHAM_PRELISTING_SEARCH_TOKEN", "1").strip().lower() in {"1", "true", "yes"}
@@ -580,22 +587,29 @@ def score_candidate(candidate: dict[str, Any]) -> int:
     first_seen = candidate.get("first_seen")
     listing_dt = _parse_dt(LISTING_TS)
 
-    if total >= 1_000_000:
+    # USD breakpoints scaled by SCORE_USD_SCALE (1.0 = large-cap, 0.04-0.2 = small/mid-cap)
+    T_HIGH   = 1_000_000 * SCORE_USD_SCALE   # e.g. $40k for scale=0.04
+    T_MID    =   500_000 * SCORE_USD_SCALE   # e.g. $20k
+    T_LOW    =   100_000 * SCORE_USD_SCALE   # e.g. $4k
+    T_MAX_TX =   250_000 * SCORE_USD_SCALE   # e.g. $10k single transfer
+    T_SELL   = max(SELL_CHECK_MIN_USD * SCORE_USD_SCALE, MIN_TRANSFER_USD)
+
+    if total >= T_HIGH:
         score += 35
-    elif total >= 500_000:
+    elif total >= T_MID:
         score += 25
-    elif total >= 100_000:
+    elif total >= T_LOW:
         score += 15
     elif total >= MIN_TRANSFER_USD:
         score += 10
 
-    if max_transfer >= 250_000:
+    if max_transfer >= T_MAX_TX:
         score += 10
     if tx_count >= 3:
         score += 10
     if isinstance(first_seen, datetime) and listing_dt and (listing_dt - first_seen).days >= 7:
         score += 15
-    if pre_out <= max(SELL_CHECK_MIN_USD, total * 0.2):
+    if pre_out <= max(T_SELL, total * 0.2):
         score += 20
     if post_out == 0:
         score += 5
@@ -791,7 +805,87 @@ def run_scan() -> list[dict[str, Any]]:
             print(f"  post-listing out: {destinations[:260]}", flush=True)
     if SAVE_TO_SUPABASE:
         print(f"\nSaved pre-listing wallets: {saved}/{len(enriched[:20])}", flush=True)
+
+    _print_shared_destinations(enriched[:20])
     return enriched
+
+
+def _print_shared_destinations(wallets: list[dict[str, Any]]) -> None:
+    dest_to_wallets: dict[str, set[str]] = defaultdict(set)
+    for row in wallets:
+        for item in row.get("post_listing_destinations") or []:
+            dest = str(item.get("destination") or "").strip()
+            if not dest or dest.startswith("?"):
+                continue
+            dest_to_wallets[dest].add(row["address"])
+
+    shared = {dest: sorted(addrs) for dest, addrs in dest_to_wallets.items() if len(addrs) > 1}
+    if not shared:
+        return
+
+    print(f"\n{'='*60}", flush=True)
+    print("SHARED POST-LISTING DESTINATIONS (mesma entidade provavel):", flush=True)
+    for dest, addrs in sorted(shared.items(), key=lambda x: len(x[1]), reverse=True):
+        print(f"\n  -> {dest} ({len(addrs)} wallets)", flush=True)
+        for addr in addrs:
+            row = next((r for r in wallets if r["address"] == addr), {})
+            usd = next(
+                (float(item.get("usd") or 0)
+                 for item in (row.get("post_listing_destinations") or [])
+                 if str(item.get("destination") or "") == dest),
+                0.0,
+            )
+            print(f"     {addr} (${usd:,.0f})", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    if SAVE_TO_SUPABASE:
+        _save_shared_destination_signals(wallets, shared)
+
+
+def _save_shared_destination_signals(
+    wallets: list[dict[str, Any]],
+    shared: dict[str, list[str]],
+) -> None:
+    saved = 0
+    for dest, addrs in shared.items():
+        for i, addr_a in enumerate(addrs):
+            for addr_b in addrs[i + 1:]:
+                row_a = next((r for r in wallets if r["address"] == addr_a), {})
+                row_b = next((r for r in wallets if r["address"] == addr_b), {})
+                usd_a = next(
+                    (float(item.get("usd") or 0)
+                     for item in (row_a.get("post_listing_destinations") or [])
+                     if str(item.get("destination") or "") == dest),
+                    0.0,
+                )
+                usd_b = next(
+                    (float(item.get("usd") or 0)
+                     for item in (row_b.get("post_listing_destinations") or [])
+                     if str(item.get("destination") or "") == dest),
+                    0.0,
+                )
+                signal = {
+                    "signal_type": "shared_destination",
+                    "token_id": TOKEN_ID,
+                    "wallet_a": addr_a,
+                    "wallet_b": addr_b,
+                    "link": dest,
+                    "total_usd": round(usd_a + usd_b, 2),
+                    "notes": f"Both sent to {dest[:60]} after {TOKEN_DISPLAY or TOKEN_SYMBOL} listing",
+                }
+                response = requests.post(
+                    f"{SUPABASE_URL}/rest/v1/{SIGNALS_TABLE}",
+                    headers=_supabase_headers(),
+                    params={"on_conflict": "signal_type,wallet_a,wallet_b,link"},
+                    data=json.dumps(signal),
+                    timeout=30,
+                )
+                if response.status_code < 400:
+                    saved += 1
+                else:
+                    print(f"  Signal save failed: {response.status_code} {response.text[:200]}", flush=True)
+    if saved:
+        print(f"  Saved {saved} shared-destination signal(s) to {SIGNALS_TABLE}.", flush=True)
 
 
 if __name__ == "__main__":

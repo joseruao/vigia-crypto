@@ -1,0 +1,126 @@
+-- ============================================================
+-- Vigia Crypto - Schema de recuperacao (2026-08-12)
+-- Colar no SQL Editor do novo projeto Supabase e clicar em "Run"
+-- ============================================================
+
+-- 1) Rankings tecnicos TOP100 (widget Top100 do site)
+create table if not exists top100_technical_rankings (
+    date        text,
+    symbol      text,
+    coin_id     text,
+    name        text,
+    rank        numeric,
+    market_cap_rank numeric,
+    current_price  numeric,
+    price       numeric,
+    market_cap  numeric,
+    total_volume   numeric,
+    volume_24h  numeric,
+    change_24h  numeric,
+    change_7d   numeric,
+    change_30d  numeric,
+    price_change_percentage_24h numeric,
+    price_change_percentage_7d_in_currency numeric,
+    price_change_percentage_30d_in_currency numeric,
+    volume_ratio numeric,
+    rsi         numeric,
+    trend       text,
+    trend_strength numeric,
+    volatility  numeric,
+    volume_ratio_20d numeric,
+    support     numeric,
+    resistance  numeric,
+    current_position text,
+    entry_zone  text,
+    stop_loss   numeric,
+    targets     text,
+    technical_action  text,
+    technical_confidence numeric,
+    macd_signal text,
+    macd_hist   numeric,
+    above_sma200 boolean,
+    bb_position text,
+    bb_width    numeric,
+    score       numeric,
+    signal      text,
+    risk        text,
+    rationale   text,
+    ts          timestamptz,
+    primary key (date, symbol)
+);
+
+-- 2) Tokens transacionados / listing radar (widget Listings do site)
+create table if not exists transacted_tokens (
+    token_address text not null,
+    type       text not null,
+    chain      text not null,
+    exchange   text,
+    token      text,
+    signature  text,
+    amount     numeric,
+    value_usd  numeric,
+    price      numeric,
+    liquidity  numeric,
+    volume_24h numeric,
+    pair_url   text,
+    listed_exchanges text,
+    special    text,
+    ts         timestamptz,
+    score      numeric,
+    listing_probability numeric,
+    confidence numeric,
+    txns_buys  numeric,
+    txns_sells numeric,
+    holders_concentration numeric,
+    analysis_text text
+);
+
+-- constraints para os upserts (on_conflict) funcionarem
+create unique index if not exists uq_transacted_4 on transacted_tokens (token_address, type, chain, exchange);
+create unique index if not exists uq_transacted_3 on transacted_tokens (token_address, type, chain);
+create index if not exists idx_transacted_ts    on transacted_tokens (ts desc);
+create index if not exists idx_transacted_score on transacted_tokens (score desc);
+
+-- 3) Tokens listados por exchange (daily_holdings)
+create table if not exists exchange_tokens (
+    exchange   text,
+    token      text,
+    symbol     text,
+    address    text,
+    ts         timestamptz
+);
+create unique index if not exists uq_exchange_token on exchange_tokens (exchange, token);
+
+-- 4) Pre-listing wallets (radar Smart Money)
+create table if not exists token_prelisting_wallets (
+    token         text,
+    token_id      text,
+    listing_exchange text,
+    address       text,
+    chains        text,
+    first_seen    timestamptz,
+    last_seen     timestamptz,
+    total_in_usd  numeric,
+    max_transfer_usd numeric,
+    tx_count      numeric,
+    source_entities text,
+    labels        text,
+    sample_txs    text,
+    score         numeric,
+    ts            timestamptz
+);
+create unique index if not exists uq_prelisting_wallet on token_prelisting_wallets (token_id, address);
+
+-- 5) Sinais de wallet (arkham_wallet_trace)
+create table if not exists wallet_signals (
+    wallet           text,
+    counterparty_address text,
+    counterparty_name   text,
+    counterparty_category text,
+    direction        text,
+    usd_total        numeric,
+    tx_count         numeric,
+    window_start     timestamptz,
+    window_end       timestamptz,
+    ts               timestamptz
+);

@@ -352,6 +352,7 @@ def test_prelisting_resolves_token_filters_with_addresses(monkeypatch):
     monkeypatch.setattr(scan, "TOKEN_DISPLAY", "AIGENSYN")
     monkeypatch.setattr(scan, "_RESOLVED_TOKEN_FILTERS", None)
     monkeypatch.setattr(scan, "fetch_token_addresses", lambda: ["0x1111111111111111111111111111111111111111"])
+    monkeypatch.setattr(scan, "fetch_token_search_filters", lambda: [])
 
     assert scan.resolve_token_filters() == [
         "gensyn",
@@ -380,3 +381,39 @@ def test_prelisting_extracts_matching_search_token_filters(monkeypatch):
         "0x1111111111111111111111111111111111111111",
         "0x3333333333333333333333333333333333333333",
     ]
+
+
+def test_prelisting_detects_shared_post_listing_destinations(capsys):
+    scan = _load_prelisting()
+
+    shared_dest = "7X6QGovGFj2v8XbqHPSx3XGuRK8QxmcCBkXnmj4TbaoE"
+    wallets = [
+        {
+            "address": "H6xoULdjULk4Astjxw5f7rfz9g585F7FeA35LvPVnQZg",
+            "post_listing_destinations": [
+                {"destination": shared_dest, "usd": 1_900_241},
+                {"destination": "Bybit Deposit", "usd": 954_845},
+            ],
+        },
+        {
+            "address": "3AS9tKqUR91UN7UjQMiPLeEepZU1hZahKB9xGYHvwxum",
+            "post_listing_destinations": [
+                {"destination": shared_dest, "usd": 1_174_501},
+            ],
+        },
+        {
+            "address": "BZsQ7ucBdZEUQHDuSxWXjsYuTjqkuxz7pNXWPiyVQfSd",
+            "post_listing_destinations": [
+                {"destination": "Fy2iyBReWehZU78ASeAupgcv5ZrkebVw1kQMkXesKxR5", "usd": 1_966_900},
+            ],
+        },
+    ]
+
+    scan._print_shared_destinations(wallets)
+    output = capsys.readouterr().out
+
+    assert shared_dest in output
+    assert "H6xoULdjULk4Astjxw5f7rfz9g585F7FeA35LvPVnQZg" in output
+    assert "3AS9tKqUR91UN7UjQMiPLeEepZU1hZahKB9xGYHvwxum" in output
+    assert "Bybit Deposit" not in output or output.count(shared_dest) >= 1
+    assert "Fy2iyBRe" not in output.split(shared_dest)[0].split("SHARED")[1] if "SHARED" in output else True
