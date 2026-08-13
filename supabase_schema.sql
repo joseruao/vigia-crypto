@@ -108,6 +108,7 @@ create table if not exists token_prelisting_wallets (
     labels        text,
     sample_txs    text,
     score         numeric,
+    listing_ts    timestamptz,
     classification text,
     investigation_status text,
     raw           jsonb,
