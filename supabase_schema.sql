@@ -35,7 +35,7 @@ create table if not exists top100_technical_rankings (
     stop_loss   numeric,
     targets     text,
     technical_action  text,
-    technical_confidence numeric,
+    technical_confidence text,
     macd_signal text,
     macd_hist   numeric,
     above_sma200 boolean,

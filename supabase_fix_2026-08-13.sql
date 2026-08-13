@@ -7,6 +7,9 @@
 --   /alerts/prelisting-*    -> column token_prelisting_wallets.classification does not exist
 -- ============================================================
 
+-- Widget Top100: o worker envia "ALTA"/"MEDIA" (texto) mas a coluna era numeric
+alter table top100_technical_rankings alter column technical_confidence type text;
+
 -- Widget Listings (transacted_tokens)
 alter table transacted_tokens add column if not exists ai_analysis text;
 
