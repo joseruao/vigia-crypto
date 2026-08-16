@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .ai.providers import MAX_CHARS_PER_DOC, AIClient, build_ai_client
-from .audits.rules import find_duplicate_invoices, reconcile_payments
+from .audits.rules import (
+    find_duplicate_invoices,
+    find_duplicate_payments,
+    find_missing_invoice_sequences,
+    reconcile_payments,
+)
 from .audits.suppliers import find_supplier_opportunities, find_margin_issues
 from .extractors.pdf_text import extract_pdf_text
 from .ingestion.scanner import DocumentCandidate, scan_input
@@ -141,10 +146,14 @@ def run_audit(workspace: Path, *, limit: int | None = None, skip_ai: bool = Fals
         # Regras de auditoria
         db.clear_findings(run_id)
         n1 = len(find_duplicate_invoices(db, run_id))
-        n2 = len(reconcile_payments(db, run_id))
-        n3 = len(find_supplier_opportunities(db, run_id))
-        n4 = len(find_margin_issues(db, run_id))
-        print(f"\n🔎 Achados: {n1} duplicados + {n2} pagamentos/faturas + {n3} fornecedores + {n4} margens")
+        dup_payments = find_duplicate_payments(db, run_id)
+        n2 = len(dup_payments)
+        dup_payment_ids = {pid for f in dup_payments for pid in f.get("_payment_ids", [])}
+        n3 = len(reconcile_payments(db, run_id, skip_payment_ids=dup_payment_ids))
+        n4 = len(find_supplier_opportunities(db, run_id))
+        n5 = len(find_margin_issues(db, run_id))
+        n6 = len(find_missing_invoice_sequences(db, run_id))
+        print(f"\n🔎 Achados: {n1} dup.faturas + {n2} dup.pagamentos + {n3} pag/fat + {n4} fornecedores + {n5} margens + {n6} em-falta")
 
         db.finish_run(run_id, len(pdfs), ai_calls)
         report_path = write_report(db, workspace, run_id)

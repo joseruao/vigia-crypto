@@ -97,8 +97,24 @@ def make_samples(dest: Path) -> None:
     extratos = dest / "extratos"
     extratos.mkdir(parents=True, exist_ok=True)
 
-    # --- COMPRAS ---
-    # 1. Fatura normal (energia)
+    # --- COMPRAS (Luz & Energia tem sequência 0113, 0113(dup), 0114, 0116 → falta a 0115) ---
+    # 1. Fatura normal (energia, junho)
+    make_invoice(
+        faturas / "Fatura_A2026-0113_Energia.pdf",
+        empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
+        email="info@luzenenergia.pt",
+        numero="A2026-0113", data="2026-06-01", cliente="Cliente Demo Lda",
+        linhas=[("Energia elétrica - junho 2026", 1, 820.00), ("Potência contratada", 1, 194.15)],
+    )
+    # 2. DUPLICADA: mesmo número, mesmo fornecedor, mesmo total
+    make_invoice(
+        faturas / "Fatura_A2026-0113_Duplicada.pdf",
+        empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
+        email="info@luzenenergia.pt",
+        numero="A2026-0113", data="2026-06-03", cliente="Cliente Demo Lda",
+        linhas=[("Energia elétrica - junho 2026", 1, 820.00), ("Potência contratada", 1, 194.15)],
+    )
+    # 3. Fatura normal (energia, julho — a que aparece paga no extrato)
     make_invoice(
         faturas / "Fatura_A2026-0114_Energia.pdf",
         empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
@@ -106,13 +122,13 @@ def make_samples(dest: Path) -> None:
         numero="A2026-0114", data="2026-07-01", cliente="Cliente Demo Lda",
         linhas=[("Energia elétrica - julho 2026", 1, 850.00), ("Potência contratada", 1, 194.15)],
     )
-    # 2. DUPLICADA: mesmo número, mesmo fornecedor, mesmo total
+    # 4. Fatura normal (energia, agosto) — cria o buraco 0115
     make_invoice(
-        faturas / "Fatura_A2026-0114_Duplicada.pdf",
+        faturas / "Fatura_A2026-0116_Energia.pdf",
         empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
         email="info@luzenenergia.pt",
-        numero="A2026-0114", data="2026-07-03", cliente="Cliente Demo Lda",
-        linhas=[("Energia elétrica - julho 2026", 1, 850.00), ("Potência contratada", 1, 194.15)],
+        numero="A2026-0116", data="2026-08-01", cliente="Cliente Demo Lda",
+        linhas=[("Energia elétrica - agosto 2026", 1, 880.00), ("Potência contratada", 1, 194.15)],
     )
     # 3. Fatura normal de outro fornecedor
     make_invoice(
@@ -162,10 +178,11 @@ def make_samples(dest: Path) -> None:
         "data;descricao;montante\n"
         "2026-07-10;Pagamento fatura A2026-0114 Luz & Energia;-1284,30\n"
         "2026-07-12;Pagamento fatura B2027-0092 Manutenção;-940,00\n"
-        "2026-07-15;Transferência Gabriel Lda;-3500,00\n",
+        "2026-07-15;Transferência Gabriel Lda;-3500,00\n"
+        "2026-07-20;Pagamento fatura A2026-0114 Luz & Energia;-1284,30\n",
         encoding="utf-8",
     )
-    print(f"OK: 5 faturas compras + 2 vendas + 1 extrato gerados em {dest}")
+    print(f"OK: 6 faturas compras + 2 vendas + 1 extrato gerados em {dest}")
 
 
 if __name__ == "__main__":

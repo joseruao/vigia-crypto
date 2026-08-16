@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import pipeline as pipeline_mod
+from .alerts import notify_high_confidence, set_finding_state
 from .audits.email_drafts import generate_email_drafts, send_email_draft
 from .config import _BACKEND_ROOT
 from .storage.db import AuditDB
@@ -99,13 +100,18 @@ footer { margin-top:28px; color:var(--muted); font-size:12px; }
   </div>
 </div>
 
+<div class="card" style="margin-top:16px" id="alertasBox">
+  <h3>3 · Alertas <small style="color:var(--muted)">(achados de confiança alta — marca como confirmado quando verificares)</small></h3>
+  <div id="alertas"></div>
+</div>
+
 <div class="card" style="margin-top:16px">
-  <h3>3 · Achados</h3>
+  <h3>4 · Todos os achados</h3>
   <div id="findings"></div>
 </div>
 
 <div class="card" style="margin-top:16px">
-  <h3>4 · Emails para fornecedores alternativos <small style="color:var(--muted)">(rascunhos — envio só com o teu clique)</small></h3>
+  <h3>5 · Emails para fornecedores alternativos <small style="color:var(--muted)">(rascunhos — envio só com o teu clique)</small></h3>
   <button class="btn" id="btnEmails">✉ Gerar emails</button>
   <div id="emails"></div>
 </div>
@@ -159,6 +165,26 @@ $('btnEmails').onclick = async () => {
   } catch(e){ alert(e.message); }
 };
 
+function stateBadge(s){ return `<span class="badge b-${s==='confirmado'?'media':'baixa'}">${s||'novo'}</span>`; }
+
+function findingRow(x){
+  const tr = el('tr');
+  const acoes = `<button class="btn ghost" style="margin:2px;padding:4px 10px;font-size:12px" onclick="setState(${x.id},'confirmado')">✓ Confirmar</button>
+                 <button class="btn ghost" style="margin:2px;padding:4px 10px;font-size:12px" onclick="setState(${x.id},'ignorado')">✗ Ignorar</button>`;
+  tr.innerHTML = `<td>${badge(x.confianca)}<br>${stateBadge(x.estado)}</td><td>${x.tipo}</td>
+    <td><strong>${x.titulo}</strong><br><span style="color:var(--muted);font-size:12px">${x.descricao||''}</span>
+    <br><span style="color:var(--muted);font-size:11px">${x.evidencia||''} · ${x.documentos||''}</span></td>
+    <td class="neg">${money(x.impacto_eur)}</td><td>${acoes}</td>`;
+  return tr;
+}
+
+async function setState(id, state){
+  const ws = $('ws').value.trim() || 'cliente_demo';
+  try { await api(`/auditor/findings/${id}/state?workspace=${encodeURIComponent(ws)}&state=${state}`, {method:'POST'});
+        render(await api('/auditor/state?workspace=' + encodeURIComponent(ws))); }
+  catch(e){ alert(e.message); }
+}
+
 function render(d){
   const s = $('stats');
   s.innerHTML = '';
@@ -167,18 +193,23 @@ function render(d){
   const wrap = el('div','cards');
   for (const [l,n] of stats){ const c = el('div','stat'); c.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`; wrap.appendChild(c); }
   s.appendChild(wrap);
+
+  // Alertas: confiança alta não confirmados
+  const a = $('alertas'); a.innerHTML = '';
+  const alertas = d.findings.filter(x => x.confianca === 'alta' && x.estado !== 'ignorado');
+  if (!alertas.length){ a.innerHTML = '<p style="color:var(--muted)">Sem alertas de alta confiança pendentes.</p>'; }
+  else {
+    const t = el('table');
+    t.innerHTML = '<tr><th>Confiança</th><th>Estado</th><th>Achado</th><th>Impacto</th><th></th></tr>';
+    for (const x of alertas) t.appendChild(findingRow(x));
+    a.appendChild(t);
+  }
+
   const f = $('findings'); f.innerHTML = '';
   if (!d.findings.length){ f.innerHTML = '<p style="color:var(--muted)">Sem achados.</p>'; return; }
   const t = el('table');
-  t.innerHTML = '<tr><th>Confiança</th><th>Tipo</th><th>Achado</th><th>Impacto</th></tr>';
-  for (const x of d.findings){
-    const tr = el('tr');
-    tr.innerHTML = `<td>${badge(x.confianca)}</td><td>${x.tipo}</td>
-      <td><strong>${x.titulo}</strong><br><span style="color:var(--muted);font-size:12px">${x.descricao||''}</span>
-      <br><span style="color:var(--muted);font-size:11px">${x.evidencia||''} · ${x.documentos||''}</span></td>
-      <td class="neg">${money(x.impacto_eur)}</td>`;
-    t.appendChild(tr);
-  }
+  t.innerHTML = '<tr><th>Confiança</th><th>Tipo</th><th>Achado</th><th>Impacto</th><th>Ações</th></tr>';
+  for (const x of d.findings) t.appendChild(findingRow(x));
   f.appendChild(t);
   renderEmails(d.emails || []);
 }
@@ -286,7 +317,8 @@ def run(workspace: str = DEFAULT_WORKSPACE) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"Falha na auditoria: {exc}") from exc
     state = _state(ws)
     state["report"] = str(report)
-    state["log"] = [f"✅ Auditoria concluída — relatório: {report}"]
+    alert_msg = notify_high_confidence(state["findings"])
+    state["log"] = [f"✅ Auditoria concluída — relatório: {report}", alert_msg]
     return state
 
 
@@ -294,6 +326,19 @@ def run(workspace: str = DEFAULT_WORKSPACE) -> JSONResponse:
 def state(workspace: str = DEFAULT_WORKSPACE) -> JSONResponse:
     ws = _workspace_path(workspace.strip() or DEFAULT_WORKSPACE)
     return _state(ws)
+
+
+@app.post("/auditor/findings/{finding_id}/state")
+def finding_state(finding_id: int, state: str, workspace: str = DEFAULT_WORKSPACE) -> JSONResponse:
+    ws = _workspace_path(workspace.strip() or DEFAULT_WORKSPACE)
+    db = _db_for(ws)
+    try:
+        ok = set_finding_state(db, finding_id, state)
+    finally:
+        db.close()
+    if not ok:
+        raise HTTPException(status_code=400, detail="Estado inválido (novo|confirmado|ignorado) ou achado não existe.")
+    return {"message": f"Achado marcado como {state}."}
 
 
 @app.post("/auditor/emails/generate")

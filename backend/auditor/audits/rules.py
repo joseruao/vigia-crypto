@@ -30,6 +30,105 @@ def _fmt_date(d: date | None) -> str:
     return d.isoformat() if d else ""
 
 
+def _norm_text(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", (value or "").lower())
+
+
+def find_duplicate_payments(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
+    """Pagamentos duplicados: mesmo montante + descrição/fornecedor igual + datas a ≤30 dias."""
+    findings: list[dict[str, Any]] = []
+    payments = [dict(r) for r in db.all_payments()]
+    for i, pay_a in enumerate(payments):
+        for pay_b in payments[i + 1 :]:
+            amount_a, amount_b = pay_a.get("amount"), pay_b.get("amount")
+            if amount_a is None or amount_b is None or abs(float(amount_a) - float(amount_b)) > 0.01:
+                continue
+            key_a = _norm_text(pay_a.get("supplier") or pay_a.get("description"))
+            key_b = _norm_text(pay_b.get("supplier") or pay_b.get("description"))
+            if not key_a or key_a != key_b:
+                continue
+            d_a, d_b = _parse_date(pay_a.get("date")), _parse_date(pay_b.get("date"))
+            if not d_a or not d_b or abs((d_a - d_b).days) > 30:
+                continue
+            desc = pay_a.get("description") or pay_a.get("supplier") or "pagamento"
+            findings.append(
+                {
+                    "tipo": "pagamento_duplicado",
+                    "titulo": f"Pagamento duplicado: {float(amount_a):.2f}€",
+                    "descricao": (
+                        f"O mesmo montante ({float(amount_a):.2f}€) com a mesma referência "
+                        f"('{desc}') aparece {_fmt_date(d_a)} e {_fmt_date(d_b)} "
+                        f"(diferença de {abs((d_a - d_b).days)} dias). Risco de pagamento a dobrar."
+                    ),
+                    "impacto_eur": float(amount_a),
+                    "confianca": "alta",
+                    "evidencia": f"Montante {float(amount_a):.2f}€ repetido nos extratos",
+                    "documentos": f"doc#{pay_a.get('document_id')} | doc#{pay_b.get('document_id')}",
+                    "_payment_ids": [pay_a.get("id"), pay_b.get("id")],
+                }
+            )
+    for f in findings:
+        db.insert_finding(run_id, f)
+    return findings
+
+
+def find_missing_invoice_sequences(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
+    """Faturas em falta: buracos na sequência de números por fornecedor (ex.: 0113, 0115 → falta 0114)."""
+    findings: list[dict[str, Any]] = []
+    invoices = [dict(r) for r in db.all_invoices()]
+    by_supplier_year: dict[tuple[str, str], list[int]] = {}
+    for inv in invoices:
+        raw_number = str(inv.get("invoice_number") or "")
+        if len(_norm_number(raw_number)) < 6:
+            continue
+        supplier = _norm_text(inv.get("supplier"))
+        if not supplier:
+            continue
+        # Segmento numérico final do número ORIGINAL (ex.: A2026-0114 -> 0114, ano 2026)
+        digits = re.findall(r"\d+", raw_number)
+        if not digits:
+            continue
+        seq_digits = digits[-1]
+        year = ""
+        if len(digits) >= 2:
+            year = digits[-2][:4]
+        key = (supplier, year)
+        try:
+            by_supplier_year.setdefault(key, []).append(int(seq_digits))
+        except ValueError:
+            continue
+
+    for (supplier_key, year), seqs in by_supplier_year.items():
+        unique = sorted(set(seqs))
+        if len(unique) < 3:
+            continue
+        gaps = []
+        for a, b in zip(unique, unique[1:]):
+            if 0 < b - a <= 10:  # buracos pequenos são os sinalizadores (grandes = sequências distintas)
+                for missing in range(a + 1, b):
+                    gaps.append(missing)
+        if not gaps:
+            continue
+        gap_text = ", ".join(f"{g:04d}" for g in gaps[:6])
+        findings.append(
+            {
+                "tipo": "fatura_em_falta",
+                "titulo": f"Possíveis faturas em falta no fornecedor ({year or '?'}): {gap_text}",
+                "descricao": (
+                    f"A sequência de faturas deste fornecedor tem buracos: {gap_text}. "
+                    f"Faturas em falta podem significar compras não registadas ou documentos escondidos."
+                ),
+                "impacto_eur": None,
+                "confianca": "baixa",
+                "evidencia": f"Sequência detetada: {min(unique)}…{max(unique)} ({len(unique)} faturas)",
+                "documentos": f"fornecedor #{supplier_key}",
+            }
+        )
+    for f in findings:
+        db.insert_finding(run_id, f)
+    return findings
+
+
 def find_duplicate_invoices(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
     """Faturas iguais ou quase iguais pagas mais de uma vez."""
     findings: list[dict[str, Any]] = []
@@ -103,11 +202,18 @@ def find_duplicate_invoices(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
     return findings
 
 
-def reconcile_payments(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
-    """Faturas vs pagamentos: pagamento sem fatura / fatura sem pagamento."""
+def reconcile_payments(
+    db: AuditDB, run_id: int, skip_payment_ids: set[int] | None = None
+) -> list[dict[str, Any]]:
+    """Faturas vs pagamentos: pagamento sem fatura / fatura sem pagamento.
+
+    skip_payment_ids: pagamentos já sinalizados como duplicados (não são
+    re-sinalizados como "sem fatura" — o problema já está reportado).
+    """
+    skip = skip_payment_ids or set()
     findings: list[dict[str, Any]] = []
     invoices = [dict(r) for r in db.all_invoices()]
-    payments = [dict(r) for r in db.all_payments()]
+    payments = [dict(r) for r in db.all_payments() if r["id"] not in skip]
     if not payments:
         return findings
 
