@@ -33,3 +33,6 @@ repo_sanity.ps1
 run-api.ps1
 start_api*.bat
 start_api*.ps1
+
+# Workspaces de auditoria (dados de clientes - nunca commitar)
+audits/

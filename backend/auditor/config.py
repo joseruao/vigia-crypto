@@ -2,6 +2,24 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dotenv é dep padrão do projeto
+    load_dotenv = None
+
+# Backend root = 2 níveis acima de auditor/config.py (backend/auditor/config.py -> backend)
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _ensure_env() -> None:
+    """Carrega backend/.env se existir (sem sobrepor variáveis já definidas)."""
+    if load_dotenv is None:
+        return
+    env_file = _BACKEND_ROOT / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
 
 
 @dataclass(frozen=True)
@@ -16,6 +34,7 @@ class AIConfig:
 
 
 def load_ai_config() -> AIConfig:
+    _ensure_env()
     return AIConfig(
         provider=os.getenv("AUDITOR_AI_PROVIDER", "none").strip().lower(),
         azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
@@ -25,4 +44,3 @@ def load_ai_config() -> AIConfig:
         mistral_api_key=os.getenv("MISTRAL_API_KEY", ""),
         mistral_model=os.getenv("MISTRAL_MODEL", "mistral-large-latest"),
     )
-
