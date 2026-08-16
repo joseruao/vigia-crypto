@@ -19,8 +19,10 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE TABLE IF NOT EXISTS invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id INTEGER REFERENCES documents(id),
+    type TEXT DEFAULT 'compra',
     supplier TEXT,
     supplier_nif TEXT,
+    supplier_email TEXT,
     invoice_number TEXT,
     date TEXT,
     due_date TEXT,
@@ -58,6 +60,21 @@ CREATE TABLE IF NOT EXISTS audit_runs (
     finished_at TEXT,
     documents_processed INTEGER DEFAULT 0,
     ai_calls INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS email_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER REFERENCES audit_runs(id),
+    supplier TEXT,
+    supplier_email TEXT,
+    product TEXT,
+    current_price REAL,
+    alternative_price REAL,
+    savings REAL,
+    subject TEXT,
+    body TEXT,
+    status TEXT DEFAULT 'rascunho',
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS audit_findings (
@@ -107,7 +124,7 @@ class AuditDB:
     def reset_processing_data(self) -> None:
         """Apaga dados de processamento (docs/faturas/pagamentos/achados).
         Mantém audit_runs e ai_calls (histórico de transparência)."""
-        for table in ("invoice_lines", "invoices", "payments", "documents", "audit_findings"):
+        for table in ("invoice_lines", "invoices", "payments", "email_drafts", "documents", "audit_findings"):
             self.conn.execute(f"DELETE FROM {table}")
         self.conn.commit()
 
@@ -137,16 +154,18 @@ class AuditDB:
         return int(cur.lastrowid)
 
     # --- invoices ---
-    def insert_invoice(self, doc_id: int, data: dict[str, Any]) -> int:
+    def insert_invoice(self, doc_id: int, data: dict[str, Any], type_: str = "compra") -> int:
         lines = data.pop("lines", None) or []
         cur = self.conn.execute(
-            "INSERT INTO invoices (document_id, supplier, supplier_nif, invoice_number, date, due_date, "
-            "total, vat, currency, payment_reference, raw_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO invoices (document_id, type, supplier, supplier_nif, supplier_email, invoice_number, "
+            "date, due_date, total, vat, currency, payment_reference, raw_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 doc_id,
+                type_,
                 data.get("supplier"),
                 data.get("supplier_nif"),
+                data.get("supplier_email"),
                 data.get("invoice_number"),
                 data.get("date"),
                 data.get("due_date"),
@@ -173,8 +192,19 @@ class AuditDB:
         self.conn.commit()
         return invoice_id
 
-    def all_invoices(self) -> list[sqlite3.Row]:
-        return self.conn.execute("SELECT * FROM invoices ORDER BY date").fetchall()
+    def all_invoices(self, type_: str | None = None) -> list[sqlite3.Row]:
+        if type_ is None:
+            return self.conn.execute("SELECT * FROM invoices ORDER BY date").fetchall()
+        return self.conn.execute(
+            "SELECT * FROM invoices WHERE type = ? ORDER BY date", (type_,)
+        ).fetchall()
+
+    def all_lines(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT il.*, i.supplier, i.supplier_email, i.type, i.invoice_number, i.date "
+            "FROM invoice_lines il JOIN invoices i ON i.id = il.invoice_id "
+            "WHERE il.description IS NOT NULL AND il.unit_price IS NOT NULL"
+        ).fetchall()
 
     def invoice_lines(self, invoice_id: int) -> list[sqlite3.Row]:
         return self.conn.execute(
@@ -234,6 +264,38 @@ class AuditDB:
             self.conn.execute("DELETE FROM audit_findings")
         else:
             self.conn.execute("DELETE FROM audit_findings WHERE run_id = ?", (run_id,))
+        self.conn.commit()
+
+    # --- email drafts ---
+    def insert_email_draft(self, run_id: int, d: dict[str, Any]) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO email_drafts (run_id, supplier, supplier_email, product, current_price, "
+            "alternative_price, savings, subject, body, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'rascunho', ?)",
+            (
+                run_id,
+                d.get("supplier"),
+                d.get("supplier_email"),
+                d.get("product"),
+                d.get("current_price"),
+                d.get("alternative_price"),
+                d.get("savings"),
+                d.get("subject"),
+                d.get("body"),
+                _now(),
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def all_email_drafts(self, status: str | None = None) -> list[sqlite3.Row]:
+        if status is None:
+            return self.conn.execute("SELECT * FROM email_drafts ORDER BY id").fetchall()
+        return self.conn.execute(
+            "SELECT * FROM email_drafts WHERE status = ? ORDER BY id", (status,)
+        ).fetchall()
+
+    def mark_email_sent(self, draft_id: int) -> None:
+        self.conn.execute("UPDATE email_drafts SET status = 'enviado' WHERE id = ?", (draft_id,))
         self.conn.commit()
 
     # --- ai calls (transparência: o que foi enviado para fora) ---

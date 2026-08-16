@@ -1,13 +1,15 @@
 """Gera faturas de exemplo + extrato CSV para demonstração do auditor.
 
 Uso:
-    python -m auditor_demo_assets  (na pasta scripts/)
-ou:
-    python scripts/make_sample_invoices.py --dest audits/cliente_demo/input
+    python -m auditor.make_sample_invoices --dest audits/cliente_demo/input
+
+Demo inclui: fatura duplicada, pagamento sem fatura, fornecedor alternativo
+mais barato (papel A4) e vendas com margem baixa — para veres todas as regras.
 """
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from fpdf import FPDF
@@ -18,8 +20,7 @@ class InvoicePDF(FPDF):
         self.set_font("Helvetica", "B", 14)
         self.cell(0, 10, self.empresa, new_x="LMARGIN", new_y="NEXT")
         self.set_font("Helvetica", "", 9)
-        self.cell(0, 5, f"NIF: {self.nif}", new_x="LMARGIN", new_y="NEXT")
-        self.cell(0, 5, self.morada, new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 5, f"NIF: {self.nif}   {self.morada}   {self.email}", new_x="LMARGIN", new_y="NEXT")
         self.ln(4)
         self.set_draw_color(120)
         self.line(10, self.get_y(), 200, self.get_y())
@@ -68,23 +69,40 @@ class InvoicePDF(FPDF):
         self.cell(0, 6, "Entidade: 12345  Referência: 678901234  (pagamento por referência multibanco)", new_x="LMARGIN", new_y="NEXT")
 
 
-def make_invoice(path: Path, empresa: str, nif: str, morada: str, numero: str, data: str, cliente: str, linhas: list[tuple[str, float, float]]) -> None:
+def make_invoice(
+    path: Path,
+    empresa: str,
+    nif: str,
+    morada: str,
+    email: str,
+    numero: str,
+    data: str,
+    cliente: str,
+    linhas: list[tuple[str, float, float]],
+) -> None:
     pdf = InvoicePDF()
-    pdf.empresa, pdf.nif, pdf.morada = empresa, nif, morada
+    pdf.empresa, pdf.nif, pdf.morada, pdf.email = empresa, nif, morada, email
     pdf.add_page()
     pdf.invoice_body(numero, data, cliente, linhas)
     pdf.output(str(path))
 
 
 def make_samples(dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        shutil.rmtree(dest)  # regenera sempre do zero (é material de demo)
     faturas = dest / "faturas"
     faturas.mkdir(parents=True, exist_ok=True)
+    vendas = dest / "vendas"
+    vendas.mkdir(parents=True, exist_ok=True)
+    extratos = dest / "extratos"
+    extratos.mkdir(parents=True, exist_ok=True)
 
-    # 1. Fatura normal
+    # --- COMPRAS ---
+    # 1. Fatura normal (energia)
     make_invoice(
         faturas / "Fatura_A2026-0114_Energia.pdf",
         empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
+        email="info@luzenenergia.pt",
         numero="A2026-0114", data="2026-07-01", cliente="Cliente Demo Lda",
         linhas=[("Energia elétrica - julho 2026", 1, 850.00), ("Potência contratada", 1, 194.15)],
     )
@@ -92,6 +110,7 @@ def make_samples(dest: Path) -> None:
     make_invoice(
         faturas / "Fatura_A2026-0114_Duplicada.pdf",
         empresa="Luz & Energia SA", nif="501234567", morada="Av. da Luz 42, Lisboa",
+        email="info@luzenenergia.pt",
         numero="A2026-0114", data="2026-07-03", cliente="Cliente Demo Lda",
         linhas=[("Energia elétrica - julho 2026", 1, 850.00), ("Potência contratada", 1, 194.15)],
     )
@@ -99,21 +118,54 @@ def make_samples(dest: Path) -> None:
     make_invoice(
         faturas / "Fatura_B2027-0092_Manutencao.pdf",
         empresa="Manutenção Técnica Lda", nif="512345678", morada="Rua das Oficinas 7, Porto",
+        email="geral@manutencaotecnica.pt",
         numero="B2027-0092", data="2026-07-10", cliente="Cliente Demo Lda",
         linhas=[("Manutenção preventiva equipamentos", 1, 764.23)],
     )
+    # 4. Fornecedor CARO de papel (para o comparador achar)
+    make_invoice(
+        faturas / "Fatura_C2026-0331_Papelaria.pdf",
+        empresa="Papelaria Central Lda", nif="523456789", morada="Rua do Comércio 3, Braga",
+        email="geral@papelariacentral.pt",
+        numero="C2026-0331", data="2026-07-14", cliente="Cliente Demo Lda",
+        linhas=[("Papel A4 80g caixa 500 folhas", 10, 24.90), ("Tinteiro preto compatível HP", 5, 8.40)],
+    )
+    # 5. Fornecedor MAIS BARATO do mesmo papel (a demo encontra-o!)
+    make_invoice(
+        faturas / "Fatura_D2026-0187_OfficeMax.pdf",
+        empresa="OfficeMax Portugal", nif="534567890", morada="Zona Industrial 12, Porto",
+        email="vendas@officemax.pt",
+        numero="D2026-0187", data="2026-07-15", cliente="Cliente Demo Lda",
+        linhas=[("Papel A4 80g caixa 500 folhas", 5, 21.50)],
+    )
 
-    # 4. Extrato bancário (CSV) — 2 pagamentos correspondem, 1 fica sem fatura
-    extrato = dest / "extratos"
-    extrato.mkdir(parents=True, exist_ok=True)
-    (extrato / "extrato_julho.csv").write_text(
+    # --- VENDAS ---
+    # 6. Venda com margem baixa (vende papel perto do preço do fornecedor caro)
+    make_invoice(
+        vendas / "Fatura_V2026-001_CafeCentral.pdf",
+        empresa="Cliente Demo Lda", nif="545678901", morada="Sede Cliente Demo, Braga",
+        email="compras@clientedemo.pt",
+        numero="V2026-001", data="2026-07-18", cliente="Café Central Lda",
+        linhas=[("Papel A4 80g caixa 500 folhas", 4, 24.00)],
+    )
+    # 7. Venda normal (sem correspondência de compra -> sem achado)
+    make_invoice(
+        vendas / "Fatura_V2026-002_CafeCentral.pdf",
+        empresa="Cliente Demo Lda", nif="545678901", morada="Sede Cliente Demo, Braga",
+        email="compras@clientedemo.pt",
+        numero="V2026-002", data="2026-07-20", cliente="Café Central Lda",
+        linhas=[("Serviço de impressão digital", 1, 180.00)],
+    )
+
+    # --- EXTRATO ---
+    (extratos / "extrato_julho.csv").write_text(
         "data;descricao;montante\n"
         "2026-07-10;Pagamento fatura A2026-0114 Luz & Energia;-1284,30\n"
-        "2026-07-12;Pagamento fatura B2027-0092 Manutenção;-764,23\n"
+        "2026-07-12;Pagamento fatura B2027-0092 Manutenção;-940,00\n"
         "2026-07-15;Transferência Gabriel Lda;-3500,00\n",
         encoding="utf-8",
     )
-    print(f"OK: 3 faturas + 1 extrato gerados em {dest}")
+    print(f"OK: 5 faturas compras + 2 vendas + 1 extrato gerados em {dest}")
 
 
 if __name__ == "__main__":

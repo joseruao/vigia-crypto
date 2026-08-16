@@ -151,17 +151,21 @@ def reconcile_payments(db: AuditDB, run_id: int) -> list[dict[str, Any]]:
 
     for inv in invoices:
         if inv["id"] not in paid_invoice_ids and inv.get("total") is not None:
+            is_sale = inv.get("type") == "venda"
             findings.append(
                 {
                     "tipo": "fatura_sem_pagamento",
-                    "titulo": f"Fatura {inv.get('invoice_number') or '?'} sem pagamento detetado",
+                    "titulo": (
+                        f"Fatura {inv.get('invoice_number') or '?'} sem {'recebimento' if is_sale else 'pagamento'} detetado"
+                    ),
                     "descricao": (
-                        f"Fatura de {inv.get('supplier') or '?'} no valor de {float(inv['total']):.2f}€ "
-                        f"({inv.get('date') or 'data desconhecida'}) não tem pagamento correspondente nos extratos."
+                        f"{'Venda a' if is_sale else 'Fatura de'} {inv.get('supplier') or '?'} no valor de "
+                        f"{float(inv['total']):.2f}€ ({inv.get('date') or 'data desconhecida'}) "
+                        f"não tem {'recebimento' if is_sale else 'pagamento'} correspondente nos extratos."
                     ),
                     "impacto_eur": float(inv["total"]),
                     "confianca": "baixa",
-                    "evidencia": "Sem pagamento com montante igual nos extratos fornecidos",
+                    "evidencia": f"Sem {'recebimento' if is_sale else 'pagamento'} com montante igual nos extratos fornecidos",
                     "documentos": f"doc#{inv.get('document_id')}",
                 }
             )

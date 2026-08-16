@@ -7,6 +7,7 @@ from typing import Any
 
 from .ai.providers import MAX_CHARS_PER_DOC, AIClient, build_ai_client
 from .audits.rules import find_duplicate_invoices, reconcile_payments
+from .audits.suppliers import find_supplier_opportunities, find_margin_issues
 from .extractors.pdf_text import extract_pdf_text
 from .ingestion.scanner import DocumentCandidate, scan_input
 from .normalizers.payments_csv import parse_payments_csv
@@ -16,8 +17,10 @@ from .storage.db import AuditDB
 EXTRACTION_PROMPT = """Extrai os dados desta fatura/recibo/documento financeiro para JSON com esta estrutura exata:
 
 {{
-  "supplier": "nome do fornecedor (ou null)",
-  "supplier_nif": "NIF do fornecedor (ou null)",
+  "seller": "entidade que EMITE a fatura — a que aparece no topo/cabeçalho do documento, com NIF próprio (ou null)",
+  "seller_nif": "NIF da entidade emissora (ou null)",
+  "seller_email": "email da entidade emissora se visível no documento (ou null)",
+  "buyer": "comprador — normalmente identificado como 'Cliente:' no corpo da fatura (ou null)",
   "invoice_number": "número da fatura (ou null)",
   "date": "data da fatura em formato AAAA-MM-DD (ou null)",
   "due_date": "data de vencimento em formato AAAA-MM-DD (ou null)",
@@ -30,6 +33,7 @@ EXTRACTION_PROMPT = """Extrai os dados desta fatura/recibo/documento financeiro 
   ]
 }}
 
+IMPORTANTE: o campo "Cliente:" no corpo da fatura é o BUYER, nunca o seller.
 Valores numéricos como números (não strings). Total = valor final da fatura incluindo IVA.
 Se o documento não for uma fatura/recibo, devolve {{"not_invoice": true}}.
 
@@ -105,9 +109,19 @@ def run_audit(workspace: Path, *, limit: int | None = None, skip_ai: bool = Fals
                 "UPDATE documents SET extracted_chars = ? WHERE id = ?",
                 (len(str(extracted.get("raw_json"))), doc_id),
             )
-            db.insert_invoice(doc_id, extracted)
+            inv_type = "venda" if cand.category == "vendas" else "compra"
+            # Compra: a contraparte é quem emite (seller). Venda: a contraparte é o cliente (buyer).
+            if inv_type == "compra":
+                extracted["supplier"] = extracted.get("seller")
+                extracted["supplier_nif"] = extracted.get("seller_nif")
+                extracted["supplier_email"] = extracted.get("seller_email")
+            else:
+                extracted["supplier"] = extracted.get("buyer")
+                extracted["supplier_nif"] = None
+                extracted["supplier_email"] = None
+            db.insert_invoice(doc_id, extracted, type_=inv_type)
             ai_calls += 1
-            print(f"   ✓ {cand.path.name}: {extracted.get('supplier') or '?'} — {extracted.get('invoice_number') or 'nº ?'} — {extracted.get('total')}€")
+            print(f"   ✓ {cand.path.name} ({inv_type}): {extracted.get('supplier') or '?'} — {extracted.get('invoice_number') or 'nº ?'} — {extracted.get('total')}€")
 
         # Extratos bancários (CSV)
         payments_docs = 0
@@ -128,7 +142,9 @@ def run_audit(workspace: Path, *, limit: int | None = None, skip_ai: bool = Fals
         db.clear_findings(run_id)
         n1 = len(find_duplicate_invoices(db, run_id))
         n2 = len(reconcile_payments(db, run_id))
-        print(f"\n🔎 Achados: {n1} duplicados + {n2} pagamentos/faturas")
+        n3 = len(find_supplier_opportunities(db, run_id))
+        n4 = len(find_margin_issues(db, run_id))
+        print(f"\n🔎 Achados: {n1} duplicados + {n2} pagamentos/faturas + {n3} fornecedores + {n4} margens")
 
         db.finish_run(run_id, len(pdfs), ai_calls)
         report_path = write_report(db, workspace, run_id)
