@@ -14,6 +14,7 @@ from .audits.rules import (
 )
 from .audits.suppliers import find_supplier_opportunities, find_margin_issues
 from .extractors.pdf_text import extract_pdf_text
+from .extractors.ocr_docintel import DocumentIntelligenceOCR, NoOCRSilent, build_ocr_client
 from .ingestion.scanner import DocumentCandidate, scan_input
 from .normalizers.payments_csv import parse_payments_csv
 from .reports.html_report import write_report
@@ -58,10 +59,15 @@ def _is_csv(candidate: DocumentCandidate) -> bool:
     return candidate.suffix == ".csv"
 
 
-def _extract_invoice(candidate: DocumentCandidate, client: AIClient, db: AuditDB, run_id: int) -> dict[str, Any] | None:
+def _extract_invoice(
+    candidate: DocumentCandidate, client: AIClient, ocr: DocumentIntelligenceOCR | NoOCRSilent, db: AuditDB, run_id: int
+) -> dict[str, Any] | None:
     text, truncated = extract_pdf_text(candidate.path, MAX_CHARS_PER_DOC)
     if not text.strip():
-        return None  # PDF escaneado/sem texto — OCR fica como passo futuro
+        # PDF escaneado (sem camada de texto) — OCR via Document Intelligence
+        text = ocr.ocr_pdf(candidate.path)
+        if not text.strip():
+            return None
     data = client.extract_json(EXTRACTION_PROMPT + text)
     data = dict(data)
     data["raw_json"] = json.dumps(data, ensure_ascii=False)[:2000]
@@ -89,6 +95,7 @@ def run_audit(workspace: Path, *, limit: int | None = None, skip_ai: bool = Fals
             if client.__class__.__name__ == "NoAIClient":
                 print("⚠️  Sem AI configurada (AUDITOR_AI_PROVIDER não é azure_openai). A correr só com regras locais.")
                 client = None
+        ocr = build_ocr_client(log_call=lambda info: db.log_ai_call(run_id, None, info))
 
         print(f"📄 {len(pdfs)} PDF(s) encontrado(s) em {workspace.name}")
 
@@ -100,9 +107,9 @@ def run_audit(workspace: Path, *, limit: int | None = None, skip_ai: bool = Fals
             if client is None:
                 print(f"   - {cand.path.name}: extração IA desativada")
                 continue
-            extracted = _extract_invoice(cand, client, db, run_id)
+            extracted = _extract_invoice(cand, client, ocr, db, run_id)
             if extracted is None:
-                print(f"   - {cand.path.name}: sem texto extraível (scan?)")
+                print(f"   - {cand.path.name}: sem texto (scan?) — pypdf e OCR sem resultado")
                 continue
             if extracted.get("not_invoice"):
                 print(f"   - {cand.path.name}: não parece fatura")

@@ -1,0 +1,84 @@
+
+---
+
+## 🧾 AI BUSINESS AUDITOR — pipeline local + Azure (16 Ago 2026)
+
+### O que está feito e a funcionar
+- **Pipeline completo** em `backend/auditor/`: `python -m auditor init|run|report|upload|pull`
+- IA real: **Azure OpenAI gpt-5-mini** (germanywestcentral, zona EUR, deployment `gpt-5-mini`).
+  `.env` do backend já tem `AUDITOR_AI_PROVIDER=azure_openai` + `AZURE_OPENAI_*` (chaves também no
+  Key Vault `kv-vigia-audit`).
+- Fluxo: PDFs → texto (pypdf, local) → JSON estruturado (gpt-5-mini) → SQLite (db/audit.db) →
+  regras locais (faturas duplicadas + pagamentos vs extratos CSV) → relatório HTML (reports/report.html).
+- **Demo pronta**: `audits/cliente_demo/` com 3 faturas (1 duplicada) + extrato CSV. Corre:
+  `cd backend && python -m auditor run ../audits/cliente_demo` (ou `--open`).
+- **Blob**: upload/pull funcional via Azure CLI (`--auth-mode login`). Container `audit-backups`.
+  500 PDFs: `python -m auditor upload <ws>` → noutro PC: `pull` → `run`.
+
+### Quirks conhecidos (importantes!)
+- Azure for Students: política limita regiões a 5 (todas UE); só SKU `GlobalStandard`; api-version
+  OpenAI que funciona = **2024-10-21** (2025-01-01 dá 404 nesta conta).
+- gpt-5-mini é reasoning model: `max_completion_tokens` ≥4096 na extração (senão devolve vazio).
+- `.cmd` com argumentos com espaços falham via cmd direto → usar `powershell -NoProfile -Command`.
+- Console Windows cp1252 rebenta com emojis → `cli.py` faz `stdout.reconfigure(utf-8)`.
+
+### Custo real (testes de hoje)
+9 chamadas IA + resumos = ~11k tokens ≈ 1-2 cêntimos. Auditoria demo completa ≈ €0.02.
+500 PDFs estimado $2-5 (confirmar na 1ª faturação).
+
+### NEEDS_DECISION — José decide quando voltar
+1. **UI via Vercel v0**: backend do pipeline está pronto a servir dados. Sugestão: gerar um
+   endpoint FastAPI em `backend/Api` (ex. `/auditor/findings?ws=cliente_demo`) ou expor o JSON
+   do SQLite; com o v0 crias a página (cards de impacto, tabela de achados, filtros). O relatório
+   HTML local já serve para demo ao cliente sem backend extra.
+2. ~~**OCR de scans** (PDFs sem texto)~~ ✅ FEITO a 17 Ago — ver secção abaixo.
+3. **Fornecedores mais baratos** (comparação de preços/catálogos): ✅ comparador + emails já
+   feitos (2ª sessão); falta a comparação de **catálogos/contratos** se quiseres ir mais longe.
+4. **Push ao Railway**: módulo auditor é LOCAL (não vai para o backend de produção). Só fará
+   sentido expor via API quando a UI v0 existir.
+
+### Web UI + comparador + emails (16 Ago, 2ª sessão)
+- **Web UI local**: `backend/start_auditor_web.ps1` → http://localhost:8765. Upload de faturas de
+  fornecedores + vendas + extratos (drag-drop), "Correr auditoria", achados com impacto, botão
+  "Gerar emails". Servidor FastAPI em `backend/auditor/web.py` (app separado — NÃO toca no Api de produção).
+- **Comparador de fornecedores** (`audits/suppliers.py`): agrupa produtos iguais entre fornecedores
+  (jaccard ≥0.6 sobre tokens), acha "compra_acima_melhor_preco" com poupança na amostra + anualizada (x4),
+  e margens de venda vs compra (achado se margem <15%).
+- **Emails** (`audits/email_drafts.py`): rascunhos PT para o fornecedor MAIS BARATO de cada produto
+  (a pedir proposta), estado rascunho→enviado. **Nunca envia sem clique + confirm() na UI**; SMTP opcional
+  (SMTP_HOST/PORT/USER/PASSWORD/FROM no .env). Demo: rascunho → OfficeMax (vendas@officemax.pt).
+- Extração: prompt agora usa seller/buyer (seller = entidade emissora; "Cliente:" no corpo é buyer).
+  Compra → contraparte=seller; venda → contraparte=buyer. Fix crítico (antes lia "Cliente:" como fornecedor).
+- Demo atualizada: 5 compras (incl. Papelaria Central 15,8% cara vs OfficeMax) + 2 vendas (margem 10,4% baixa)
+  + extrato. Resultado: 9 achados, impacto 6.932€ (demo).
+
+### OCR de scans via Azure Document Intelligence (17 Ago, 4ª sessão)
+- **Recurso novo**: `vigia-docintel` (kind FormRecognizer, **SKU F0 = grátis**, 20 páginas/mês)
+  em germanywestcentral — ao contrário do OpenAI, o F0 **não** foi bloqueado pela subscrição.
+  Endpoint `https://vigia-docintel-1f1dc.cognitiveservices.azure.com/`; key1 + endpoint no
+  Key Vault (`azure-docintel-key1`, `azure-docintel-endpoint`) e em `backend/.env`
+  (`AZURE_DOCINTEL_ENDPOINT`, `AZURE_DOCINTEL_KEY`).
+- **Código**: `extractors/ocr_docintel.py` — `build_ocr_client()` + `DocumentIntelligenceOCR`
+  (modelo `prebuilt-layout`, api-version **2023-07-31**, POST `:analyze` → poll do
+  `Operation-Location` até succeeded, timeout 60s, texto = `analyzeResult.content`).
+  Fallback offline silencioso (NoOCRSilent) se não configurado.
+- **Pipeline**: pypdf sem texto → OCR → extração IA normal. Chamada OCR fica registada em
+  `ai_calls` (model `docintel-prebuilt-layout`). Se OCR também falhar → aviso e segue.
+- **Teste**: `audits/ocr_test/` — fatura scan (imagem, 0 chars de texto) da Papelaria Central
+  C2026-0331 → OCR + gpt-5-mini extraíram **Papelaria Central Lda / C2026-0331 / 357,93€** ✓.
+- **Gerar scans de teste**: `python -m auditor.make_scan_test --dest audits/ocr_test/input/faturas`
+  (desenha fatura com PIL e embute como imagem num PDF sem texto).
+- **Custo**: F0 cobre a demo de sobra. Se um dia houver muitos scans → S0 (~$1/1000 páginas).
+
+### Alertas + pagamentos duplicados + faturas em falta (16 Ago, 3ª sessão)
+- **Pagamentos duplicados** (regra nova): mesmo montante + mesma descrição/fornecedor + datas ≤30 dias
+  → "pagamento_duplicado" (confiança alta). Pagamentos duplicados não são re-sinalizados como
+  "sem fatura" (dedup via `_payment_ids`).
+- **Faturas em falta** (regra nova): buracos ≤10 na sequência numérica por fornecedor+ano
+  (ex.: 0113, 0114, 0116 → falta 0115). Confiança baixa (sinal, não acusação).
+- **Alertas**: secção na UI com achados de confiança alta não confirmados; cada achado tem estado
+  novo/confirmado/ignorado (botões na UI, endpoint POST /auditor/findings/{id}/state).
+- **Telegram opcional**: `alerts.py` — notifica achados de alta confiança no fim do run SÓ com
+  `AUDITOR_TELEGRAM_ENABLED=1` (reutiliza TELEGRAM_BOT_TOKEN_SOL/CHAT_ID_SOL ou vars próprias). Desligado por defeito.
+- Demo: agora 6 compras (energia 0113+dup, 0114, 0116→buraco 0115; papelaria vs officemax) + 2 vendas
+  + extrato com pagamento duplicado 1.284,30€. Resultado: 14 achados, impacto 11.995,63€.
