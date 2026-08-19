@@ -654,15 +654,7 @@ export default function DevilsAdvocatePage() {
                     nada sai do computador.
                   </span>
                 </div>
-              ) : provider === 'mistral' || mode === 'preparar' ? null : (
-                <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
-                    <strong>Privacidade:</strong> processado por um modelo de IA externo (EUA).
-                    Não carregue conteúdo que não possa partilhar com um subcontratante.
-                  </span>
-                </div>
-              )}
+              ) : null}
 
               {error && (
                 <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">

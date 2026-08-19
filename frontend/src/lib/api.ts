@@ -11,6 +11,10 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
+// Devil's Advocate vive no Azure (UE); as restantes chamadas continuam no Railway.
+// Fallback para API_BASE mantém o comportamento antigo se a env não estiver definida.
+const DEVIL_API_BASE = process.env.NEXT_PUBLIC_DEVIL_API_URL || API_BASE;
+
 export type Holding = {
   id?: string | null;
   token: string | null;
@@ -567,7 +571,7 @@ export async function analyzeDevilsAdvocateStream(
   // Job + polling: cloud proxies (Railway free tier included) kill
   // long-lived streams, so we start a background job and poll a tiny GET
   // until it's done. Every response here is short — no proxy limit is hit.
-  const res = await fetch(`${API_BASE}/api/devils-advocate/analyze-job`, {
+  const res = await fetch(`${DEVIL_API_BASE}/api/devils-advocate/analyze-job`, {
     method: "POST",
     headers: { "X-Access-Code": input.accessCode },
     body: form,
@@ -585,7 +589,7 @@ export async function analyzeDevilsAdvocateStream(
   const maxWaitMs = 35 * 60 * 1000; // backend ceiling is 30 min; leave margin
 
   while (true) {
-    const poll = await fetch(`${API_BASE}/api/devils-advocate/job/${job_id}`, {
+    const poll = await fetch(`${DEVIL_API_BASE}/api/devils-advocate/job/${job_id}`, {
       headers: { "X-Access-Code": input.accessCode },
     });
     if (!poll.ok) {
@@ -662,7 +666,7 @@ export async function analyzeDevilsAdvocate(input: {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/devils-advocate/analyze`, {
+    res = await fetch(`${DEVIL_API_BASE}/api/devils-advocate/analyze`, {
       method: "POST",
       headers: { "X-Access-Code": input.accessCode },
       body: form,
@@ -725,7 +729,7 @@ export async function summarizeAcordao(input: {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/devils-advocate/summarize`, {
+    res = await fetch(`${DEVIL_API_BASE}/api/devils-advocate/summarize`, {
       method: "POST",
       headers: { "X-Access-Code": input.accessCode },
       body: form,
