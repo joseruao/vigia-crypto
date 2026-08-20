@@ -1,0 +1,11 @@
+CASO FICTÍCIO — EXEMPLO FISCAL (dados de teste, não é um caso real)
+
+Fatura FT 2024/001, de 10/02/2024, valor 1.200,00 EUR + IVA 23% (276,00 EUR),
+emitida pela Empresa X, Lda. (NIPC 501234567) ao Cliente Y, SA (NIPC
+509876543), no âmbito do projeto Z. Descrição: serviços de consultoria
+estratégica. Fatura liquidada em 15/03/2024.
+
+O cliente deduziu integralmente o IVA. A Autoridade Tributária notificou em
+20/05/2024 a recusa parcial da dedução, por entender que os serviços não
+estão ligados a operações tributadas, e aplicou correção com juros
+compensatórios, citando o artigo 19.º do CIVA.

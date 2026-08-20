@@ -4,23 +4,31 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Calculator,
+  CalendarDays,
   CheckCircle2,
   Download,
   FileText,
   Gavel,
+  ListChecks,
   Loader2,
   Lock,
   Scale,
   ShieldCheck,
   Upload,
+  Users,
 } from 'lucide-react';
 import {
   DEVIL_API_BASE,
   checkDevilHealth,
   AcordaoSummary,
+  CalculoIndemnizacao,
   ClassifiedPoint,
+  CronologiaEvento,
   DevilsAdvocateProgressEvent,
   DevilsAdvocateReport,
+  FundamentoDespedimento,
+  Testemunha,
   analyzeDevilsAdvocateStream,
   summarizeAcordao,
 } from '@/lib/api';
@@ -92,6 +100,125 @@ function ListBlock({ items, empty = '—' }: { items?: string[]; empty?: string 
         </li>
       ))}
     </ul>
+  );
+}
+
+/* ── Laboral: componentes estruturados (render só com conteúdo) ───────── */
+
+function TimelineBlock({ items }: { items?: CronologiaEvento[] }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return <p className="text-sm text-slate-400">—</p>;
+  return (
+    <ol className="relative space-y-4 border-l border-slate-200 pl-5">
+      {safeItems.map((event, index) => (
+        <li key={index} className="relative">
+          <span className="absolute -left-[26px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-800 shadow-sm" />
+          {event.data && (
+            <p className="text-xs font-bold uppercase tracking-wide text-red-800">{event.data}</p>
+          )}
+          <p className="text-sm leading-6 text-slate-700">{event.descricao}</p>
+          {event.fonte && <p className="mt-0.5 text-xs italic text-slate-400">Fonte: {event.fonte}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function WitnessGrid({ items }: { items?: Testemunha[] }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return <p className="text-sm text-slate-400">—</p>;
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {safeItems.map((witness, index) => (
+        <div key={index} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-bold text-slate-900">{witness.nome}</p>
+          {witness.relacao && <p className="text-xs text-slate-400">{witness.relacao}</p>}
+          {(witness.factos_que_confirmaria?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Factos que pode confirmar
+              </p>
+              <ListBlock items={witness.factos_que_confirmaria} />
+            </>
+          )}
+          {(witness.perguntas_sugeridas?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Perguntas sugeridas
+              </p>
+              <ListBlock items={witness.perguntas_sugeridas} />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FundamentosBlock({ items }: { items?: FundamentoDespedimento[] }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return <p className="text-sm text-slate-400">—</p>;
+  return (
+    <div className="space-y-3">
+      {safeItems.map((ground, index) => (
+        <div key={index} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-bold text-slate-900">{ground.fundamento}</p>
+          {(ground.factos_invocados?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Factos invocados
+              </p>
+              <ListBlock items={ground.factos_invocados} />
+            </>
+          )}
+          {(ground.provas_disponiveis?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Provas disponíveis
+              </p>
+              <ListBlock items={ground.provas_disponiveis} />
+            </>
+          )}
+          {(ground.fragilidades?.length ?? 0) > 0 && (
+            <>
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                Fragilidades
+              </p>
+              <ul className="space-y-1.5 text-sm leading-6 text-red-700">
+                {ground.fragilidades.map((item, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IndemnizacaoGrid({ items }: { items?: CalculoIndemnizacao[] }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return <p className="text-sm text-slate-400">—</p>;
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {safeItems.map((calc, index) => (
+        <div key={index} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-bold text-slate-900">{calc.item}</p>
+          {calc.valor_estimado && (
+            <p className="mt-1 text-lg font-bold text-emerald-700">{calc.valor_estimado}</p>
+          )}
+          {calc.base_de_calculo && (
+            <p className="mt-1 text-xs text-slate-500">Base: {calc.base_de_calculo}</p>
+          )}
+          {calc.fundamento && <p className="mt-1 text-xs text-slate-500">Fundamento: {calc.fundamento}</p>}
+          {calc.observacoes && <p className="mt-1 text-xs italic text-slate-400">{calc.observacoes}</p>}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -831,6 +958,13 @@ export default function DevilsAdvocatePage() {
                   <p className="mt-4 text-xs text-slate-400">
                     {report.document_name} · {report.jurisdiction} · {report.legal_area} · {report.represented_side}
                   </p>
+                  {(report.document_type || report.objective) && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      {report.document_type ? `Tipo de documento: ${report.document_type}` : ''}
+                      {report.document_type && report.objective ? ' · ' : ''}
+                      {report.objective ? `Objetivo: ${report.objective}` : ''}
+                    </p>
+                  )}
                 </ReportSection>
 
                 <ReportSection title="Aviso de fontes" icon={<ShieldCheck className="h-4 w-4" />} tone="warn">
@@ -1083,6 +1217,42 @@ export default function DevilsAdvocatePage() {
                     <ListBlock items={nextActions} />
                   </ReportSection>
                 )}
+
+                {(report.cronologia?.length ?? 0) > 0 && (
+                  <ReportSection title="Cronologia" icon={<CalendarDays className="h-4 w-4" />} tone="good">
+                    <TimelineBlock items={report.cronologia} />
+                  </ReportSection>
+                )}
+
+                {(report.testemunhas?.length ?? 0) > 0 && (
+                  <ReportSection title="Testemunhas" icon={<Users className="h-4 w-4" />}>
+                    <WitnessGrid items={report.testemunhas} />
+                  </ReportSection>
+                )}
+
+                {(report.fundamentos_de_despedimento?.length ?? 0) > 0 && (
+                  <ReportSection title="Fundamentos de despedimento" icon={<Gavel className="h-4 w-4" />} tone="warn">
+                    <FundamentosBlock items={report.fundamentos_de_despedimento} />
+                  </ReportSection>
+                )}
+
+                {(report.procedimento_disciplinar?.length ?? 0) > 0 && (
+                  <ReportSection title="Procedimento disciplinar" icon={<ListChecks className="h-4 w-4" />}>
+                    <ListBlock items={report.procedimento_disciplinar} />
+                  </ReportSection>
+                )}
+
+                {(report.calculo_de_indemnizacao?.length ?? 0) > 0 && (
+                  <ReportSection title="Cálculo de indemnização" icon={<Calculator className="h-4 w-4" />} tone="good">
+                    <IndemnizacaoGrid items={report.calculo_de_indemnizacao} />
+                  </ReportSection>
+                )}
+
+                {report.observacoes?.trim() ? (
+                  <ReportSection title="Observações" icon={<FileText className="h-4 w-4" />}>
+                    <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{report.observacoes}</p>
+                  </ReportSection>
+                ) : null}
 
                 <ReportSection title="Leis usadas em cada ponto" icon={<FileText className="h-4 w-4" />}>
                   {legalReferences.length > 0 ? (

@@ -490,6 +490,35 @@ export type ClassifiedPoint = {
   tipo: string;
 };
 
+// ── Laboral (todos opcionais — o backend só preenche quando há informação) ──
+export type CronologiaEvento = {
+  data?: string;
+  descricao: string;
+  fonte?: string;
+};
+
+export type Testemunha = {
+  nome: string;
+  relacao?: string;
+  factos_que_confirmaria?: string[];
+  perguntas_sugeridas?: string[];
+};
+
+export type FundamentoDespedimento = {
+  fundamento: string;
+  factos_invocados?: string[];
+  provas_disponiveis?: string[];
+  fragilidades?: string[];
+};
+
+export type CalculoIndemnizacao = {
+  item: string;
+  valor_estimado?: string;
+  base_de_calculo?: string;
+  fundamento?: string;
+  observacoes?: string;
+};
+
 export type DevilsAdvocateReport = {
   document_name: string;
   jurisdiction: string;
@@ -525,6 +554,12 @@ export type DevilsAdvocateReport = {
   petition_draft: string;
   evidence_decisions: EvidenceDecision[];
   audit_report: AuditReport | null;
+  observacoes?: string;
+  cronologia?: CronologiaEvento[];
+  testemunhas?: Testemunha[];
+  fundamentos_de_despedimento?: FundamentoDespedimento[];
+  calculo_de_indemnizacao?: CalculoIndemnizacao[];
+  procedimento_disciplinar?: string[];
 };
 
 export type EvidenceDecision = {
