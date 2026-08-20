@@ -13,7 +13,22 @@ const API_BASE = getApiBase();
 
 // Devil's Advocate vive no Azure (UE); as restantes chamadas continuam no Railway.
 // Fallback para API_BASE mantém o comportamento antigo se a env não estiver definida.
-const DEVIL_API_BASE = process.env.NEXT_PUBLIC_DEVIL_API_URL || API_BASE;
+export const DEVIL_API_BASE = process.env.NEXT_PUBLIC_DEVIL_API_URL || API_BASE;
+
+// Ping de saúde ao backend Devil's Advocate (Azure UE) — a UI mostra ao
+// utilizador qual o servidor que está a servir a análise.
+export async function checkDevilHealth(timeoutMs = 6000): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${DEVIL_API_BASE}/health`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type Holding = {
   id?: string | null;

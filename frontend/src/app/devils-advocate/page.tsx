@@ -15,6 +15,8 @@ import {
   Upload,
 } from 'lucide-react';
 import {
+  DEVIL_API_BASE,
+  checkDevilHealth,
   AcordaoSummary,
   ClassifiedPoint,
   DevilsAdvocateProgressEvent,
@@ -210,6 +212,9 @@ export default function DevilsAdvocatePage() {
   const [error, setError] = useState('');
   // Local (desktop/Ollama) vs cloud (joseruao.com/OpenAI) — drives the privacy notice.
   const [isLocal, setIsLocal] = useState(false);
+  // Estado do backend em produção (Azure UE) — verificado por ping ao /health.
+  type ApiStatus = 'checking' | 'online' | 'offline';
+  const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [legalArea, setLegalArea] = useState<LegalArea>('Fiscal');
   const [represented, setRepresented] = useState('Contribuinte');
   const [representedOther, setRepresentedOther] = useState('');
@@ -228,6 +233,19 @@ export default function DevilsAdvocatePage() {
     if (saved) setAccessCode(saved);
     setIsLocal(window.location.hostname === 'localhost');
   }, []);
+
+  // Ping ao backend (Azure UE) em produção — o chip no header mostra o
+  // servidor que está realmente a servir a análise.
+  useEffect(() => {
+    if (isLocal) return;
+    let cancelled = false;
+    checkDevilHealth().then((ok) => {
+      if (!cancelled) setApiStatus(ok ? 'online' : 'offline');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocal]);
 
   // Persist the code as soon as it's typed — not only after a successful
   // analysis — so it survives reloads even while debugging failed requests.
@@ -382,21 +400,57 @@ export default function DevilsAdvocatePage() {
             '@media print { html, body { background: #fff !important; height: auto !important; overflow: visible !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow: visible !important; } }',
         }}
       />
+      <div className="h-1 w-full bg-gradient-to-r from-red-950 via-red-800 to-red-700" aria-hidden="true" />
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5">
-          <div>
-            <h1 className="text-3xl font-semibold">Devil&apos;s Advocate</h1>
-            <p className="mt-1 text-sm font-medium text-red-700">
-              Every argument deserves an opponent before reaching the courtroom.
-            </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-800 text-white shadow-md shadow-red-900/20">
+              <Gavel className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Devil&apos;s Advocate</h1>
+              <p className="mt-0.5 text-xs font-medium text-red-700 sm:text-sm">
+                Every argument deserves an opponent before reaching the courtroom.
+              </p>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setLanguage((value) => (value === 'pt' ? 'en' : 'pt'))}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 print:hidden"
-          >
-            {language === 'pt' ? 'PT' : 'EN'}
-          </button>
+
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            {!isLocal && (
+              <span
+                title={`Backend: ${DEVIL_API_BASE}`}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm ${
+                  apiStatus === 'online'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : apiStatus === 'offline'
+                      ? 'border-red-200 bg-red-50 text-red-800'
+                      : 'border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    apiStatus === 'online'
+                      ? 'bg-emerald-500'
+                      : apiStatus === 'offline'
+                        ? 'bg-red-500'
+                        : 'animate-pulse bg-slate-400'
+                  }`}
+                />
+                {apiStatus === 'online'
+                  ? 'Azure UE · operacional'
+                  : apiStatus === 'offline'
+                    ? 'API indisponível (Azure)'
+                    : 'A verificar ligação (Azure UE)...'}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setLanguage((value) => (value === 'pt' ? 'en' : 'pt'))}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-400"
+            >
+              {language === 'pt' ? 'PT' : 'EN'}
+            </button>
+          </div>
         </header>
 
         <div className="grid gap-6 xl:grid-cols-[360px_1fr] print:block">
@@ -1057,6 +1111,16 @@ export default function DevilsAdvocatePage() {
             )}
           </section>
         </div>
+
+        <footer className="flex flex-wrap items-center justify-center gap-1.5 border-t border-slate-200 pt-4 print:hidden">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <p className="text-xs text-slate-400">
+            Servidor: Microsoft Azure (UE) ·{' '}
+            <span className="font-mono font-medium text-slate-500">
+              {DEVIL_API_BASE.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+            </span>
+          </p>
+        </footer>
       </div>
     </main>
   );
