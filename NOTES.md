@@ -5,6 +5,36 @@
 
 ---
 
+## ⚖️ DEVIL'S ADVOCATE — Parte LABORAL "super completa" (20 Ago 2026)
+
+Backend canónico: `devil-azure/` (App Service `vigia-devil-mistral.azurewebsites.net`,
+Mistral, região UE). Frontend `/devil` → `/devils-advocate` (Vercel via remote `deploy`).
+
+### ✅ Feito (commit `36fe217`, deploy Azure feito)
+- **Campos estruturados laborais OPCIONAIS** no schema: `observacoes`, `cronologia`,
+  `testemunhas`, `fundamentos_de_despedimento`, `calculo_de_indemnizacao`,
+  `procedimento_disciplinar` — default vazio, contrato não quebra.
+- **FASE 13 — CHECKLIST LABORAL** no modo pre_filing (impugnação de despedimento,
+  contestação, peças/incidentes, cronologia, testemunhas, cálculo de indemnização,
+  juros/custas, anti-alucinação). Só injetada para Laboral.
+- `_normalize_model_payload` tolera dicts em campos string (ex.: `procedure` como
+  objeto → JSON string) e normaliza os campos laborais. `_PROMPT_VERSION` na cache
+  key (invalida cache de 1h).
+- UI: TimelineBlock (cronologia), WitnessGrid (testemunhas), FundamentosBlock,
+  IndemnizacaoGrid + secções content-driven (só aparecem com conteúdo); meta no
+  Sumário com tipo de documento + objetivo.
+- Testes: `devil-azure/tests/test_devils_advocate.py` (20 testes, pytest no venv).
+  Smoke real local mistral: pre_filing (299s) e adversarial (109s) laboral com campos
+  preenchidos + Fiscal sem regressão (111s).
+
+### ⚠️ Quirks confirmados
+- Console Windows cp1252 → acentos aparecem como `�` na saída do pytest/curl (só display).
+- `az webapp deploy` demora >5 min (build Oryx + pip) — correr em background.
+- FASE 13 só ativa com `legal_area` contendo "labor"/"trabalh".
+- Testes: `cd devil-azure && .venv/Scripts/python.exe -m pytest tests -q` (pytest dev-only).
+
+---
+
 ## ⚖️ DEVIL'S ADVOCATE — Audit pré-advogado (27 Jun 2026)
 
 Ferramenta jurídica (backend `Api/services|routes/devils_advocate.py`, frontend
